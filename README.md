@@ -50,31 +50,29 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | ✅ Estable; se deja intacta |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🟡 Linux 7.2-rc3 fijado; DTS X910 v0 escrito; compilación final pendiente |
-| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos; falta validar el DTB compilado |
+| Kernel mainline SM8550 | ✅ Linux 7.2-rc3 compilado y empaquetado; kernel/DTB y símbolos tempranos validados |
+| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos y compilados; falta validar en la tablet |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
-| Paquetes pmaports | 🟡 Device y kernel packages creados; falta ejecutar pmbootstrap completo |
-| Rootfs postmarketOS | ❌ Aún no construido |
-| Escritorio | ❌ Aún no arrancado |
-| SSH | ❌ Aún no validado en pmOS |
-| Bundle Android v4 | 🟡 Script reproducible creado; aún no hay imágenes validadas |
+| Paquetes pmaports | ✅ Device y kernel APK construidos; rootfs usa el mismo kernel empaquetado |
+| Rootfs postmarketOS | ✅ Imagen GPT ext2/ext4 construida y validada estáticamente |
+| Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
+| SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
+| Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ❌ No existe artefacto listo para flashear |
+| Imagen/paquete de prueba | 🟡 mainline v0 listo para prueba manual controlada; no probado físicamente |
 
 ## Reto en curso
 
-Completar y validar el primer bundle reproducible:
+Realizar el primer arranque físico controlado de mainline v0:
 
-- terminar `Image.gz` y compilar/decompilar el DTB X910 v0;
-- construir con pmbootstrap un rootfs ext4 para fichero de imagen, con systemd,
-  XFCE y OpenSSH, sin seleccionar todavía una tarjeta física;
-- exportar su initramfs y verificar que cabe en los 8 MiB de `init_boot` una
-  vez añadido el footer AVB;
-- generar `boot`, `init_boot`, `vendor_boot`, DTBO no-op y `vbmeta`, y pasar
-  validación de headers, DT, selectores, tamaños y hashes;
-- conservar y volver a validar el ZIP de restauración boot-only ya generado;
-- sólo entonces pedir una prueba con una microSD sacrificable y observar
-  simpledrm, raíz SD, ramoops y los canales de red.
+- escribir la imagen ya generada en una microSD sacrificable de 8 GB o más;
+- flashear manualmente desde TWRP sólo el ZIP de cinco particiones boot;
+- distinguir si ABL acepta el kernel, si monta `pmOS_root` desde `sdhc_2`, si
+  simpledrm conserva el framebuffer y si aparece USB NCM/SSH;
+- si falla, restaurar Ubuntu Touch con el ZIP boot-only y recuperar
+  ramoops/pstore antes de modificar DTS o cmdline;
+- si arranca, priorizar red estable y después DRM/DSI nativo para el panel
+  dual-DSI, táctil y Turnip.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -130,7 +128,8 @@ PostmarketOS/
 ├── docs/
 │   ├── porting-log.md         # historial detallado por sesiones
 │   ├── upstream-audit.md      # soporte mainline/pmOS y fuentes reutilizables
-│   └── boot-strategy.md       # boot chain, microSD, riesgos y recuperación
+│   ├── boot-strategy.md       # boot chain, microSD, riesgos y recuperación
+│   └── testing-mainline-v0.md # procedimiento manual de prueba y rollback
 ├── configs/                   # cmdline, bootconfig y fuentes DTBO no-op
 ├── pmaports/                  # device/kernel packages locales de pmbootstrap
 ├── scripts/                   # build, empaquetado y validación reproducible
@@ -159,9 +158,9 @@ lado del workspace.
 - En `Ubuntu` (Python 3.10) pmbootstrap actual falla por `tomli/tomllib`; usar
   `Ubuntu-24.04` para este proyecto.
 - La documentación oficial de pmbootstrap sigue marcando WSL como no
-  soportado por su uso de loop devices. La compilación del kernel sí funciona;
-  el flujo de creación del rootfs aún debe validar el WSL2 actual. Si falla en
-  loop/mount, se moverá esa fase a una VM Linux o contenedor privilegiado.
+  soportado por su uso de loop devices. En este WSL2 concreto, tras instalar
+  `kpartx`, kernel APK, loop/mount, rootfs y export han funcionado. No se
+  extrapola esa observación a otros entornos.
 
 ## Lo que ha funcionado
 
@@ -178,8 +177,24 @@ lado del workspace.
   la ruta Windows con espacios.
 - DTS autónomo X910 y paquetes `device-samsung-gts9uwifi` /
   `linux-samsung-gts9uwifi-mainline` creados con checksums fijados.
-- Generado `artifacts/restore-ubuntu-touch-v8-boot-sm-x910.zip` (SHA-256
-  `240599697c20c500cb180b31771f008401b1274a744ac3f81f15f5fd5b1dfcbe`):
+- Compilado Linux 7.2-rc3 directo y como APK. El DTB resultante conserva
+  framebuffer/splash, reservas, SDHC2, GT9916, UART, USB experimental y
+  ramoops; los controladores críticos para root SD y diagnóstico son built-in.
+- `pmbootstrap install` funciona en WSL2 con `kpartx`. Se creó una imagen GPT
+  de 4.634.705.920 bytes con `pmOS_boot` ext2 y `pmOS_root` ext4, XFCE4,
+  systemd, LightDM, NetworkManager y OpenSSH.
+- Separar `initramfs-extra` en la partición boot reduce el initramfs de
+  15,15 MiB a 2.133.928 bytes; cabe en `init_boot` de 8 MiB con 6.254.680 bytes
+  de margen bruto antes del footer AVB.
+- El `vmlinuz` instalado por `zinstall` es EFI zboot. Se valida su cabecera y
+  se extrae su payload gzip (`0237f8a...`) para Android `boot.img`, garantizando
+  que kernel y módulos proceden de la misma compilación y release 7.2.0-rc3.
+- Bundle Android v4 regenerado dos veces con hashes idénticos y validado byte a
+  byte: headers, offsets, DTB, selectores DTBO, AVB y tamaños correctos.
+- Generados y validados los artefactos mainline v0: imagen SD comprimida
+  `592deff2...` y ZIP TWRP `7af75c71...`. Aún no han arrancado en hardware.
+- Regenerado `artifacts/restore-ubuntu-touch-v8-boot-sm-x910.zip` (SHA-256
+  `fd1d31a5fb77c3586171601e438bc7aa7b439fd7e4981d05f1d0aa0f209234f3`):
   restaura las cinco particiones de boot sin reescribir `super` y pasó CRC,
   modo ejecutable y hashes internos.
 
@@ -202,10 +217,21 @@ lado del workspace.
 - Una compilación que pedía también todos los módulos excedió los diez minutos
   del runner y fue terminada. El script directo construye ahora sólo
   `Image.gz` y el DTB; los módulos completos quedan para el package pmOS.
-- Después de ese corte, el ejecutor bloqueó temporalmente nuevas invocaciones
-  WSL por límite de uso de la sesión. No es un error del kernel: los objetos
-  parciales siguen en `/root/pmos-gts9u/build/` y la reanudación queda pendiente
-  de recuperar acceso autorizado al entorno, sin buscar atajos alternativos.
+- Usar una sola partición rootfs deja un initramfs de unos 15,15 MiB, imposible
+  para `init_boot` de 8 MiB. `pmbootstrap` además impide `initramfs-extra` con
+  `--single-partition`; la solución validada es la imagen estándar de dos
+  particiones, no recortar módulos tempranos necesarios.
+- El primer package device falló por mantenedor no RFC822, dependencia ausente
+  de `android-tools` y falta de `deviceinfo_flash_pagesize`; están corregidos.
+- No usar directamente `/boot/vmlinuz` en Android: `zinstall` genera un wrapper
+  EFI zboot. Tampoco mezclar el `Image.gz` de la build directa con módulos del
+  APK. El bundle extrae y verifica el payload del zboot empaquetado.
+- Los AVB salts aleatorios y un CPIO vacío con timestamps variables hacían
+  cambiar los hashes. Los salts derivan ahora del SHA-256 de la imagen y el
+  vendor ramdisk vacío usa timestamp cero y `cpio --reproducible`.
+- `zipfile.writestr()` añadía la hora actual a dos miembros y cambiaba el SHA
+  del ZIP aunque las imágenes fueran idénticas. Todos los miembros usan ahora
+  época ZIP fija; dos paquetes mainline y dos rollback resultaron idénticos.
 
 ## Referencias locales
 

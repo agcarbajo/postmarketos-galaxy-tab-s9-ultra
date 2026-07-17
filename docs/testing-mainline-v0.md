@@ -1,0 +1,103 @@
+# Prueba física de mainline v0
+
+Esta es una prueba **experimental de primer arranque**, no una versión ya
+confirmada en hardware. La compilación y las validaciones estáticas han pasado,
+pero todavía no sabemos si ABL aceptará el kernel mainline, si `simpledrm`
+conservará la imagen o si el USB2 del X910 sobrevivirá a la transición desde el
+bootloader.
+
+La prueba no modifica `super`, `userdata`, recovery, bootloader, PIT, EFS ni
+firmware. Sí reemplaza temporalmente `boot`, `init_boot`, `vendor_boot`, `dtbo`
+y `vbmeta`; por eso hay que conservar el ZIP de restauración en una ubicación
+accesible desde TWRP.
+
+## Material necesario
+
+- Una microSD sacrificable de **8 GB o más**. Todo su contenido se borrará.
+- `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`.
+- `postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`.
+- `restore-ubuntu-touch-v8-boot-sm-x910.zip` como vuelta atrás.
+- TWRP ya instalado/arrancable en la tablet.
+
+No uses la tarjeta exFAT de 238 GB que está casi llena: contiene datos y queda
+expresamente fuera de esta prueba.
+
+## 1. Verificar los ficheros
+
+Comprueba los SHA-256 publicados en `artifacts/SHA256SUMS-mainline-v0.txt` y en
+`artifacts/README.md`. Si un hash no coincide, no continúes.
+
+## 2. Preparar la microSD
+
+Descomprime el fichero `.img.zst` con 7-Zip o `zstd`. El resultado es una
+imagen raw de 4.634.705.920 bytes. Escríbela completa en la microSD con una
+herramienta de imágenes raw, por ejemplo Rufus en modo DD o Win32 Disk Imager.
+
+Selecciona la unidad con mucho cuidado: la operación destruye todas las
+particiones y datos del dispositivo elegido. El proyecto no incluye ningún
+comando automático que seleccione o escriba discos físicos.
+
+La imagen contiene GPT y dos particiones:
+
+1. `pmOS_boot`, ext2, aproximadamente 487 MiB, con `initramfs-extra`;
+2. `pmOS_root`, ext4, aproximadamente 3,8 GiB, con postmarketOS/XFCE.
+
+## 3. Instalar el boot mínimo
+
+1. Copia a un almacenamiento visible desde TWRP tanto el ZIP mainline como el
+   ZIP de restauración.
+2. Apaga la tablet e inserta la microSD preparada.
+3. Arranca TWRP.
+4. Flashea únicamente
+   `postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`.
+5. Comprueba que TWRP enumera exactamente cinco escrituras: `boot`,
+   `init_boot`, `vendor_boot`, `dtbo` y `vbmeta`.
+6. No hagas wipes ni formatees `data`. Reinicia manualmente a System.
+
+## 4. Qué esperar
+
+Espera al menos tres minutos en el primer arranque. El resultado ideal es el
+splash conservado por ABL, consola/simpledrm y después LightDM/XFCE a
+2960×1848. Las credenciales son:
+
+- usuario: `phablet`;
+- contraseña: `<DEV_PASSWORD>`;
+- hostname: `gts9u`.
+
+OpenSSH y NetworkManager están habilitados, pero **Wi-Fi aún no está descrito
+en el DTS v0**. La primera red depende del USB NCM experimental. Conecta USB al
+PC y observa si aparece una nueva interfaz de red; si aparece, busca la IP del
+host `gts9u` o la concesión DHCP e intenta `ssh phablet@<IP>`.
+
+Informa exactamente de:
+
+- si cambia el splash, aparece consola, parpadeo o pantalla negra;
+- cuánto tarda y si llega a LightDM/XFCE;
+- si el PC detecta un nuevo dispositivo USB o interfaz de red;
+- si la tablet reinicia sola o permanece encendida.
+
+No se debe interpretar una pantalla negra como prueba de que el kernel no
+arrancó: el panel dual-DSI todavía no tiene driver mainline y simpledrm depende
+de que ABL preserve el framebuffer.
+
+## 5. Restaurar Ubuntu Touch
+
+Si no arranca o cuando termine la prueba:
+
+1. Fuerza el apagado y vuelve a TWRP con la combinación habitual.
+2. Flashea `restore-ubuntu-touch-v8-boot-sm-x910.zip`.
+3. Retira la microSD de prueba.
+4. Reinicia a System.
+
+El ZIP de vuelta atrás restaura las cinco particiones de boot de Ubuntu Touch
+v8/firmware stock. No reescribe `super` ni `userdata`, por lo que la instalación
+UT existente debe reaparecer sin reinstalarla. Si TWRP no fuese accesible,
+Download Mode y el firmware Odin oficial siguen siendo la última vía de
+recuperación; no flashees PIT ni marques repartition.
+
+## Diagnóstico posterior
+
+Tras un fallo reproducible, el siguiente paso será recuperar ramoops/pstore si
+TWRP lo expone y ajustar el DTS/cmdline con esa evidencia. No conviene probar
+variantes al azar: una sola descripción precisa del primer arranque distingue
+entre rechazo de ABL, kernel temprano, montaje de la SD y fallo gráfico.

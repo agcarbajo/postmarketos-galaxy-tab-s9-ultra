@@ -1,4 +1,4 @@
-maintainer="SM-X910 postmarketOS port <local@localhost>"
+maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3

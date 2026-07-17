@@ -34,10 +34,11 @@ pmb config timezone Europe/Madrid
 pmb config locale es_ES.UTF-8
 pmb config extra_packages openssh
 
-# Build an image file only.  No --disk/--sdcard argument is accepted here, so
-# this command cannot overwrite the user's physical microSD.
+# Build a two-partition image file only.  The boot partition stores
+# initramfs-extra so the early initramfs can fit the X910 8 MiB init_boot
+# partition; the root partition holds the desktop.  No --disk/--sdcard
+# argument is accepted here, so this cannot overwrite a physical microSD.
 pmb -E 2048 install \
-	--single-partition \
 	--sector-size 512 \
 	--filesystem ext4 \
 	--password 2006 \

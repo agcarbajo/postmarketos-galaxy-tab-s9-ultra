@@ -44,29 +44,41 @@ if [ -z "$EM_MODEL" ]; then
 fi
 
 BB=/dev/block/by-name
+SLOT="$(getprop ro.boot.slot_suffix)"
+
+resolve_part() {
+    if [ -n "$SLOT" ] && [ -e "$BB/$1$SLOT" ]; then
+        echo "$BB/$1$SLOT"
+    elif [ -e "$BB/$1" ]; then
+        echo "$BB/$1"
+    else
+        return 1
+    fi
+}
+
 for part in boot init_boot vendor_boot dtbo vbmeta; do
-    [ -e "$BB/$part" ] || abort "Missing partition $BB/$part"
+    resolve_part "$part" >/dev/null || abort "Missing partition $part"
 done
 
 blkdev_size() { blockdev --getsize64 "$1" 2>/dev/null || echo 0; }
-[ "$(blkdev_size "$BB/boot")" -eq 100663296 ] || abort "boot size mismatch"
-[ "$(blkdev_size "$BB/init_boot")" -eq 8388608 ] || abort "init_boot size mismatch"
-[ "$(blkdev_size "$BB/vendor_boot")" -eq 100663296 ] || abort "vendor_boot size mismatch"
-[ "$(blkdev_size "$BB/dtbo")" -eq 16777216 ] || abort "dtbo size mismatch"
-[ "$(blkdev_size "$BB/vbmeta")" -ge 65536 ] || abort "vbmeta is too small"
+[ "$(blkdev_size "$(resolve_part boot)")" -eq 100663296 ] || abort "boot size mismatch"
+[ "$(blkdev_size "$(resolve_part init_boot)")" -eq 8388608 ] || abort "init_boot size mismatch"
+[ "$(blkdev_size "$(resolve_part vendor_boot)")" -eq 100663296 ] || abort "vendor_boot size mismatch"
+[ "$(blkdev_size "$(resolve_part dtbo)")" -eq 16777216 ] || abort "dtbo size mismatch"
+[ "$(blkdev_size "$(resolve_part vbmeta)")" -ge 65536 ] || abort "vbmeta is too small"
 
 for file in boot.img init_boot.img vendor_boot.img dtbo.img vbmeta.img; do
     unzip -l "$ZIPFILE" "$file" >/dev/null 2>&1 || abort "ZIP is missing $file"
 done
 
-SLOT="$(getprop ro.boot.slot_suffix)"
 ui_print "Planned writes: boot, init_boot, vendor_boot, dtbo, vbmeta."
 ui_print "No filesystem or user-data partition will be touched."
 
 for part in boot init_boot vendor_boot dtbo vbmeta; do
+    target="$(resolve_part "$part")" || abort "partition disappeared: $part"
     ui_print "Writing $part..."
     unzip -p "$ZIPFILE" "$part.img" | \
-        dd of="$BB/$part$SLOT" bs=4M || abort "failed to write $part"
+        dd of="$target" bs=4M || abort "failed to write $part"
 done
 
 sync

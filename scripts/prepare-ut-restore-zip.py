@@ -38,7 +38,8 @@ def hash_stream(stream, pad_to: int | None = None) -> str:
 
 
 def zip_info(name: str, mode: int = 0o644) -> zipfile.ZipInfo:
-    info = zipfile.ZipInfo(name)
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.create_system = 3
     info.compress_type = zipfile.ZIP_DEFLATED
     info.external_attr = (stat.S_IFREG | mode) << 16
     return info
@@ -119,11 +120,11 @@ def main() -> None:
                 "META-INF/com/google/android/updater-script",
             )
             target.writestr(
-                "BUNDLE-LABEL",
+                zip_info("BUNDLE-LABEL"),
                 "Restore Ubuntu Touch v8 boot chain for SM-X910\n",
             )
             target.writestr(
-                "SHA256SUMS",
+                zip_info("SHA256SUMS"),
                 "".join(f"{sums[name]}  {name}\n" for name in EXPECTED),
             )
 

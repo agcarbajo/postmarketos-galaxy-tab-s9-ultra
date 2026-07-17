@@ -44,8 +44,10 @@ vacío ni se conserva el overlay downstream.
 
 ## Empaquetado reproducible
 
-`scripts/build-android-v4-bundle.sh` reproduce los offsets probados por Ubuntu
-Touch:
+`scripts/build-android-v4-bundle.sh` extrae primero el payload `Image.gz` del
+EFI zboot instalado por el paquete de kernel. Así el kernel de `boot.img` y los
+módulos del rootfs proceden de exactamente la misma compilación. Después
+reproduce los offsets probados por Ubuntu Touch:
 
 - base `0x80000000`;
 - kernel `0x80008000`;
@@ -80,5 +82,6 @@ dispositivo físico automáticamente.
 5. USB NCM sólo si el repetidor NXP conserva la inicialización de ABL;
 6. Wi-Fi/SSH tras incorporar firmware y BDF correctos.
 
-No se anunciará una imagen como flasheable hasta que kernel, DTB, initramfs,
-DTBO, AVB y tamaños hayan pasado validación estática.
+Kernel, DTB, initramfs, DTBO, AVB, tamaños y artefactos distributables ya han
+pasado validación estática. La guía `testing-mainline-v0.md` describe la primera
+prueba física; hasta realizarla, el bundle sigue marcado como experimental.

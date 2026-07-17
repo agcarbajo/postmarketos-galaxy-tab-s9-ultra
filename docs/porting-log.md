@@ -87,3 +87,83 @@ temporal de uso. Esto impide reanudar los objetos parciales y lanzar
 pmbootstrap, pero no aporta evidencia de un fallo del DTS/kernel. Se detiene el
 trabajo remoto de forma explícita y no se intenta eludir el control mediante
 otra vía de ejecución.
+
+## 2026-07-17 — sesión 3: build completa y bundle mainline v0
+
+La usuaria autorizó reintentar las ejecuciones WSL. Se reanudó el mismo árbol
+en `/root/pmos-gts9u/`; no se tocó la tablet ni se seleccionó ninguna unidad
+física.
+
+### Kernel y DTB
+
+- Terminó la compilación directa de Linux 7.2-rc3. `Image.gz` mide 19.837.293
+  bytes y el DTB X910 115.616 bytes. Se verificaron como built-in simpledrm,
+  SD/MMC/SDHCI MSM, ext4, gadget/configfs/NCM, UART Qualcomm, GT9916 y
+  ramoops/pstore.
+- El DTB decompilado conserva el framebuffer 2960×1848 en `0xb8000000`, la
+  reserva splash, el carveout ADSP, ramoops, SDHC2, Goodix, UART7 y USB2
+  peripheral experimental.
+- El APK completo `linux-samsung-gts9uwifi-mainline` terminó en 3.215,9 s.
+  Su release instalada es `7.2.0-rc3` y los módulos exponen el mismo vermagic.
+- `zinstall` no deja un gzip Android en `/boot/vmlinuz`, sino un EFI zboot de
+  19.767.808 bytes. Su cabecera `MZ/zimg` señala un payload gzip de 19.706.845
+  bytes, SHA-256 `0237f8a0930fe85dd46256ffd7e723f11078b8439d70a8c093e12f0b4760f35c`;
+  al descomprimir produce un `Image` ARM64 válido de 57.344.000 bytes. El
+  generador extrae ese payload para no mezclar kernel y módulos de builds
+  distintas.
+
+### pmbootstrap y rootfs
+
+- Se instaló `kpartx` en Ubuntu-24.04 y el flujo loop/mount de pmbootstrap
+  funcionó pese a que WSL no está soportado oficialmente.
+- Los primeros intentos del device APK fallaron sucesivamente por un
+  mantenedor no válido, ausencia de `android-tools` y falta de page size para
+  mkbootimg. Se corrigieron a un RFC822 válido, dependencia explícita y
+  `deviceinfo_flash_pagesize="4096"`.
+- Una rootfs de una sola partición produjo un initramfs de aproximadamente
+  15,15 MiB, mayor que `init_boot`, y pmbootstrap no permite
+  `initramfs-extra` con `--single-partition`. Se activó
+  `deviceinfo_create_initfs_extra="true"` y se generó una imagen GPT estándar
+  de dos particiones.
+- Imagen final: 4.634.705.920 bytes, SHA-256
+  `103fe9980b7322b2fe2878bd6cf191cabe7152f4d31561623be1a9f0b36ef3b4`.
+  La partición 1 es ext2 `pmOS_boot` de unos 487 MiB y la 2 ext4 `pmOS_root`
+  de unos 3,8 GiB.
+- El initramfs final mide 2.133.928 bytes (SHA-256 `ba13b0d...`) y
+  `initramfs-extra` 13.014.943 bytes (SHA-256 `b581bbe6...`). La rootfs incluye
+  edge, systemd, XFCE4/LightDM, NetworkManager, OpenSSH, `xfce4-terminal`,
+  usuario `phablet`, contraseña `<DEV_PASSWORD>` y hostname `gts9u`.
+
+### Boot chain y artefactos
+
+- Se construyeron `boot`, `init_boot`, `vendor_boot`, `dtbo` y `vbmeta` con
+  sus tamaños completos de partición. El kernel procede del zboot del package,
+  el initramfs de la rootfs y el DTB del mismo package.
+- Se eliminaron dos fuentes de no determinismo: AVB usa un salt derivado del
+  SHA-256 previo al footer y el CPIO vendor vacío usa timestamp cero con
+  `--reproducible`. Dos generaciones consecutivas dieron hashes idénticos.
+- Validación correcta: hashes internos, Android header v4, offsets Samsung,
+  comparaciones byte a byte, DTBO de dos selectores, AVB y tamaños. Hashes de
+  imágenes: `boot dfe592dc...`, `init_boot 36ed30f9...`,
+  `vendor_boot 13bf87cb...`, `dtbo 9f2dc02e...`, `vbmeta f489966f...`.
+- Imagen SD comprimida final:
+  `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`, SHA-256
+  `592deff221c271b03a6830d2b7dc89497e327151951ceac043f4ebadb8c0b237`.
+- ZIP de prueba TWRP final:
+  `postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`, SHA-256
+  `7af75c71dcb451e0cc1400a6275c2a01908894e1bde9a34f9b85f34702837bc3`.
+  CRC, permisos, tamaños y manifests interno/externo pasaron. El instalador
+  resuelve de forma segura particiones con o sin sufijo y no toca `super` ni
+  datos.
+- Se regeneró y volvió a validar el rollback
+  `restore-ubuntu-touch-v8-boot-sm-x910.zip`, SHA-256
+  `fd1d31a5fb77c3586171601e438bc7aa7b439fd7e4981d05f1d0aa0f209234f3`.
+- Una regeneración del ZIP cambió el hash aunque las imágenes no cambiaron:
+  `writestr()` estaba fechando dos entradas con la hora actual. Se fijó
+  1980-01-01 para todos los miembros y se comprobó que dos ZIP mainline y dos
+  rollback independientes son idénticos byte a byte.
+- Se añadió `docs/testing-mainline-v0.md`. El bundle queda listo para una
+  prueba manual con microSD sacrificable, pero **todavía no está validado por
+  un arranque físico**. Wi-Fi no está descrito en el DTS v0 y USB NCM depende
+  del repetidor NXP/SM5714 todavía no soportado; no se promete SSH en este
+  primer intento.

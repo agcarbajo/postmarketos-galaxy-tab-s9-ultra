@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import shutil
 import stat
 import zipfile
 from pathlib import Path
@@ -27,12 +28,24 @@ def digest(path: Path) -> str:
     return result.hexdigest()
 
 
-def add_executable(zf: zipfile.ZipFile, source: Path, arcname: str) -> None:
-    info = zipfile.ZipInfo.from_file(source, arcname)
-    info.external_attr = (stat.S_IFREG | 0o755) << 16
+def zip_info(name: str, mode: int = 0o644) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.create_system = 3
+    info.external_attr = (stat.S_IFREG | mode) << 16
     info.compress_type = zipfile.ZIP_DEFLATED
-    with source.open("rb") as stream:
-        zf.writestr(info, stream.read(), compresslevel=9)
+    return info
+
+
+def add_file(
+    zf: zipfile.ZipFile,
+    source: Path,
+    arcname: str,
+    mode: int = 0o644,
+) -> None:
+    with source.open("rb") as src, zf.open(
+        zip_info(arcname, mode), "w", force_zip64=True
+    ) as dst:
+        shutil.copyfileobj(src, dst, length=8 * 1024 * 1024)
 
 
 def main() -> None:
@@ -63,21 +76,23 @@ def main() -> None:
         args.output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
     ) as zf:
         for name in IMAGES:
-            zf.write(args.bundle / name, name)
-        add_executable(
+            add_file(zf, args.bundle / name, name)
+        add_file(
             zf,
             update_binary,
             "META-INF/com/google/android/update-binary",
+            0o755,
         )
-        zf.write(
+        add_file(
+            zf,
             updater_script,
             "META-INF/com/google/android/updater-script",
         )
         zf.writestr(
-            "BUNDLE-LABEL",
+            zip_info("BUNDLE-LABEL"),
             "postmarketOS mainline v0 for SM-X910 (rootfs on microSD)\n",
         )
-        zf.writestr("SHA256SUMS", manifest)
+        zf.writestr(zip_info("SHA256SUMS"), manifest)
 
     print(f"{digest(args.output)}  {args.output.name}")
 

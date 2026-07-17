@@ -25,7 +25,9 @@ deviceinfo_append_dtb="true"
 deviceinfo_flash_method="none"
 deviceinfo_generate_bootimg="true"
 deviceinfo_header_version="4"
+deviceinfo_flash_pagesize="4096"
 deviceinfo_initfs_compression="gzip:default"
+deviceinfo_create_initfs_extra="true"
 
 # Deliberately no rootfs_image_sector_size: a physical microSD uses 512-byte
 # logical sectors, unlike the 4096-byte UFS examples in several Android ports.
