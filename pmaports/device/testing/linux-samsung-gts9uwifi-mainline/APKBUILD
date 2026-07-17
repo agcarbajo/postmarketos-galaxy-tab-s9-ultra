@@ -1,0 +1,91 @@
+maintainer="SM-X910 postmarketOS port <local@localhost>"
+_flavor="samsung-gts9uwifi-mainline"
+pkgname=linux-$_flavor
+pkgver=7.2_rc3
+pkgrel=0
+pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+arch="aarch64"
+_carch="arm64"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="
+	!check
+	!strip
+	!tracedeps
+	pmb:cross-native
+"
+makedepends="
+	bash
+	bison
+	clang
+	diffutils
+	elfutils-dev
+	findutils
+	flex
+	kmod
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	pahole
+	perl
+	postmarketos-installkernel
+	python3
+	sed
+	zstd
+"
+
+_kernelver="${pkgver/_/-}"
+_pmaports_commit="b7681d0e857d395edfaa6c8e5cd0d89e4315fd3f"
+
+source="
+	linux-$_kernelver.tar.gz::https://git.kernel.org/torvalds/t/linux-$_kernelver.tar.gz
+	config-mainline.aarch64::https://gitlab.postmarketos.org/postmarketOS/pmaports/-/raw/$_pmaports_commit/device/main/linux-postmarketos-mainline/config-mainline.aarch64
+	add-gts9uwifi-dtb.patch
+	config-gts9uwifi.fragment
+	sm8550-samsung-gts9uwifi.dts
+"
+builddir="$srcdir/linux-$_kernelver"
+
+prepare() {
+	default_prepare
+
+	cp "$srcdir/sm8550-samsung-gts9uwifi.dts" \
+		arch/arm64/boot/dts/qcom/
+	cp "$srcdir/config-mainline.aarch64" .config
+
+	unset LDFLAGS
+	scripts/kconfig/merge_config.sh -m \
+		.config "$srcdir/config-gts9uwifi.fragment"
+	make ARCH="$_carch" LLVM=1 olddefconfig
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
+}
+
+package() {
+	make modules_install zinstall dtbs_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_PATH="$pkgdir"/boot \
+		INSTALL_MOD_PATH="$pkgdir"/usr \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	rm -f "$pkgdir"/usr/lib/modules/*/build
+	rm -f "$pkgdir"/usr/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/"$_flavor"/kernel.release
+}
+
+sha512sums="
+3a065b9006efbf42aca12defd9206496581964a7e841f77564d2bf2bea40b0908cca75e00eb229ff9a7405b8da28ac7590f9d2e95d7f2d235120bc7220df4355  linux-7.2-rc3.tar.gz
+720d681f4a0bb7430c89b3e1c7c061ef722dc636000cdb9b2bc1b4af9108a4ee4473ca8a1fad759c423a3fc7a3f1104031f24881092fdf3d535340e9a7a0e94b  config-mainline.aarch64
+bdb1cd39bf537739ec0ff9f5f0cf805fc2fae8049582fc725b04731372edf08690b2821ac0e1e9870c17e1004446270bdf43aa94bc269ef9dc2c53d6ded2138a  add-gts9uwifi-dtb.patch
+9ed6f3a14996e993c389655327381c2b4c1949894aff5fdd65639c6868b80d012d09cb49d3cff0d07f2e7809619259636caa5b08cd059343d736f23c15ad8c84  config-gts9uwifi.fragment
+aed19ab82676cacbf3ba6c34bf3aa8233249291442fd41a685938e8bdea0c90f95798eeeddd5dd605a06816854fb3c281f91459317f3405e3847926f24b6856d  sm8550-samsung-gts9uwifi.dts
+"

@@ -1,0 +1,78 @@
+#!/sbin/sh
+# Five-image boot bundle installer for SM-X910 only.
+# It writes exactly: boot, init_boot, vendor_boot, dtbo and vbmeta.
+# It never writes super, userdata, recovery, bootloader, PIT, EFS or firmware.
+# It never formats, wipes or reboots.
+
+OUTFD=$2
+ZIPFILE=$3
+
+ui_print() {
+    echo "ui_print $1" >> /proc/self/fd/$OUTFD
+    echo "ui_print" >> /proc/self/fd/$OUTFD
+}
+
+abort() {
+    ui_print "ERROR: $1"
+    ui_print "Installation aborted. Reboot to recovery, not system."
+    exit 1
+}
+
+BUNDLE_LABEL="$(unzip -p "$ZIPFILE" BUNDLE-LABEL 2>/dev/null)"
+[ -n "$BUNDLE_LABEL" ] || BUNDLE_LABEL="unnamed SM-X910 boot bundle"
+ui_print "---------------------------------------"
+ui_print " $BUNDLE_LABEL"
+ui_print "---------------------------------------"
+
+DEVICE_CODENAME="$(getprop ro.product.device)"
+EM_MODEL="$(getprop ro.boot.em.model)"
+BOOTLOADER="$(getprop ro.bootloader)"
+
+case "$DEVICE_CODENAME" in
+    gts9u|gts9uwifi) ;;
+    *) abort "Expected gts9u/gts9uwifi; got '$DEVICE_CODENAME'" ;;
+esac
+
+if [ -n "$EM_MODEL" ] && [ "$EM_MODEL" != "SM-X910" ]; then
+    abort "Expected SM-X910; got '$EM_MODEL'"
+fi
+if [ -z "$EM_MODEL" ]; then
+    case "$BOOTLOADER" in
+        X910*) ui_print "em.model empty; X910 bootloader accepted" ;;
+        *) abort "Cannot positively identify SM-X910" ;;
+    esac
+fi
+
+BB=/dev/block/by-name
+for part in boot init_boot vendor_boot dtbo vbmeta; do
+    [ -e "$BB/$part" ] || abort "Missing partition $BB/$part"
+done
+
+blkdev_size() { blockdev --getsize64 "$1" 2>/dev/null || echo 0; }
+[ "$(blkdev_size "$BB/boot")" -eq 100663296 ] || abort "boot size mismatch"
+[ "$(blkdev_size "$BB/init_boot")" -eq 8388608 ] || abort "init_boot size mismatch"
+[ "$(blkdev_size "$BB/vendor_boot")" -eq 100663296 ] || abort "vendor_boot size mismatch"
+[ "$(blkdev_size "$BB/dtbo")" -eq 16777216 ] || abort "dtbo size mismatch"
+[ "$(blkdev_size "$BB/vbmeta")" -ge 65536 ] || abort "vbmeta is too small"
+
+for file in boot.img init_boot.img vendor_boot.img dtbo.img vbmeta.img; do
+    unzip -l "$ZIPFILE" "$file" >/dev/null 2>&1 || abort "ZIP is missing $file"
+done
+
+SLOT="$(getprop ro.boot.slot_suffix)"
+ui_print "Planned writes: boot, init_boot, vendor_boot, dtbo, vbmeta."
+ui_print "No filesystem or user-data partition will be touched."
+
+for part in boot init_boot vendor_boot dtbo vbmeta; do
+    ui_print "Writing $part..."
+    unzip -p "$ZIPFILE" "$part.img" | \
+        dd of="$BB/$part$SLOT" bs=4M || abort "failed to write $part"
+done
+
+sync
+ui_print "---------------------------------------"
+ui_print " Images written. This ZIP does not reboot."
+ui_print " Keep the restore ZIP available in TWRP."
+ui_print " Reboot manually only when the SD is ready."
+ui_print "---------------------------------------"
+exit 0

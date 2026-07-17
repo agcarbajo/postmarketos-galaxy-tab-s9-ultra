@@ -1,0 +1,17 @@
+# Build products and captures are reproducible or device-specific evidence.
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/README.md
+work/*
+!work/.gitkeep
+
+# pmbootstrap local state if it is ever pointed at this checkout.
+.pmbootstrap/
+*.img
+*.img.xz
+*.tar
+*.tar.gz
+*.dtb
+*.dtbo
+__pycache__/
+*.pyc
