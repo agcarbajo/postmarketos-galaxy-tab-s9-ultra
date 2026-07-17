@@ -202,6 +202,10 @@ lado del workspace.
 - Una compilación que pedía también todos los módulos excedió los diez minutos
   del runner y fue terminada. El script directo construye ahora sólo
   `Image.gz` y el DTB; los módulos completos quedan para el package pmOS.
+- Después de ese corte, el ejecutor bloqueó temporalmente nuevas invocaciones
+  WSL por límite de uso de la sesión. No es un error del kernel: los objetos
+  parciales siguen en `/root/pmos-gts9u/build/` y la reanudación queda pendiente
+  de recuperar acceso autorizado al entorno, sin buscar atajos alternativos.
 
 ## Referencias locales
 

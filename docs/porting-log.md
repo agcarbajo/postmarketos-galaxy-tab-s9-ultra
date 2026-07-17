@@ -81,3 +81,9 @@ La documentación pmbootstrap actual todavía declara WSL no soportado por los
 loop devices. El kernel se compila correctamente en WSL2, pero falta comprobar
 la fase `pmbootstrap install`; si ésta falla por loop/mount se usará una VM o
 contenedor Linux privilegiado, sin modificar la arquitectura del port.
+
+Al terminar esta sesión, el ejecutor rechazó nuevas llamadas WSL por un límite
+temporal de uso. Esto impide reanudar los objetos parciales y lanzar
+pmbootstrap, pero no aporta evidencia de un fallo del DTS/kernel. Se detiene el
+trabajo remoto de forma explícita y no se intenta eludir el control mediante
+otra vía de ejecución.
