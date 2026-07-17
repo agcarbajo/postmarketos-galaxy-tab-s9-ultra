@@ -167,3 +167,39 @@ física.
   un arranque físico**. Wi-Fi no está descrito en el DTS v0 y USB NCM depende
   del repetidor NXP/SM5714 todavía no soportado; no se promete SSH en este
   primer intento.
+
+## 2026-07-18 — sesión 4: primer flash y corrección de vbmeta RO
+
+- Analizado `../logs/recovery.log` tras dos intentos de instalar el ZIP v0.
+  TWRP reconoció correctamente la primera partición de la nueva microSD como
+  ext2 en `/dev/block/mmcblk1p1`, con unos 454 MiB.
+- En ambos intentos se escribieron completos y sin error `boot` (96 MiB),
+  `init_boot` (8 MiB), `vendor_boot` (96 MiB) y `dtbo` (16 MiB). El instalador
+  terminó con error únicamente al abrir `/dev/block/by-name/vbmeta`.
+- ADB confirmó que el symlink era correcto y resolvía a `/dev/block/sde15`.
+  La partición mide 131072 bytes, no 65536, y el kernel de TWRP la marca RO.
+  `blockdev --setrw` devuelve éxito pero el flag permanece en 1; no se intenta
+  eludir la protección escribiendo por otro nodo.
+- Se extrajo la partición actual completa. `avbtool` confirmó `Algorithm:
+  NONE`, `Flags: 2`, sin descriptores. Los intentos fallidos no la modificaron
+  y su contenido ya es apto para arrancar imágenes custom sin verificación.
+- Causa raíz: el instalador trataba toda partición existente como escribible y
+  consideraba fatal el `dd` de `vbmeta`. La instalación no falló por el ZIP,
+  SD, kernel ni las otras imágenes.
+- El instalador v0.1 hace un preflight antes de cualquier escritura: comprueba
+  tamaño de 128 KiB, flag RO y los cuatro bytes big-endian de AVB flags en el
+  offset 120. Si `vbmeta` es RO sólo continúa cuando son `00000002`, conserva
+  la partición y escribe las otras cuatro. Si es RW, instala el nuevo vbmeta.
+- Todos los generadores y validadores usan ahora el tamaño físico 131072. El
+  nuevo ZIP es
+  `postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`, SHA-256
+  `aaef2bb5079d9357338ae173737f9e94cca83c20c0f6d07d2466ccddc8c6aca0`.
+  Bundle Android, AVB, tamaños, CRC, permisos, hashes y zstd volvieron a pasar.
+- El ZIP v0.1 se copió por ADB a `/sdcard/` mientras la tablet seguía en TWRP
+  y se verificó allí el mismo SHA-256. No se flasheó ni se reinició la tablet.
+- El rollback se regeneró con el tamaño corregido, SHA-256
+  `eee755c73105ce55311e63eb4a8a50dff42ca6338b1930c017825c510a563e06`.
+  La usuaria indica que no necesita conservar la instalación UT; se mantiene
+  sólo como comodidad. La prioridad de seguridad sigue siendo conservar TWRP,
+  Download Mode/Odin, bootloader y particiones de calibración, no el estado de
+  `super`/userdata.

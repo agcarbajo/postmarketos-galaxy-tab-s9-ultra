@@ -14,8 +14,10 @@ mostrar correctamente la imagen y disponer de SSH. El objetivo de largo plazo
 es un stack Linux convencional con DRM/KMS, Mesa/Turnip y la mayor
 compatibilidad posible con software de escritorio ARM64, FEX y Proton.
 
-Ubuntu Touch queda congelado como baseline estable en `../port/`; este proyecto
-no debe modificar sus fuentes, artefactos ni instalación actual.
+Ubuntu Touch queda congelado como baseline de referencia en `../port/`; este
+proyecto no modifica sus fuentes ni artefactos. Desde 2026-07-18 la usuaria no
+requiere conservar la instalación física de UT: se prioriza evitar un brick y
+mantener TWRP/Download Mode/Odin, no preservar su boot chain o userdata.
 
 ## Estrategia
 
@@ -47,7 +49,7 @@ demostrarlo en este dispositivo.
 | Componente | Estado |
 |---|---|
 | Workspace y documentación | ✅ Inicializados |
-| Baseline Ubuntu Touch | ✅ Estable; se deja intacta |
+| Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ Linux 7.2-rc3 compilado y empaquetado; kernel/DTB y símbolos tempranos validados |
@@ -59,18 +61,19 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 mainline v0 listo para prueba manual controlada; no probado físicamente |
+| Imagen/paquete de prueba | 🟡 v0.1 corrige `vbmeta` RO observado en TWRP; primer boot pendiente |
 
 ## Reto en curso
 
-Realizar el primer arranque físico controlado de mainline v0:
+Realizar el primer arranque físico controlado de mainline v0.1:
 
 - escribir la imagen ya generada en una microSD sacrificable de 8 GB o más;
-- flashear manualmente desde TWRP sólo el ZIP de cinco particiones boot;
+- flashear manualmente desde TWRP el ZIP v0.1: escribe cuatro particiones boot
+  y conserva `vbmeta` si está RO pero ya tiene AVB flags 2;
 - distinguir si ABL acepta el kernel, si monta `pmOS_root` desde `sdhc_2`, si
   simpledrm conserva el framebuffer y si aparece USB NCM/SSH;
-- si falla, restaurar Ubuntu Touch con el ZIP boot-only y recuperar
-  ramoops/pstore antes de modificar DTS o cmdline;
+- si falla, volver a TWRP y recuperar ramoops/pstore antes de modificar DTS o
+  cmdline; restaurar Ubuntu Touch es opcional;
 - si arranca, priorizar red estable y después DRM/DSI nativo para el panel
   dual-DSI, táctil y Turnip.
 
@@ -191,12 +194,18 @@ lado del workspace.
   que kernel y módulos proceden de la misma compilación y release 7.2.0-rc3.
 - Bundle Android v4 regenerado dos veces con hashes idénticos y validado byte a
   byte: headers, offsets, DTB, selectores DTBO, AVB y tamaños correctos.
-- Generados y validados los artefactos mainline v0: imagen SD comprimida
-  `592deff2...` y ZIP TWRP `7af75c71...`. Aún no han arrancado en hardware.
+- La primera instalación física confirmó la SD `pmOS_boot` ext2 y escribió
+  correctamente `boot`, `init_boot`, `vendor_boot` y `dtbo`. El ZIP v0 falló
+  sólo al intentar escribir `vbmeta`: TWRP expone `/dev/block/sde15` (128 KiB)
+  con flag RO. Su contenido seguía intacto y ya tenía AVB `Algorithm: NONE`,
+  `Flags: 2`, por lo que no necesita reemplazo para esta prueba.
+- Generados y validados los artefactos mainline v0.1: imagen SD comprimida
+  `592deff2...` y ZIP TWRP `aaef2bb5...`. El instalador valida `vbmeta` antes
+  de escribir nada y lo conserva sólo si el RO existente tiene flags 2.
 - Regenerado `artifacts/restore-ubuntu-touch-v8-boot-sm-x910.zip` (SHA-256
-  `fd1d31a5fb77c3586171601e438bc7aa7b439fd7e4981d05f1d0aa0f209234f3`):
-  restaura las cinco particiones de boot sin reescribir `super` y pasó CRC,
-  modo ejecutable y hashes internos.
+  `eee755c73105ce55311e63eb4a8a50dff42ca6338b1930c017825c510a563e06`):
+  restaura las cuatro particiones boot escribibles y `vbmeta` si recovery lo
+  permite; nunca reescribe `super`. Pasó CRC, modo y hashes internos.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -232,6 +241,10 @@ lado del workspace.
 - `zipfile.writestr()` añadía la hora actual a dos miembros y cambiaba el SHA
   del ZIP aunque las imágenes fueran idénticas. Todos los miembros usan ahora
   época ZIP fija; dos paquetes mainline y dos rollback resultaron idénticos.
+- No asumir que una partición presente bajo `/dev/block/by-name` es escribible.
+  En este TWRP `vbmeta` apunta correctamente a `sde15`, pero el kernel la marca
+  RO y `blockdev --setrw` no lo cambia. El instalador debe prevalidar el flag RO
+  y los bytes AVB flags antes de escribir las demás particiones.
 
 ## Referencias locales
 

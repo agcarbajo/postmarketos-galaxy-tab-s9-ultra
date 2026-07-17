@@ -15,12 +15,12 @@ IMAGES = {
     "init_boot.img": 8388608,
     "vendor_boot.img": 100663296,
     "dtbo.img": 16777216,
-    "vbmeta.img": 65536,
+    "vbmeta.img": 131072,
 }
 SD_NAME = "postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst"
-ZIP_NAME = "postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip"
-METADATA = "mainline-v0-build-info.txt"
-MANIFEST = "SHA256SUMS-mainline-v0.txt"
+ZIP_NAME = "postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip"
+METADATA = "mainline-v0.1-build-info.txt"
+MANIFEST = "SHA256SUMS-mainline-v0.1.txt"
 
 
 def digest_stream(stream) -> str:

@@ -51,7 +51,7 @@ for spec in \
 	'init_boot.img:8388608' \
 	'vendor_boot.img:100663296' \
 	'dtbo.img:16777216' \
-	'vbmeta.img:65536'; do
+	'vbmeta.img:131072'; do
 	name=${spec%%:*}
 	expected=${spec##*:}
 	test "$(stat -c %s "$bundle/$name")" -eq "$expected"

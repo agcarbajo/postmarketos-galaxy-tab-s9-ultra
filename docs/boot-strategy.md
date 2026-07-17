@@ -15,8 +15,9 @@
 ## Diseño de la prueba
 
 El rootfs postmarketOS vivirá en una microSD ext4. Samsung ABL no busca el
-kernel en la tarjeta, así que el conjunto mainline mínimo fiable reemplaza
-temporalmente cinco particiones internas:
+kernel en la tarjeta, así que el conjunto mainline gestiona cinco particiones
+internas. En el TWRP disponible `vbmeta` es RO: el instalador escribe las otras
+cuatro y conserva `vbmeta` únicamente tras comprobar que ya contiene flags 2.
 
 | Partición | Tamaño exacto | Contenido |
 |---|---:|---|
@@ -24,7 +25,7 @@ temporalmente cinco particiones internas:
 | `init_boot` | 8388608 | initramfs postmarketOS |
 | `vendor_boot` | 100663296 | DTB X910, cmdline, bootconfig y fragmento vendor vacío |
 | `dtbo` | 16777216 | dos overlays no-op con los selectores Samsung originales |
-| `vbmeta` | 65536 | AVB con verification/verity desactivados (`flags=2`) |
+| `vbmeta` | 131072 | AVB con verification/verity desactivados (`flags=2`) |
 
 No se toca `super`, `userdata`, UFS de datos, bootloader, PIT, EFS, persist,
 modem ni recovery.
@@ -57,13 +58,14 @@ reproduce los offsets probados por Ubuntu Touch:
 - page size 4096.
 
 Cada imagen recibe un AVB hash footer con el nombre y tamaño de su partición.
-El script comprueba los cinco tamaños y genera SHA-256. No contiene comandos
-de flasheo.
+El script comprueba los cinco tamaños y genera SHA-256. El tamaño físico de
+`vbmeta`, confirmado en vivo, es 131072 bytes; 65536 era sólo el tamaño de la
+imagen previa, no el de la partición. El script de build no flashea nada.
 
 ## Recuperación obligatoria
 
 Antes de la primera prueba física hay que guardar copias verificadas de las
-cinco particiones actuales. La restauración se hará desde TWRP usando
+particiones actuales. La restauración se hará desde TWRP usando
 `/dev/block/by-name/<partición>` o con el paquete Odin oficial. Nunca se usarán
 números `sdaN` codificados.
 

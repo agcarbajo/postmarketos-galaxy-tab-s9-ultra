@@ -8,10 +8,11 @@ publicado debe figurar aquí con su propósito, validación y SHA-256.
 `restore-ubuntu-touch-v8-boot-sm-x910.zip`
 
 - SHA-256:
-  `fd1d31a5fb77c3586171601e438bc7aa7b439fd7e4981d05f1d0aa0f209234f3`.
-- Tamaño: 34.360.761 bytes.
-- Restaura exclusivamente `boot`, `init_boot`, `vendor_boot`, `dtbo` y
-  `vbmeta` de la instalación estable Ubuntu Touch v8/firmware stock.
+  `eee755c73105ce55311e63eb4a8a50dff42ca6338b1930c017825c510a563e06`.
+- Tamaño: 34.361.129 bytes.
+- Restaura `boot`, `init_boot`, `vendor_boot`, `dtbo` y, si recovery la expone
+  escribible, `vbmeta` de Ubuntu Touch v8/firmware stock. Si `vbmeta` está RO,
+  exige que ya tenga AVB flags 2 y la conserva.
 - Las cinco imágenes se expanden al tamaño completo de su partición para
   borrar cualquier resto de una imagen mainline previa.
 - No toca `super`, userdata, recovery ni firmware.
@@ -21,7 +22,10 @@ publicado debe figurar aquí con su propósito, validación y SHA-256.
 Este ZIP es una red de seguridad; no debe flashearse salvo para volver desde
 una futura prueba mainline a Ubuntu Touch.
 
-## Bundle experimental mainline v0
+## Bundle experimental mainline v0.1
+
+El ZIP v0 anterior, SHA-256 `7af75c71...`, está obsoleto: falla al tratar como
+escribible el `vbmeta` RO de este TWRP. No debe volver a flashearse.
 
 `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`
 
@@ -33,13 +37,14 @@ una futura prueba mainline a Ubuntu Touch.
 - Contiene `pmOS_boot` ext2 y `pmOS_root` ext4 con edge, systemd, XFCE,
   NetworkManager, OpenSSH y usuario `phablet`.
 
-`postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`
+`postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`
 
 - SHA-256:
-  `7af75c71dcb451e0cc1400a6275c2a01908894e1bde9a34f9b85f34702837bc3`.
-- Tamaño: 21.850.347 bytes.
-- Escribe exclusivamente `boot`, `init_boot`, `vendor_boot`, `dtbo` y
-  `vbmeta`; detecta rutas con y sin sufijo A/B y valida modelo y tamaños.
+  `aaef2bb5079d9357338ae173737f9e94cca83c20c0f6d07d2466ccddc8c6aca0`.
+- Tamaño: 21.850.719 bytes.
+- Escribe `boot`, `init_boot`, `vendor_boot` y `dtbo`. Escribe `vbmeta` sólo
+  si es RW; si es RO exige AVB flags 2 y lo conserva. Valida todo esto antes de
+  escribir la primera partición.
 - El kernel comprimido se extrae del EFI zboot del mismo paquete que instaló
   los módulos en el rootfs. Tanto las imágenes como los ZIP mainline/rollback
   se regeneraron dos veces con hashes idénticos y timestamps normalizados.

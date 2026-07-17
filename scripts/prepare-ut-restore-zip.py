@@ -16,7 +16,7 @@ EXPECTED = {
     "init_boot.img": 8388608,
     "vendor_boot.img": 100663296,
     "dtbo.img": 16777216,
-    "vbmeta.img": 65536,
+    "vbmeta.img": 131072,
 }
 
 

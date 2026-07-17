@@ -1,4 +1,4 @@
-# Prueba física de mainline v0
+# Prueba física de mainline v0.1
 
 Esta es una prueba **experimental de primer arranque**, no una versión ya
 confirmada en hardware. La compilación y las validaciones estáticas han pasado,
@@ -7,15 +7,15 @@ conservará la imagen o si el USB2 del X910 sobrevivirá a la transición desde 
 bootloader.
 
 La prueba no modifica `super`, `userdata`, recovery, bootloader, PIT, EFS ni
-firmware. Sí reemplaza temporalmente `boot`, `init_boot`, `vendor_boot`, `dtbo`
-y `vbmeta`; por eso hay que conservar el ZIP de restauración en una ubicación
-accesible desde TWRP.
+firmware. Reemplaza temporalmente `boot`, `init_boot`, `vendor_boot` y `dtbo`.
+En este TWRP conserva `vbmeta`, que está RO, después de comprobar que ya tiene
+AVB flags 2. Conviene mantener el ZIP de restauración accesible desde TWRP.
 
 ## Material necesario
 
 - Una microSD sacrificable de **8 GB o más**. Todo su contenido se borrará.
 - `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`.
-- `postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`.
+- `postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`.
 - `restore-ubuntu-touch-v8-boot-sm-x910.zip` como vuelta atrás.
 - TWRP ya instalado/arrancable en la tablet.
 
@@ -24,7 +24,7 @@ expresamente fuera de esta prueba.
 
 ## 1. Verificar los ficheros
 
-Comprueba los SHA-256 publicados en `artifacts/SHA256SUMS-mainline-v0.txt` y en
+Comprueba los SHA-256 publicados en `artifacts/SHA256SUMS-mainline-v0.1.txt` y en
 `artifacts/README.md`. Si un hash no coincide, no continúes.
 
 ## 2. Preparar la microSD
@@ -49,9 +49,10 @@ La imagen contiene GPT y dos particiones:
 2. Apaga la tablet e inserta la microSD preparada.
 3. Arranca TWRP.
 4. Flashea únicamente
-   `postmarketos-edge-xfce-mainline-v0-sm-x910-twrp.zip`.
-5. Comprueba que TWRP enumera exactamente cinco escrituras: `boot`,
-   `init_boot`, `vendor_boot`, `dtbo` y `vbmeta`.
+   `postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`.
+5. Comprueba que TWRP anuncia que `vbmeta` es RO, que ya tiene AVB flags 2 y
+   que lo conservará. Después debe escribir exactamente `boot`, `init_boot`,
+   `vendor_boot` y `dtbo` y terminar sin error.
 6. No hagas wipes ni formatees `data`. Reinicia manualmente a System.
 
 ## 4. Qué esperar
@@ -89,9 +90,9 @@ Si no arranca o cuando termine la prueba:
 3. Retira la microSD de prueba.
 4. Reinicia a System.
 
-El ZIP de vuelta atrás restaura las cinco particiones de boot de Ubuntu Touch
-v8/firmware stock. No reescribe `super` ni `userdata`, por lo que la instalación
-UT existente debe reaparecer sin reinstalarla. Si TWRP no fuese accesible,
+El ZIP de vuelta atrás restaura las cuatro particiones de boot escribibles de
+Ubuntu Touch v8/firmware stock y conserva el `vbmeta` RO si ya tiene flags 2.
+No reescribe `super` ni `userdata`. Si TWRP no fuese accesible,
 Download Mode y el firmware Odin oficial siguen siendo la última vía de
 recuperación; no flashees PIT ni marques repartition.
 

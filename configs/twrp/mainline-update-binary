@@ -1,6 +1,8 @@
 #!/sbin/sh
-# Five-image boot bundle installer for SM-X910 only.
-# It writes exactly: boot, init_boot, vendor_boot, dtbo and vbmeta.
+# Boot bundle installer for SM-X910 only.
+# It writes boot, init_boot, vendor_boot and dtbo.  It writes vbmeta only when
+# the recovery kernel exposes it read-write; otherwise it requires AVB flags 2
+# and preserves the existing vbmeta.
 # It never writes super, userdata, recovery, bootloader, PIT, EFS or firmware.
 # It never formats, wipes or reboots.
 
@@ -65,21 +67,41 @@ blkdev_size() { blockdev --getsize64 "$1" 2>/dev/null || echo 0; }
 [ "$(blkdev_size "$(resolve_part init_boot)")" -eq 8388608 ] || abort "init_boot size mismatch"
 [ "$(blkdev_size "$(resolve_part vendor_boot)")" -eq 100663296 ] || abort "vendor_boot size mismatch"
 [ "$(blkdev_size "$(resolve_part dtbo)")" -eq 16777216 ] || abort "dtbo size mismatch"
-[ "$(blkdev_size "$(resolve_part vbmeta)")" -ge 65536 ] || abort "vbmeta is too small"
+[ "$(blkdev_size "$(resolve_part vbmeta)")" -eq 131072 ] || abort "vbmeta size mismatch"
 
 for file in boot.img init_boot.img vendor_boot.img dtbo.img vbmeta.img; do
     unzip -l "$ZIPFILE" "$file" >/dev/null 2>&1 || abort "ZIP is missing $file"
 done
 
-ui_print "Planned writes: boot, init_boot, vendor_boot, dtbo, vbmeta."
+VBMETA_TARGET="$(resolve_part vbmeta)"
+VBMETA_READ_ONLY="$(blockdev --getro "$VBMETA_TARGET" 2>/dev/null || echo 1)"
+SKIP_VBMETA=0
+if [ "$VBMETA_READ_ONLY" = "1" ]; then
+    VBMETA_FLAGS="$(dd if="$VBMETA_TARGET" bs=1 skip=120 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+    [ "$VBMETA_FLAGS" = "00000002" ] || \
+        abort "vbmeta is read-only and does not have AVB flags 2"
+    SKIP_VBMETA=1
+    ui_print "vbmeta is read-only but already has AVB flags 2; preserving it."
+fi
+
+ui_print "Planned writes: boot, init_boot, vendor_boot and dtbo."
+[ "$SKIP_VBMETA" -eq 1 ] || ui_print "vbmeta is writable and will also be updated."
 ui_print "No filesystem or user-data partition will be touched."
 
-for part in boot init_boot vendor_boot dtbo vbmeta; do
+for part in boot init_boot vendor_boot dtbo; do
     target="$(resolve_part "$part")" || abort "partition disappeared: $part"
     ui_print "Writing $part..."
     unzip -p "$ZIPFILE" "$part.img" | \
         dd of="$target" bs=4M || abort "failed to write $part"
 done
+
+if [ "$SKIP_VBMETA" -eq 0 ]; then
+    ui_print "Writing vbmeta..."
+    unzip -p "$ZIPFILE" vbmeta.img | \
+        dd of="$VBMETA_TARGET" bs=4M || abort "failed to write vbmeta"
+else
+    ui_print "Keeping the existing read-only vbmeta."
+fi
 
 sync
 ui_print "---------------------------------------"

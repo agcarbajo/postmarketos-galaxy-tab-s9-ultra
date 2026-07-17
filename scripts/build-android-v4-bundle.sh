@@ -12,7 +12,7 @@ boot_size=100663296
 init_boot_size=8388608
 vendor_boot_size=100663296
 dtbo_size=16777216
-vbmeta_size=65536
+vbmeta_size=131072
 
 find_tool() {
 	for candidate in "$@"; do
