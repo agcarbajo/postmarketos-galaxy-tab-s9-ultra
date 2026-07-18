@@ -464,3 +464,29 @@ física.
   22.012.743 bytes, SHA-256
   `1362e7f9ecf4cedd082af4cbabb963a651215292a7bcd847007978bf5bd3c2be`.
   Se copió a `/sdcard` y su hash remoto coincide. El asistente no lo flasheó.
+
+- El arranque físico v0.7 produjo un `last_kmsg` de 453.927 bytes. La última
+  entrada mainline, inmediatamente después del retorno correcto de
+  `7430000.interconnect`, es `probing f100000.pinctrl with driver sm8550-tlmm`;
+  no aparece su retorno. El siguiente firmware registra
+  `restart_reason = 0x5003a01` y `TZBSP_ERR_FATAL_NOC_ERROR`. Se descarta así
+  `8804000.mmc` como causante de este reset.
+- El primer intento de TLMM a 6,016 s había devuelto `-EPROBE_DEFER`; el fatal
+  sucede al reintentarlo cuando ya existe el dominio wakeup/PDC. El FDT vivo
+  Samsung describe el TLMM downstream en `0xf000000` y, de forma decisiva,
+  marca `qcom,gpios-reserved = <36 37 38 39>`. El desplazamiento de base no es
+  por sí mismo un error: el driver mainline parte de `0xf100000` y usa offsets
+  por GPIO equivalentes. La reserva segura sí faltaba.
+- Se añadió a `&tlmm` la propiedad estándar mainline
+  `gpio-reserved-ranges = <36 4>`. Es el equivalente exacto de la X910 y evita
+  que gpiolib/irqchip acceda a registros TLMM propiedad de TrustZone. No se
+  copiaron GPIO50–51 del Fold5, ausentes en la evidencia de nuestra placa.
+- DTB v0.8: SHA-256
+  `e3c872e9eae8865d4ff8f5b6871d896ef60261ff73556475e522ac48c298ed66`.
+  El kernel instrumentado, initramfs, módulos y SD siguen siendo los de v0.7/
+  v0.6; sólo cambia el DTB appended y su copia en vendor_boot.
+- ZIP v0.8 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.8-tlmm-reserved-sm-x910-twrp.zip`,
+  22.012.795 bytes, SHA-256
+  `74607d30076c92cc7fcae787534e26d9ea083a4da60280c551e0a75e87788c92`.
+  Se verificó estática y remotamente en `/sdcard`; el asistente no lo flasheó.

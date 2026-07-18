@@ -238,6 +238,15 @@
 	};
 };
 
+&tlmm {
+	/*
+	 * The Samsung board overlay marks GPIO36..39 as secure/reserved.  Use
+	 * the generic binding understood by mainline gpiolib so registration
+	 * does not access the TrustZone-owned TLMM registers.
+	 */
+	gpio-reserved-ranges = <36 4>;
+};
+
 &qupv3_id_0 {
 	status = "okay";
 };

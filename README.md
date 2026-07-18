@@ -53,7 +53,7 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ Linux 7.2-rc3 y simpledrm ejecutan; v0.6 deja un `last_kmsg` completo y sitúa el fatal NoC durante deferred probe |
-| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, log persistente Samsung, USB2 y GT9916 descritos; aislar `lpass_ag_noc` no eliminó el reset |
+| DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
 | Paquetes pmaports | ✅ Baseline APK `7.2_rc3-r4`; fuentes r5 añaden traza pre-probe reproducible para diagnosticar el fatal |
 | Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
@@ -61,21 +61,22 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP diagnóstico v0.7 reproducible y verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.8 reproducible y verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Realizar el séptimo arranque físico controlado con el ZIP diagnóstico v0.7:
+Realizar el octavo arranque físico controlado con el ZIP v0.8:
 
 - conservar la microSD v0.6: kernel release, módulos, initramfs y DTB no
-  cambian; el v0.7 sólo añade una línea síncrona antes de cada probe;
-- flashear manualmente desde TWRP el ZIP v0.7 ya copiado a `/sdcard`;
+  cambian salvo la propiedad de reserva TLMM; la traza pre-probe sigue activa;
+- flashear manualmente desde TWRP el ZIP v0.8 ya copiado a `/sdcard`;
 - después del reset, volver a TWRP y recuperar `/proc/last_kmsg`; la última
   línea `probing <device> with driver <driver>` debe identificar la llamada
   que dispara `TZBSP_ERR_FATAL_NOC_ERROR` aunque nunca retorne;
-- la hipótesis principal es el reintento diferido de `8804000.mmc` tras quedar
-  disponibles los proveedores interconnect, pero no se deshabilitará ni se
-  alterará su alimentación hasta tener esa evidencia directa;
+- v0.7 demostró que el fatal ocurre al registrar `f100000.pinctrl` con
+  `sm8550-tlmm`, no en la microSD. v0.8 añade el equivalente mainline de
+  `qcom,gpios-reserved = <36 37 38 39>` del FDT Samsung para impedir que
+  gpiolib acceda a esos GPIO propiedad de TrustZone;
 - una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
   montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
 
@@ -317,6 +318,22 @@ lado del workspace.
   Pasó bundle Android v4, AVB, appended-DTB, tamaños, hashes internos y CRC;
   se copió y verificó con el mismo hash en `/sdcard`. No requiere reescribir
   la SD v0.6 y el asistente no lo flasheó.
+- El arranque v0.7 confirmó el valor de la traza: tras completar
+  `7430000.interconnect`, la última línea mainline es
+  `probing f100000.pinctrl with driver sm8550-tlmm`; no existe retorno y el
+  siguiente XBL registra `TZBSP_ERR_FATAL_NOC_ERROR`. `8804000.mmc` queda
+  descartado como desencadenante de este reset.
+- El FDT vivo/DTBO Samsung marca GPIO36–39 como reservados en TLMM. Esa
+  información faltaba en el DTS mainline; la placa mainline Fold5 usa el mismo
+  patrón con `gpio-reserved-ranges`. v0.8 añade exactamente `<36 4>`, sin
+  importar los GPIO50–51 que son específicos del Fold5.
+- ZIP v0.8 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.8-tlmm-reserved-sm-x910-twrp.zip`,
+  22.012.795 bytes, SHA-256
+  `74607d30076c92cc7fcae787534e26d9ea083a4da60280c551e0a75e87788c92`.
+  Bundle Android v4, AVB, appended-DTB, propiedad compilada, tamaños, hashes
+  internos y CRC pasaron; el ZIP se copió y verificó en `/sdcard`. No requiere
+  reescribir la SD v0.6 y el asistente no lo flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -387,6 +404,9 @@ lado del workspace.
 - No seguir atribuyendo el fatal a `lpass_ag_noc`: v0.6 lo deshabilitó y el
   reset persistió. Tampoco inferir el culpable sólo por la última línea de
   retorno; v0.7 registra el inicio de cada probe antes del acceso peligroso.
+- No atribuir el fatal v0.7 a `sdhc_2`: la traza previa demuestra que la última
+  llamada es `sm8550-tlmm`. Tampoco copiar las reservas `<36 4>, <50 2>` del
+  Fold5: el FDT X910 sólo acredita GPIO36–39.
 
 ## Referencias locales
 
