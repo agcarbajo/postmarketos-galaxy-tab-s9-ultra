@@ -519,3 +519,10 @@ física.
   22.012.505 bytes, SHA-256
   `e7a2d8b3264cc94cdf6863d8abdbbd5c90e6515d1c4577b4f3fd3651fd680375`.
   Se validó y copió a `/sdcard`; el asistente no lo flasheó.
+- La primera prueba física de v0.9 volvió a terminar en el mismo panic visible.
+  Al recoger `/proc/last_kmsg`, el recovery llevaba 1.026 s arrancado y el
+  fichero ocupaba los 2.097.136 bytes máximos. Sólo contenía printk downstream
+  del TWRP actual: en esos 17 minutos el recovery había escrito una vuelta
+  completa al ring y sobrescrito el boot anterior. Esto no refuta el arreglo
+  de índices; impone recuperar el fichero inmediatamente. Se repetirá v0.9 sin
+  reflashear ni reescribir la SD.

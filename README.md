@@ -75,6 +75,8 @@ Repetir el arranque físico con el ZIP v0.9 para conservar el panic completo:
 - tras reiniciar manualmente a TWRP, recuperar `/proc/last_kmsg`. v0.9 mantiene
   `previous_index` sincronizado con el ring para que el recovery vea el boot
   mainline incluso cuando no hubo un reset gestionado por firmware;
+- leer el fichero inmediatamente: TWRP genera más de 2 MiB de printk en unos
+  17 minutos y termina sobrescribiendo el ring físico compartido;
 - diagnosticar el panic con el log completo, priorizando enumeración de
   `sdhc_2`, detección de `pmOS_root` y ejecución del initramfs;
 - una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
@@ -349,6 +351,11 @@ lado del workspace.
   Conserva el DTB v0.8, initramfs, módulos y SD; sólo cambia el kernel built-in
   del logger. Pasó bundle, AVB, appended-DTB, tamaños, hashes internos y CRC;
   se copió y verificó en `/sdcard`. El asistente no lo flasheó.
+- La primera captura posterior a v0.9 se realizó con TWRP a 1.026 s de uptime.
+  `/proc/last_kmsg` ya medía el máximo de 2.097.136 bytes y sólo contenía el
+  recovery actual: sus mensajes habían dado una vuelta completa al ring y
+  sobrescrito el panic. No requiere otra build; se repetirá el mismo v0.9 y se
+  extraerá el fichero inmediatamente después de volver a TWRP.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -425,6 +432,8 @@ lado del workspace.
 - No asumir que `/proc/last_kmsg` conserva el boot anterior tras cualquier tipo
   de reinicio: en v0.8 el reinicio manual dejó `previous_index` apuntando al
   recovery previo. v0.9 mantiene ese índice sincronizado desde mainline.
+- No dejar TWRP esperando antes de extraer el log: su kernel downstream es muy
+  verboso y llena los 2 MiB en aproximadamente 17 minutos.
 
 ## Referencias locales
 
