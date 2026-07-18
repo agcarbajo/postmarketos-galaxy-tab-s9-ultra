@@ -248,3 +248,48 @@ física.
   `9288af69c694fdc84b7b1f9694265152c5f7959a880d338f98b2e3d106c0f65c`,
   21.850.752 bytes. Se copió a `/sdcard/` y se verificó allí el mismo hash.
   La tablet permanece en TWRP y el asistente no lo ha flasheado.
+
+## 2026-07-18 — sesión 6: fallo ufdt de v0.2 y bundle v0.3
+
+- Tras flashear v0.2, la tablet volvió a mostrar Odin. Se regresó a TWRP y se
+  capturó inmediatamente `/proc/last_kmsg` en
+  `work/mainline-v02-last-kmsg-20260718.txt`; mide 4.245.076 bytes. `pstore`
+  continúa vacío porque tampoco en esta ocasión se ejecutó Linux.
+- El log contiene dos intentos v0.2 idénticos. En ambos desapareció el error
+  v0.1 `No match found for Soc Dtb type`: ABL descomprime el kernel y ejecuta
+  `FindBestMatch GetBoardRev = 5, DtSubType = 3`. Esto valida físicamente los
+  compatibles e IDs añadidos en v0.2.
+- La nueva secuencia de fallo es `ApplyOverlay: ufdt apply overlay failed`,
+  `Error: Dtb overlay failed`, `Root Node is not found at BoardDtb`, y más
+  tarde `ERROR: Invalid device tree header`, `Device Tree update failed` y
+  `Launching odin`. El fallo sigue dentro de ABL, antes de entrar en Linux.
+- Se extrajeron las dos entradas de la DTBO stock: miden 814.799 y 813.811
+  bytes y son overlays completos Samsung. No se pueden reutilizar sobre el DTB
+  mainline porque contienen cientos de fixups a símbolos/nodos downstream.
+  La entrada no-op v0.2 es estructuralmente válida y `fdtoverlay` la aplica
+  correctamente sobre el DTB v0.2.
+- Se compiló desde la fuente oficial de Android una utilidad local basada en
+  `ufdt_apply_overlay`; también aplicó correctamente el no-op v0.2. La
+  incompatibilidad observada es por tanto específica del camino/fork ufdt de
+  Samsung ABL, no un FDT mal formado según libfdt/libufdt estándar.
+- Diferencia relevante: el DTB base stock funcional tiene `/__symbols__`; el
+  DTB mainline v0.2 no. Aunque el overlay no-op usa `target-path` y no necesita
+  fixups con la implementación estándar, la ruta Samsung falla sin esa tabla.
+- El parche de Makefile del kernel añade ahora
+  `DTC_FLAGS_sm8550-samsung-gts9uwifi := -@`; `pkgrel` sube a 2. El nuevo DTB
+  mide 150.407 bytes, SHA-256
+  `c0684a774f7a8e99ca19ddae603dcdba3638afecefbda7baad54fcd56731c64c`,
+  conserva los selectores ABL exactos y exporta 474 símbolos.
+- `fdtoverlay` y la utilidad `ufdt_apply_overlay` oficial aplicaron el overlay
+  board03 sobre la nueva base. El validador de bundle exige ahora que el DTB
+  extraído de `vendor_boot` contenga `/__symbols__` además de los IDs exactos.
+- Bundle v0.3: el kernel empaquetado, initramfs, DTBO, vbmeta y SD no cambian;
+  sólo cambia el DTB de `vendor_boot`. El nuevo `vendor_boot.img` tiene SHA-256
+  `f12fbc3d4f543438f6b2a01c546e43d0b3ca90535f092aba477b42c711fd1850`.
+- ZIP final:
+  `postmarketos-edge-xfce-mainline-v0.3-sm-x910-twrp.zip`, 21.856.498 bytes,
+  SHA-256
+  `0a0d5b0e749c17155a0503e1c6a14e340ea3b9b437a3fbbcfbd77d9219bde240`.
+  Pasó todas las validaciones, se reprodujo byte a byte, se copió a
+  `/sdcard/` y se verificó allí. La tablet permanece en TWRP; el asistente no
+  lo ha flasheado.

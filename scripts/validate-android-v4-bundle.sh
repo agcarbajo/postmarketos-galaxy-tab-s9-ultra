@@ -85,6 +85,7 @@ test "$(fdtget -t s "$tmp/vendor_boot/dtb" / compatible)" = \
 test "$(fdtget -t x "$tmp/vendor_boot/dtb" / qcom,msm-id)" = \
 	'218 20000 207 20000 207 10000 218 10000'
 test "$(fdtget -t x "$tmp/vendor_boot/dtb" / qcom,board-id)" = '10008 3'
+fdtget -l "$tmp/vendor_boot/dtb" / | grep -qx '__symbols__'
 
 grep -q '^page size: 0x00001000$' "$tmp/vendor_boot.info"
 grep -q '^kernel load address: 0x80008000$' "$tmp/vendor_boot.info"

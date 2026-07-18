@@ -31,6 +31,11 @@ if ! grep -q 'sm8550-samsung-gts9uwifi.dtb' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	patch -d "$kernel_tree" -p1 < "$package/add-gts9uwifi-dtb.patch"
 fi
+if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
+	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
+	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \
+		"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"
+fi
 
 cp "$base/pmaports/device/main/linux-postmarketos-mainline/config-mainline.aarch64" \
 	"$build_dir/.config"

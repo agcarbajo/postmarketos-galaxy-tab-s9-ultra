@@ -22,7 +22,7 @@ publicado debe figurar aquí con su propósito, validación y SHA-256.
 Este ZIP es una red de seguridad; no debe flashearse salvo para volver desde
 una futura prueba mainline a Ubuntu Touch.
 
-## Bundle experimental mainline v0.2
+## Bundle experimental mainline v0.3
 
 El ZIP v0 anterior, SHA-256 `7af75c71...`, está obsoleto: falla al tratar como
 escribible el `vbmeta` RO de este TWRP. No debe volver a flashearse.
@@ -30,6 +30,10 @@ escribible el `vbmeta` RO de este TWRP. No debe volver a flashearse.
 El ZIP v0.1, SHA-256 `aaef2bb5...`, también está obsoleto: ABL descomprime su
 kernel pero rechaza su DTB por no contener los selectores Qualcomm legacy de
 la placa y abre Odin. No debe volver a flashearse.
+
+El ZIP v0.2, SHA-256 `9288af69...`, está obsoleto: ABL ya selecciona su DTB,
+pero el ufdt Samsung no puede aplicar el overlay sobre una base sin
+`/__symbols__` y abre Odin. No debe volver a flashearse.
 
 `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`
 
@@ -41,21 +45,23 @@ la placa y abre Odin. No debe volver a flashearse.
 - Contiene `pmOS_boot` ext2 y `pmOS_root` ext4 con edge, systemd, XFCE,
   NetworkManager, OpenSSH y usuario `phablet`.
 
-`postmarketos-edge-xfce-mainline-v0.2-sm-x910-twrp.zip`
+`postmarketos-edge-xfce-mainline-v0.3-sm-x910-twrp.zip`
 
 - SHA-256:
-  `9288af69c694fdc84b7b1f9694265152c5f7959a880d338f98b2e3d106c0f65c`.
-- Tamaño: 21.850.752 bytes.
+  `0a0d5b0e749c17155a0503e1c6a14e340ea3b9b437a3fbbcfbd77d9219bde240`.
+- Tamaño: 21.856.498 bytes.
 - Escribe `boot`, `init_boot`, `vendor_boot` y `dtbo`. Escribe `vbmeta` sólo
   si es RW; si es RO exige AVB flags 2 y lo conserva. Valida todo esto antes de
   escribir la primera partición.
 - El kernel comprimido se extrae del EFI zboot del mismo paquete que instaló
   los módulos en el rootfs. El `vendor_boot` incorpora el DTB recompilado con
   `qcom,kalama-mtp`, los IDs SM8550/kalama exactos y `board-id 0x10008/3` que
-  Samsung ABL usa para seleccionar el DTB.
+  Samsung ABL usa para seleccionar el DTB. Está compilado con `-@`, contiene
+  474 símbolos y puede actuar como base del overlay ufdt de ABL.
 
-Validación local: headers Android v4, offsets, DTB y sus selectores ABL, dos
-DTBO, AVB, tamaños y comparaciones byte a byte correctos; CRC/modos/hashes del ZIP y stream zstd
+Validación local: headers Android v4, offsets, DTB, selectores ABL,
+`/__symbols__`, aplicación local con libfdt/libufdt, dos DTBO, AVB, tamaños y
+comparaciones byte a byte correctos; CRC/modos/hashes del ZIP y stream zstd
 correctos. Esto **no equivale a una prueba de arranque físico**. El primer boot
 sigue siendo experimental y se debe realizar siguiendo
 `../docs/testing-mainline-v0.md`, con una microSD sacrificable y el ZIP de
