@@ -18,9 +18,9 @@ IMAGES = {
     "vbmeta.img": 131072,
 }
 SD_NAME = "postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst"
-ZIP_NAME = "postmarketos-edge-xfce-mainline-v0.4-sm-x910-twrp.zip"
-METADATA = "mainline-v0.4-build-info.txt"
-MANIFEST = "SHA256SUMS-mainline-v0.4.txt"
+ZIP_NAME = "postmarketos-edge-xfce-mainline-v0.5-sm-x910-twrp.zip"
+METADATA = "mainline-v0.5-build-info.txt"
+MANIFEST = "SHA256SUMS-mainline-v0.5.txt"
 
 
 def digest_stream(stream) -> str:
@@ -85,7 +85,7 @@ def main() -> None:
 
         with archive.open("dtbo.img") as stream:
             if stream.read(4) != b"\0\0\0\0":
-                raise SystemExit("v0.4 dtbo must force the appended-DTB fallback")
+                raise SystemExit("v0.5 dtbo must force the appended-DTB fallback")
 
     print("Artifact manifest, ZIP CRC, modes, sizes and inner hashes: OK")
 

@@ -52,8 +52,8 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ Linux 7.2-rc3 compilado y empaquetado; kernel/DTB y símbolos tempranos validados |
-| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos; v0.4 lo adjunta al kernel y evita ufdt |
+| Kernel mainline SM8550 | ✅ v0.4 confirmó ejecución física de Linux 7.2-rc3 y salida simpledrm; después reinició por fatal NoC de TrustZone |
+| DTS `gts9uwifi` | 🟡 v0.5 añade los carveouts Samsung ausentes; framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
 | Paquetes pmaports | ✅ Device y kernel APK construidos; rootfs usa el mismo kernel empaquetado |
 | Rootfs postmarketOS | ✅ Imagen GPT ext2/ext4 construida y validada estáticamente |
@@ -61,20 +61,20 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 v0.3 confirmó que ufdt Samsung sigue fallando con símbolos; v0.4 usa el fallback appended-DTB y está en la tablet |
+| Imagen/paquete de prueba | 🟡 v0.5 reproducible y verificada en `/sdcard`; pendiente de flash manual y arranque físico |
 
 ## Reto en curso
 
-Realizar el cuarto arranque físico controlado de mainline v0.4:
+Realizar el quinto arranque físico controlado con mainline v0.5:
 
-- escribir la imagen ya generada en una microSD sacrificable de 8 GB o más;
-- flashear manualmente desde TWRP el ZIP v0.4: escribe cuatro particiones boot
-  y conserva `vbmeta` si está RO pero ya tiene AVB flags 2;
-- comprobar primero que ABL ya acepta el DTB y transfiere control a Linux;
-- distinguir después si monta `pmOS_root` desde `sdhc_2`, si
-  simpledrm conserva el framebuffer y si aparece USB NCM/SSH;
-- si falla, volver a TWRP y recuperar ramoops/pstore antes de modificar DTS o
-  cmdline; restaurar Ubuntu Touch es opcional;
+- flashear manualmente desde TWRP el ZIP v0.5 ya copiado a `/sdcard`; la imagen
+  de microSD es idéntica a v0 y no hace falta volver a escribirla;
+- verificar si desaparece el reset `TZBSP_ERR_FATAL_NOC_ERROR` observado con
+  v0.4 tras mostrar verbose y el logo Linux;
+- comprobar después si monta `pmOS_root` desde `sdhc_2`, si simpledrm conserva
+  el framebuffer y si aparece USB NCM/SSH;
+- si vuelve a fallar, recuperar inmediatamente `/proc/last_kmsg` y pstore. El
+  siguiente aislamiento será deshabilitar USB2 y Goodix sin tocar SD/UART;
 - si arranca, priorizar red estable y después DRM/DSI nativo para el panel
   dual-DSI, táctil y Turnip.
 
@@ -251,6 +251,31 @@ lado del workspace.
   DTB mainline; `dtbo` conserva tamaño/footer AVB correctos pero empieza por
   cero para forzar el fallback. `vendor_boot` mantiene otra copia del DTB. El
   ZIP se reprodujo, se copió a `/sdcard/` y se verificó allí; no se flasheó.
+- El arranque físico v0.4 superó por primera vez toda la cadena ABL: apareció
+  la salida verbose y el logo de Linux mediante el framebuffer conservado.
+  Después el SoC se reinició; por tanto el fallback appended-DTB queda validado
+  y el fallo actual ya está dentro de Linux/firmware, no en el cargador.
+- Desde TWRP se guardaron `/proc/last_kmsg`, dmesg y pstore en
+  `work/v04-linux-crash-20260718/`. Pstore estaba vacío, pero el registro de
+  reset identifica `TZBSP_ERR_FATAL_NOC_ERROR`; Samsung cifra el detalle del
+  maestro/esclavo NoC y no permite atribuirlo a un driver concreto.
+- Comparar el DTB v0.4 compilado con el FDT vivo reveló que al evitar la DTBO
+  stock faltaban carveouts de placa que ABL no reconstruye: UH/KASLR,
+  `chipinfo`, `sec_xbl`, LLCC y casi 180 MiB de memoria alta de
+  bootloader/depuración segura. Sólo `sec_log_buf` estaba reservado. Linux
+  podía tratar las demás zonas protegidas como RAM ordinaria, causa coherente
+  con el fatal NoC.
+- El DTS v0.5 replica los rangos fijos exactos del FDT vivo y amplía
+  `hwfence-shbuf` al tamaño X910. El DTB de 152.392 bytes tiene SHA-256
+  `78397ab9c916084a68b37a5b19de2d1cd2619691201552f1ecc60a483ab44cd0`;
+  el validador exige individualmente los 15 carveouts críticos.
+- ZIP v0.5:
+  `postmarketos-edge-xfce-mainline-v0.5-sm-x910-twrp.zip`, 21.885.945 bytes,
+  SHA-256
+  `1ae10d4effba444a3d970e9c6a68bd11f9304692a7bffcf309633b9063388314`.
+  Headers, AVB, appended DTB, reservas, tamaños, CRC, manifiestos y reproducción
+  byte a byte pasaron. Se copió a `/sdcard/` y se verificó allí el mismo hash;
+  no se flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -305,6 +330,13 @@ lado del workspace.
 - No seguir modificando el no-op para el fork ufdt Samsung: v0.2 sin símbolos
   y v0.3 con 474 símbolos fallaron en el mismo punto. v0.4 evita por completo
   esa ruta mediante el fallback appended-DTB documentado en ABL.
+- No considerar v0.4 un arranque completo: aunque ABL entregó el control y
+  simpledrm mostró Linux, el firmware reinició el SoC con
+  `TZBSP_ERR_FATAL_NOC_ERROR` antes de demostrar rootfs, SD o red. Pstore quedó
+  vacío y el bloque NoC del log Samsung está cifrado.
+- No omitir los carveouts Samsung al usar appended-DTB. El `sm8550.dtsi` base
+  cubre las reservas Qualcomm comunes, pero no las reservas específicas que
+  normalmente aporta el overlay X910; v0.5 las incorpora explícitamente.
 
 ## Referencias locales
 

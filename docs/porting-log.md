@@ -333,3 +333,49 @@ física.
   Pasó headers, AVB, tamaños, comparaciones, CRC, manifests y zstd; se reprodujo
   byte a byte, se copió a `/sdcard/` y se verificó allí. La tablet sigue en
   TWRP y el asistente no lo ha flasheado.
+
+## 2026-07-18 — sesión 8: Linux ejecuta, fatal NoC y bundle v0.5
+
+- La usuaria flasheó v0.4. Por primera vez aparecieron la consola verbose y el
+  logo de Linux; después la tablet se reinició. Esto valida físicamente la ruta
+  appended-DTB y demuestra que ABL ya entrega el control al kernel mainline.
+- De vuelta en TWRP se recogieron `/proc/last_kmsg`, `/proc/cmdline`, dmesg y
+  pstore en `work/v04-linux-crash-20260718/`. Pstore estaba vacío.
+  `/proc/last_kmsg` contiene el diagnóstico del siguiente XBL, que registra
+  reset por PSHOLD, `restart_reason = 0x5023881` y
+  `upload_cause = TZBSP_ERR_FATAL_NOC_ERROR`. La sección con información NoC,
+  XPU y SMMU indica que el log TZ está cifrado, por lo que no revela
+  maestro/esclavo, dirección o driver causante.
+- Se descartó tratarlo como un panic ordinario o un fallo ABL. La salida Linux
+  llegó a pantalla y el reset fue solicitado por firmware seguro; todavía no
+  hay evidencia de que se montase la raíz de la microSD.
+- Se compararon con `fdtget` todos los rangos de `/reserved-memory` del FDT vivo
+  y del DTB mainline. El dtsi upstream cubría la mayoría de carveouts Qualcomm,
+  pero el DTB v0.4 omitía los que normalmente añade la DTBO Samsung:
+  `kaslr`, `uh_heap`, `uh_guest`, `chipinfo`, `sec_xbl_ramdump`, LLCC LPI y los
+  rangos altos `sec_debug_pool`, reset info, debug BL, pmsg, debug kinfo, HDM y
+  `sec_qcom_rdx`. En RAM alta sólo se había conservado `sec_log_buf` para
+  ramoops; aproximadamente 180 MiB protegidos quedaban disponibles para el
+  buddy allocator. También el HW-fence upstream era `0x64000` bytes menor que
+  el rango X910.
+- Hipótesis mínima v0.5: un acceso normal de Linux a esos rangos protegidos
+  provoca el fatal NoC. Se añadieron las reservas fijas exactas del FDT vivo,
+  todas `no-map` salvo el carveout ramoops, y se amplió HW-fence. No se cambió
+  USB, Goodix, SD, cmdline, kernel ejecutable, initramfs ni rootfs, para aislar
+  el efecto del mapa de memoria.
+- El DTS compila sin errores. DTB final: 152.392 bytes, SHA-256
+  `78397ab9c916084a68b37a5b19de2d1cd2619691201552f1ecc60a483ab44cd0`.
+  El validador extrae el DTB de `vendor_boot` y exige los 15 rangos exactos,
+  además de símbolos y selectores ABL.
+- Imágenes modificadas: `boot.img`
+  `384cdf879ed81f053cf3aeab4795f1d80b87f21c6692cbd4faeecfb58fe41af6`
+  y `vendor_boot.img`
+  `80fbd52d4e3d03f37a08d2cf90ce7eda44d94864cb4653151d4680dd4c525e63`.
+  `dtbo`, `init_boot`, `vbmeta`, payload gzip y la imagen SD no cambiaron.
+- ZIP v0.5:
+  `postmarketos-edge-xfce-mainline-v0.5-sm-x910-twrp.zip`, 21.885.945 bytes,
+  SHA-256
+  `1ae10d4effba444a3d970e9c6a68bd11f9304692a7bffcf309633b9063388314`.
+  Pasó AVB, headers v4, offsets, appended-DTB, carveouts, tamaños, CRC, modos,
+  manifests y zstd; una segunda generación fue idéntica byte a byte. Se copió
+  a `/sdcard/` y se verificó el mismo hash en TWRP. El asistente no lo flasheó.
