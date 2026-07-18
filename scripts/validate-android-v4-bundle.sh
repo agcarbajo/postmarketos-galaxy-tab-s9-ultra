@@ -9,6 +9,7 @@ rootfs_chroot="${ROOTFS_CHROOT_DIR:-$base/pmbootstrap-work/chroot_rootfs_samsung
 package_zboot="${PACKAGE_ZBOOT:-$rootfs_chroot/boot/vmlinuz}"
 package_config="${PACKAGE_CONFIG:-$rootfs_chroot/boot/config}"
 package_dtb="${KERNEL_DTB:-$rootfs_chroot/boot/sm8550-samsung-gts9uwifi.dtb}"
+kernel_image="${KERNEL_IMAGE:-}"
 tools_root="$base/pmbootstrap-work/chroot_rootfs_samsung-gts9uwifi/usr"
 unpack="${UNPACK_BOOTIMG:-$tools_root/bin/unpack_bootimg}"
 avbtool="${AVBTOOL:-$tools_root/bin/avbtool}"
@@ -23,8 +24,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 "$project/scripts/extract-zboot-payload.py" \
-	"$package_zboot" "$tmp/package-Image.gz"
+if [ -n "$kernel_image" ]; then
+	cp "$kernel_image" "$tmp/package-Image.gz"
+else
+	python3 "$project/scripts/extract-zboot-payload.py" \
+		"$package_zboot" "$tmp/package-Image.gz"
+fi
 
 for symbol in \
 	CONFIG_DRM_SIMPLEDRM \

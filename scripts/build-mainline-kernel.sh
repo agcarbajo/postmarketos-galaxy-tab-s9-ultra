@@ -34,6 +34,9 @@ fi
 if [ ! -f "$kernel_tree/drivers/soc/qcom/samsung-gts9uwifi-sec-log.c" ]; then
 	patch -d "$kernel_tree" -p1 < "$package/add-samsung-sec-log-console.patch"
 fi
+if ! grep -q 'probing %s with driver %s' "$kernel_tree/drivers/base/dd.c"; then
+	patch -d "$kernel_tree" -p1 < "$package/log-probe-entry-before-call.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

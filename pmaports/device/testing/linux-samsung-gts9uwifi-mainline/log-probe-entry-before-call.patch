@@ -1,0 +1,18 @@
+diff --git a/drivers/base/dd.c b/drivers/base/dd.c
+index 7e3b6041a064..695f0b2c27f5 100644
+--- a/drivers/base/dd.c
++++ b/drivers/base/dd.c
+@@ -782,6 +782,13 @@ static int really_probe_debug(struct device *dev, const struct device_driver *dr
+ 	ktime_t calltime, rettime;
+ 	int ret;
+ 
++	/*
++	 * A Samsung secure-firmware fatal can reset this board inside ->probe(),
++	 * before initcall_debug emits its usual return line.  Record the device
++	 * and driver first so the persistent sec_log console identifies the
++	 * access that triggered the reset.
++	 */
++	printk(KERN_DEBUG "probing %s with driver %s\n", dev_name(dev), drv->name);
+ 	calltime = ktime_get();
+ 	ret = really_probe(dev, drv);
+ 	rettime = ktime_get();

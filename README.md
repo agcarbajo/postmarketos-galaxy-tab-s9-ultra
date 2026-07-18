@@ -52,32 +52,32 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.4 confirmó ejecución física de Linux 7.2-rc3 y salida simpledrm; después reinició por fatal NoC de TrustZone |
-| DTS `gts9uwifi` | 🟡 v0.6 aísla `lpass_ag_noc`; framebuffer, SD, UART, log persistente Samsung, USB2 y GT9916 descritos |
+| Kernel mainline SM8550 | ✅ Linux 7.2-rc3 y simpledrm ejecutan; v0.6 deja un `last_kmsg` completo y sitúa el fatal NoC durante deferred probe |
+| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, log persistente Samsung, USB2 y GT9916 descritos; aislar `lpass_ag_noc` no eliminó el reset |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
-| Paquetes pmaports | ✅ Kernel APK `7.2_rc3-r4` reconstruido; kernel, módulos y DTB v0.6 coinciden |
+| Paquetes pmaports | ✅ Baseline APK `7.2_rc3-r4`; fuentes r5 añaden traza pre-probe reproducible para diagnosticar el fatal |
 | Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
 | Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD y ZIP v0.6 reproducibles; ZIP verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP diagnóstico v0.7 reproducible y verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Realizar el sexto arranque físico controlado con mainline v0.6:
+Realizar el séptimo arranque físico controlado con el ZIP diagnóstico v0.7:
 
-- escribir en la microSD la nueva imagen v0.6, porque kernel, módulos e
-  initramfs se reconstruyeron juntos;
-- flashear manualmente desde TWRP el ZIP v0.6 ya copiado a `/sdcard`;
-- verificar si deshabilitar `lpass_ag_noc@7e40000` elimina el reset
-  `TZBSP_ERR_FATAL_NOC_ERROR` reproducido por v0.4 y v0.5;
-- comprobar después si monta `pmOS_root` desde `sdhc_2`, si simpledrm conserva
-  el framebuffer y si aparece USB NCM/SSH;
-- si vuelve a fallar, regresar a TWRP y leer `/proc/last_kmsg`: v0.6 escribe
-  printk en el ring `LOGM` que entiende el recovery Samsung;
-- si arranca, priorizar red estable y después DRM/DSI nativo para el panel
-  dual-DSI, táctil y Turnip.
+- conservar la microSD v0.6: kernel release, módulos, initramfs y DTB no
+  cambian; el v0.7 sólo añade una línea síncrona antes de cada probe;
+- flashear manualmente desde TWRP el ZIP v0.7 ya copiado a `/sdcard`;
+- después del reset, volver a TWRP y recuperar `/proc/last_kmsg`; la última
+  línea `probing <device> with driver <driver>` debe identificar la llamada
+  que dispara `TZBSP_ERR_FATAL_NOC_ERROR` aunque nunca retorne;
+- la hipótesis principal es el reintento diferido de `8804000.mmc` tras quedar
+  disponibles los proveedores interconnect, pero no se deshabilitará ni se
+  alterará su alimentación hasta tener esa evidencia directa;
+- una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
+  montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -299,6 +299,24 @@ lado del workspace.
   y ZIP TWRP SHA-256
   `0890bbe1160aa5b03d40963209ae2a5193d7857531ee2518f0adbaf522d31a9a`.
   El ZIP se copió a `/sdcard/` y se verificó allí; no se flasheó.
+- El arranque físico v0.6 volvió a reiniciar con
+  `TZBSP_ERR_FATAL_NOC_ERROR`; por tanto `lpass_ag_noc@7e40000` no era el
+  desencadenante. La consola `LOGM` sí funcionó: TWRP expuso un
+  `/proc/last_kmsg` de 453.717 bytes con el log completo de Linux desde
+  `Linux version 7.2.0-rc3` hasta deferred probe. Ya no hacen falta vídeos
+  para las iteraciones normales.
+- El último retorno es de nuevo `7430000.interconnect` a 26,813 s. Antes,
+  `8804000.mmc` había devuelto `-EPROBE_DEFER`, por lo que su reintento es el
+  siguiente candidato por orden del DT. La v0.7 instrumenta
+  `really_probe_debug()` para persistir dispositivo y driver antes de entrar
+  en `->probe()`.
+- ZIP diagnóstico v0.7 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.7-probe-trace-sm-x910-twrp.zip`,
+  22.012.743 bytes, SHA-256
+  `1362e7f9ecf4cedd082af4cbabb963a651215292a7bcd847007978bf5bd3c2be`.
+  Pasó bundle Android v4, AVB, appended-DTB, tamaños, hashes internos y CRC;
+  se copió y verificó con el mismo hash en `/sdcard`. No requiere reescribir
+  la SD v0.6 y el asistente no lo flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -366,6 +384,9 @@ lado del workspace.
 - No esperar que pstore v0.4/v0.5 aparezca automáticamente en TWRP: recovery
   arranca con su propio DT y no registra el backend ramoops mainline. v0.6 usa
   en su lugar el formato `sec_log_buf` nativo que el recovery sí entiende.
+- No seguir atribuyendo el fatal a `lpass_ag_noc`: v0.6 lo deshabilitó y el
+  reset persistió. Tampoco inferir el culpable sólo por la última línea de
+  retorno; v0.7 registra el inicio de cada probe antes del acceso peligroso.
 
 ## Referencias locales
 

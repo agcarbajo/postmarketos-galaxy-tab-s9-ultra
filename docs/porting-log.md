@@ -430,3 +430,37 @@ física.
   Bundle, AVB, DTB/status, consola persistente, tamaños, CRC, manifests y zstd
   pasaron. ZIP e imagen SD se reprodujeron byte a byte. El ZIP se copió y
   verificó en `/sdcard`; el asistente no flasheó nada.
+
+## 2026-07-18 — sesión 10: `last_kmsg` mainline completo y traza pre-probe v0.7
+
+- La usuaria probó v0.6 y la tablet volvió a reiniciarse. Se recogieron desde
+  TWRP `last_kmsg`, cmdline, dmesg, iomem e índice pstore en
+  `work/v06-linux-crash-20260718/`. El reset sigue siendo
+  `TZBSP_ERR_FATAL_NOC_ERROR`, con `restart_reason = 0x58238a1`.
+- La consola Samsung `LOGM` introducida en v0.6 funcionó: `/proc/last_kmsg`
+  mide 453.717 bytes y contiene el printk mainline completo, desde la versión
+  del kernel hasta el instante exacto anterior al firmware/XBL siguiente.
+  Pstore continúa vacío, pero ya no es necesario y no harán falta vídeos en
+  pruebas normales mientras se conserve este backend.
+- Deshabilitar `lpass_ag_noc@7e40000` no cambió el punto visible del corte. En
+  deferred probe terminan correctamente `7400000.interconnect` a 26,806 s y
+  `7430000.interconnect` a 26,813 s; no se registra ningún retorno posterior.
+  Por tanto la hipótesis v0.6 queda descartada y el nodo permanece aislado sólo
+  por prudencia mientras el audio está fuera del primer hito.
+- `8804000.mmc` había devuelto `-EPROBE_DEFER` a 23,698 s. Por el orden del DT
+  su reintento después de los proveedores interconnect es el candidato
+  principal, pero una línea de retorno no demuestra qué probe empieza después.
+- Se añadió `log-probe-entry-before-call.patch`: con `initcall_debug`,
+  `really_probe_debug()` imprime `probing <device> with driver <driver>` antes
+  de entrar en `->probe()`. La consola persistente escribe esa línea de forma
+  síncrona, por lo que debe sobrevivir aunque TrustZone reinicie dentro del
+  driver. `pkgrel` queda en 5 y el script de build directo aplica el parche.
+- Para reducir desgaste y tiempo de prueba, v0.7 reutiliza el DTB, initramfs,
+  release y módulos de la SD v0.6; sólo sustituye el ejecutable built-in del
+  kernel. No hay cambios de símbolos, configuración ni ABI de módulos.
+- El bundle Android v4 v0.7 pasó hashes internos, tamaños exactos, headers,
+  appended-DTB y verificación AVB. ZIP reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.7-probe-trace-sm-x910-twrp.zip`,
+  22.012.743 bytes, SHA-256
+  `1362e7f9ecf4cedd082af4cbabb963a651215292a7bcd847007978bf5bd3c2be`.
+  Se copió a `/sdcard` y su hash remoto coincide. El asistente no lo flasheó.

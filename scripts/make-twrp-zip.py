@@ -53,6 +53,10 @@ def main() -> None:
     parser.add_argument("bundle", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--label",
+        default="postmarketOS mainline v0.6 for SM-X910 (LPASS AG isolation)",
+    )
     args = parser.parse_args()
 
     for name, expected_size in IMAGES.items():
@@ -90,7 +94,7 @@ def main() -> None:
         )
         zf.writestr(
             zip_info("BUNDLE-LABEL"),
-            "postmarketOS mainline v0.6 for SM-X910 (LPASS AG isolation)\n",
+            args.label + "\n",
         )
         zf.writestr(zip_info("SHA256SUMS"), manifest)
 
