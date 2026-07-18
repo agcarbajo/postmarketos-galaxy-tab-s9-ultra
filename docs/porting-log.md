@@ -546,3 +546,33 @@ física.
   22.012.502 bytes, SHA-256
   `47331b9616f68048f381b61d52e9a6e1ff74f3ab35dcb46addae5d39e7ae372a`.
   Se validó y copió a `/sdcard`; el asistente no lo flasheó.
+
+## 2026-07-18 — sesión 12: v0.10, falsa apariencia de panic y canal USB fallido
+
+- La prueba física v0.10 y su repetición no conservaron el printk mainline.
+  Las capturas inmediatas `work/v010-linux-panic-warm-20260718/last_kmsg` y
+  `work/v010-return-20260718-174922/last_kmsg` miden 2.097.136 bytes, contienen
+  `XBL(... restored from storage)` y sólo el ring recovery/XBL antiguo. El
+  reinicio automático o normal tampoco proporciona el canal persistente que
+  se esperaba; no se seguirá iterando sobre los índices LOGM.
+- Se desempaquetó íntegro el initramfs pmOS v0.10. `/init` busca durante 30 s
+  la etiqueta `pmOS_boot`, monta esa partición, extrae `initramfs-extra` y pasa
+  a `/init_2nd.sh`; no depende de un parámetro `root=` en la cmdline.
+- La función `fail_halt_boot()` no llama a panic. Crea un FAT de 32 MiB con
+  `pmOS_init.txt`, `dmesg.txt`, `blkid.txt`, `partitions.txt`, cmdline y FDT;
+  intenta exponerlo como `PMOS_LOGS`, entra en `debug_shell()` y después
+  duerme indefinidamente. Por tanto la pantalla que se describió como kernel
+  panic puede ser realmente el error/halt del initramfs y `panic=10` no puede
+  reiniciarlo.
+- La shell diagnóstica también ofrece ACM `ttyGS0` o telnet sin contraseña en
+  `172.16.42.1:23`, con DHCP para el host en `172.16.42.2`.
+- Se reutilizó v0.10 sin flashear y se reinició por ADB desde TWRP. Durante más
+  de 80 s Windows no detectó el volumen `PMOS_LOGS`, puerto serie, NCM/RNDIS ni
+  interfaz en `172.16.42.0/24`. Aparecieron dos dispositivos USB desconocidos
+  con error de solicitud de descriptor: el enlace tiene actividad parcial,
+  pero el gadget mainline no ofrece aún un canal utilizable.
+- Próximo paso: leer una foto fija de la pantalla detenida. Si no contiene el
+  error suficiente, construir una v0.11 que muestre un resumen compacto de
+  `/pmOS_init.log` y lo copie a `pmOS_boot` cuando la SD sea visible. La primera
+  decisión será si `sdhc_2` no enumera o si el fallo ocurre después de montar
+  boot/root; no se tocará hardware sin esa evidencia.

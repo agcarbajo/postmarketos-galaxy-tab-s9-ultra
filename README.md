@@ -52,7 +52,7 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM y llega a un kernel panic normal; falta recuperar su texto íntegro |
+| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM; la detención visible probablemente es el bucle de error del initramfs, no un panic demostrado |
 | DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
 | Paquetes pmaports | ✅ Baseline APK r4; fuentes r6 incluyen reserva TLMM, traza pre-probe y log persistente tras reinicio manual |
@@ -61,26 +61,29 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.10 reproducible y verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | 🟡 SD v0.6 y ZIP v0.10 probados; siguiente iteración será diagnóstica y no requiere reescribir la SD |
 
 ## Reto en curso
 
-Repetir el arranque físico con el ZIP v0.10 para conservar el panic completo:
+Capturar de forma fiable el primer error del initramfs y comprobar la microSD:
 
-- conservar la microSD v0.6: kernel release, módulos, initramfs y DTB no
-  cambian salvo la propiedad de reserva TLMM; la traza pre-probe sigue activa;
-- flashear manualmente desde TWRP el ZIP v0.10 ya copiado a `/sdcard`;
-- v0.8 ya demostró que reservar GPIO36–39 elimina el reset de TrustZone: el
-  kernel permanece vivo y termina en un panic visible;
-- v0.10 elimina `initcall_debug`, baja el loglevel y añade `panic=10`. Tras el
-  panic Linux debe reiniciar en caliente automáticamente; entrar en TWRP
-  durante ese reinicio, sin forzar el reset desde la pantalla congelada;
-- recuperar `/proc/last_kmsg` inmediatamente. El reinicio caliente conserva el
-  `sec_log_buf`, como ya se verificó con los resets v0.6/v0.7;
-- diagnosticar el panic con el log completo, priorizando enumeración de
-  `sdhc_2`, detección de `pmOS_root` y ejecución del initramfs;
-- una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
-  montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
+- v0.10 no conservó mainline en `/proc/last_kmsg`: tanto el reinicio anterior
+  como la repetición terminan con `XBL(... restored from storage)` y recovery
+  sólo expone el ring antiguo. Se abandona ese canal para errores no fatales;
+- la detención visible no se puede llamar aún kernel panic. El initramfs
+  `postmarketos-mkinitfs 3.12.0-r0` busca `pmOS_boot` por etiqueta durante 30 s
+  y, al fallar, `fail_halt_boot()` exporta logs, abre una shell y duerme para
+  siempre; `panic=10` no actúa sobre ese bucle;
+- la prueba en vivo de la v0.10 no expuso el volumen FAT `PMOS_LOGS`, USB ACM,
+  NCM/RNDIS ni telnet `172.16.42.1`. Windows sólo observó intentos USB con
+  error de descriptor, así que el gadget mainline todavía no es recuperable;
+- obtener una foto fija legible de la detención actual para distinguir el
+  punto exacto. Si no basta, generar una v0.11 diagnóstica que muestre en
+  pantalla un resumen determinista y persista `/pmOS_init.log` en
+  `pmOS_boot` cuando la partición exista;
+- verificar después si `sdhc_2` termina su probe, aparecen `mmcblk*` y las
+  etiquetas `pmOS_boot`/`pmOS_root`; corregir sólo el primer fallo probado;
+- avanzar hasta montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -370,6 +373,14 @@ lado del workspace.
   Sólo cambia la cmdline de `vendor_boot`: `panic=10`, sin `initcall_debug` y
   con `loglevel=7`. Kernel, DTB, initramfs, módulos y SD no cambian. Pasó AVB,
   bundle, hashes, tamaños, CRC y reproducción; se verificó en `/sdcard`.
+- Las pruebas físicas de v0.10 no recuperaron mainline en `last_kmsg`: el
+  fichero de 2.097.136 bytes vuelve a contener recovery/XBL restaurado. La
+  inspección completa del initramfs reveló que su ruta de fallo no hace panic:
+  crea `PMOS_LOGS`, entra en shell y queda en un bucle infinito.
+- Se reinició la v0.10 ya instalada sin reflashear y se sondeó el host durante
+  más de 80 s. No aparecieron almacenamiento masivo, ACM ni red USB; sí dos
+  instancias de dispositivo USB desconocido por fallo al solicitar descriptor.
+  Esto confirma actividad física parcial del enlace, pero no un gadget usable.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -448,9 +459,13 @@ lado del workspace.
   recovery previo. v0.9 mantiene ese índice sincronizado desde mainline.
 - No dejar TWRP esperando antes de extraer el log: su kernel downstream es muy
   verboso y llena los 2 MiB en aproximadamente 17 minutos.
-- No reiniciar a la fuerza desde el panic si se busca conservar `sec_log_buf`:
-  XBL restaura una copia antigua desde almacenamiento. Usar el reinicio
-  automático `panic=10` de v0.10 y entrar entonces en recovery.
+- No seguir usando `sec_log_buf`/`last_kmsg` para esta detención: v0.10 también
+  acaba en `XBL(... restored from storage)` y no conserva mainline. Además, el
+  `fail_halt_boot()` real del initramfs no provoca panic; `panic=10` no puede
+  reiniciar un proceso PID 1 que permanece en un bucle deliberado.
+- No asumir que `export_logs()` garantiza una captura USB. En la prueba v0.10
+  no enumeró `PMOS_LOGS`, ACM ni NCM/RNDIS; el host sólo vio errores de
+  descriptor. Hasta arreglar USB, usar pantalla y persistencia en la SD.
 
 ## Referencias locales
 
