@@ -34,6 +34,11 @@ fi
 if [ ! -f "$kernel_tree/drivers/soc/qcom/samsung-gts9uwifi-sec-log.c" ]; then
 	patch -d "$kernel_tree" -p1 < "$package/add-samsung-sec-log-console.patch"
 fi
+if ! grep -q 'previous_index, index' \
+	"$kernel_tree/drivers/soc/qcom/samsung-gts9uwifi-sec-log.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/keep-sec-log-previous-index-current.patch"
+fi
 if ! grep -q 'probing %s with driver %s' "$kernel_tree/drivers/base/dd.c"; then
 	patch -d "$kernel_tree" -p1 < "$package/log-probe-entry-before-call.patch"
 fi

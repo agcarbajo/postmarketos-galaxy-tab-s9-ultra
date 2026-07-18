@@ -490,3 +490,32 @@ física.
   22.012.795 bytes, SHA-256
   `74607d30076c92cc7fcae787534e26d9ea083a4da60280c551e0a75e87788c92`.
   Se verificó estática y remotamente en `/sdcard`; el asistente no lo flasheó.
+
+## 2026-07-18 — sesión 11: v0.8 supera TrustZone y logger robusto v0.9
+
+- El arranque v0.8 dejó de reiniciarse por firmware. La tablet permaneció en
+  una pantalla de kernel panic hasta que la usuaria la reinició manualmente a
+  TWRP. La reserva `gpio-reserved-ranges = <36 4>` queda validada físicamente:
+  el registro de TLMM ya no dispara el fatal NoC de TrustZone.
+- Se recogió `work/v08-linux-panic-20260718/last_kmsg`, pero mide exactamente
+  2.097.136 bytes y contiene el ring circular del recovery anterior, no el
+  boot mainline. Pstore sigue vacío y TWRP no dispone de `/dev/mem`.
+- Causa del fallo de captura: el logger mainline ponía `previous_index` al
+  valor antiguo al iniciar y después sólo avanzaba `index`. Un reset fatal
+  gestionado por firmware actualizaba la instantánea, como en v0.6/v0.7, pero
+  el reinicio manual desde el panic no pasó por esa ruta. Recovery interpretó
+  el índice anterior y expuso la sesión vieja.
+- `keep-sec-log-previous-index-current.patch` hace avanzar `previous_index`
+  junto a `index` en cada escritura. No cambia el formato ni el tamaño del
+  ring; permite que `/proc/last_kmsg` conserve el stream mainline tras un
+  reinicio manual. `pkgrel` sube a 6.
+- Kernel v0.9 `Image.gz`: SHA-256
+  `811de097a805e6008795f34803c3877a3505aa96a53624ae8c754664072c6f57`.
+  DTB permanece en
+  `e3c872e9eae8865d4ff8f5b6871d896ef60261ff73556475e522ac48c298ed66`;
+  initramfs, módulos y SD v0.6 no cambian.
+- ZIP v0.9 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.9-panic-log-sm-x910-twrp.zip`,
+  22.012.505 bytes, SHA-256
+  `e7a2d8b3264cc94cdf6863d8abdbbd5c90e6515d1c4577b4f3fd3651fd680375`.
+  Se validó y copió a `/sdcard`; el asistente no lo flasheó.

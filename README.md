@@ -52,31 +52,31 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ Linux 7.2-rc3 y simpledrm ejecutan; v0.6 deja un `last_kmsg` completo y sitúa el fatal NoC durante deferred probe |
+| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM y llega a un kernel panic normal; falta recuperar su texto íntegro |
 | DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
-| Paquetes pmaports | ✅ Baseline APK `7.2_rc3-r4`; fuentes r5 añaden traza pre-probe reproducible para diagnosticar el fatal |
+| Paquetes pmaports | ✅ Baseline APK r4; fuentes r6 incluyen reserva TLMM, traza pre-probe y log persistente tras reinicio manual |
 | Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
 | Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.8 reproducible y verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.9 reproducible y verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Realizar el octavo arranque físico controlado con el ZIP v0.8:
+Repetir el arranque físico con el ZIP v0.9 para conservar el panic completo:
 
 - conservar la microSD v0.6: kernel release, módulos, initramfs y DTB no
   cambian salvo la propiedad de reserva TLMM; la traza pre-probe sigue activa;
-- flashear manualmente desde TWRP el ZIP v0.8 ya copiado a `/sdcard`;
-- después del reset, volver a TWRP y recuperar `/proc/last_kmsg`; la última
-  línea `probing <device> with driver <driver>` debe identificar la llamada
-  que dispara `TZBSP_ERR_FATAL_NOC_ERROR` aunque nunca retorne;
-- v0.7 demostró que el fatal ocurre al registrar `f100000.pinctrl` con
-  `sm8550-tlmm`, no en la microSD. v0.8 añade el equivalente mainline de
-  `qcom,gpios-reserved = <36 37 38 39>` del FDT Samsung para impedir que
-  gpiolib acceda a esos GPIO propiedad de TrustZone;
+- flashear manualmente desde TWRP el ZIP v0.9 ya copiado a `/sdcard`;
+- v0.8 ya demostró que reservar GPIO36–39 elimina el reset de TrustZone: el
+  kernel permanece vivo y termina en un panic visible;
+- tras reiniciar manualmente a TWRP, recuperar `/proc/last_kmsg`. v0.9 mantiene
+  `previous_index` sincronizado con el ring para que el recovery vea el boot
+  mainline incluso cuando no hubo un reset gestionado por firmware;
+- diagnosticar el panic con el log completo, priorizando enumeración de
+  `sdhc_2`, detección de `pmOS_root` y ejecución del initramfs;
 - una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
   montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
 
@@ -334,6 +334,21 @@ lado del workspace.
   Bundle Android v4, AVB, appended-DTB, propiedad compilada, tamaños, hashes
   internos y CRC pasaron; el ZIP se copió y verificó en `/sdcard`. No requiere
   reescribir la SD v0.6 y el asistente no lo flasheó.
+- El arranque físico v0.8 ya no reinició por TrustZone: quedó detenido en un
+  kernel panic normal hasta que la usuaria reinició manualmente a TWRP. Esto
+  valida físicamente `gpio-reserved-ranges = <36 4>` y elimina el fatal NoC
+  que bloqueaba todas las versiones v0.4–v0.7.
+- El `/proc/last_kmsg` posterior contenía 2.097.136 bytes del recovery anterior,
+  no el panic mainline. El reinicio manual no ejecutó la ruta Samsung que
+  actualiza `previous_index`; nuestro ring sólo avanzaba `index`. v0.9 actualiza
+  ambos índices en cada escritura para preservar el log en esta situación.
+- ZIP v0.9 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.9-panic-log-sm-x910-twrp.zip`,
+  22.012.505 bytes, SHA-256
+  `e7a2d8b3264cc94cdf6863d8abdbbd5c90e6515d1c4577b4f3fd3651fd680375`.
+  Conserva el DTB v0.8, initramfs, módulos y SD; sólo cambia el kernel built-in
+  del logger. Pasó bundle, AVB, appended-DTB, tamaños, hashes internos y CRC;
+  se copió y verificó en `/sdcard`. El asistente no lo flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -407,6 +422,9 @@ lado del workspace.
 - No atribuir el fatal v0.7 a `sdhc_2`: la traza previa demuestra que la última
   llamada es `sm8550-tlmm`. Tampoco copiar las reservas `<36 4>, <50 2>` del
   Fold5: el FDT X910 sólo acredita GPIO36–39.
+- No asumir que `/proc/last_kmsg` conserva el boot anterior tras cualquier tipo
+  de reinicio: en v0.8 el reinicio manual dejó `previous_index` apuntando al
+  recovery previo. v0.9 mantiene ese índice sincronizado desde mainline.
 
 ## Referencias locales
 

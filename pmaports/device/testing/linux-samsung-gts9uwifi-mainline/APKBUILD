@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=5
+pkgrel=6
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -43,6 +43,7 @@ source="
 	config-mainline.aarch64::https://gitlab.postmarketos.org/postmarketOS/pmaports/-/raw/$_pmaports_commit/device/main/linux-postmarketos-mainline/config-mainline.aarch64
 	add-gts9uwifi-dtb.patch
 	add-samsung-sec-log-console.patch
+	keep-sec-log-previous-index-current.patch
 	log-probe-entry-before-call.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
@@ -89,6 +90,7 @@ sha512sums="
 720d681f4a0bb7430c89b3e1c7c061ef722dc636000cdb9b2bc1b4af9108a4ee4473ca8a1fad759c423a3fc7a3f1104031f24881092fdf3d535340e9a7a0e94b  config-mainline.aarch64
 847012db45157767a662012738d3fe1303bd7391198af9e389108d7819b9147745e904e494b918376d8f4e3c750fe15ffcc5fbcfbe13b62f6f0aab4d308bfc46  add-gts9uwifi-dtb.patch
 ef13d786887ee3e84734775bda21ef69c39e49c453323819abd9c5cc5d2e38065a7a6661e816a284870435396ec7c1e172f2edfd1ddd4013c2ce9a6697257556  add-samsung-sec-log-console.patch
+78e3c597631cfd7f3681e0c1247dbefc1e4716c42d931d7af82861c0d70904cc7d63ea1b3810aa92f2c6d659ab184309c8f252df18aeac4177dfe6b0eaaca36c  keep-sec-log-previous-index-current.patch
 6c3fa86dda394ba8e7ee20bb000fb34d986f1dd1d3284baf5b440c5612f0ded20d2326c0e13592e05bea499b360c0c29b33e8b899238dd7de976b2d256b6c4ec  log-probe-entry-before-call.patch
 5b6aa6f76e3b88a1beeff9ebc154e6ddf59feb8cab1c7e5b8a6ea38940123f88e6513186bd62c4bf10a7fa32e44228f3bbcea6a2e72c70ef9e37be8742ef4dd2  config-gts9uwifi.fragment
 ab45181244ed79a2a197b7493ec160de02f648225d7639088c44959b88aea3c362d42a0eec6335b72d1198259f7766ed07de6a57c01a9920f94bd44f3fa459a4  sm8550-samsung-gts9uwifi.dts
