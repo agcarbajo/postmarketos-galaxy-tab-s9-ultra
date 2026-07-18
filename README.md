@@ -52,38 +52,42 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM; v0.10 llega a SDHC2 y hace panic porque ABL entrega un initramfs con formato incompatible |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3, ejecuta initramfs y llega al sistema completo en microSD |
 | DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ Baseline APK r4; fuentes r6 incluyen reserva TLMM, traza pre-probe y log persistente tras reinicio manual |
-| Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
-| Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
-| SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
+| Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
+| Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
+| SSH | 🟡 OpenSSH instalado, pero DWC3 falla con `-ETIMEDOUT`; no hay NCM/RNDIS ni IP accesible |
 | Bundle Android v4 | ✅ v0.11 empaqueta initramfs LZ4 legacy como stock; imágenes, AVB, contenido y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.11 copiado/verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | ✅ SD v0.6 + ZIP v0.11 arrancan hasta login gráfico; siguiente ZIP corregirá acceso USB |
 
 ## Reto en curso
 
-Validar que el initramfs LZ4 v0.11 llega a `/init` y monta la microSD:
+Conseguir un canal remoto desde el primer rootfs y después activar el táctil:
 
-- la foto ampliada de v0.10 demuestra un panic real anterior a userspace:
-  `Initramfs unpacking failed: invalid magic at start of compressed archive`,
-  seguido de `VFS: Cannot open root device "(null)"`;
-- antes del panic mainline enumera `mmcblk1` y sus particiones `p1`/`p2`. La
-  controladora, GPIO de detección, rails, pinctrl y tarjeta quedan validados;
-- el CPIO pmOS de v0.10 es un gzip íntegro y el kernel tiene `CONFIG_RD_GZIP`,
-  pero el firmware stock X910XXS5CYG1 usa LZ4 legacy para los ramdisks de
-  `init_boot` y `vendor_boot`. La concatenación producida por Samsung ABL no
-  acepta nuestra combinación vendor-LZ4 + generic-gzip;
-- v0.11 conserva byte a byte el CPIO y sólo recomprime el ramdisk genérico a
-  LZ4 legacy, con la misma magia `02 21 4c 18` que stock. No modifica kernel,
-  DTB, `vendor_boot`, `boot`, `dtbo`, módulos ni la SD v0.6;
-- flashear manualmente el ZIP v0.11 ya copiado a `/sdcard` y arrancar. El
-  resultado esperado es ejecutar `/init`, localizar `pmOS_boot`, extraer
-  `initramfs-extra` y montar `pmOS_root`;
-- si se detiene, fotografiar sólo las últimas líneas; si arranca más lejos,
-  comprobar inmediatamente USB NCM/ACM, LightDM y SSH.
+- v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
+  `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
+  framebuffer del bootloader. El arreglo LZ4 era la barrera exacta;
+- la tablet queda en el login gráfico con el usuario `phablet`. Buffyboard
+  muestra teclado en pantalla, pero no hay eventos táctiles y no se puede
+  iniciar sesión localmente;
+- el host no ve ACM, NCM/RNDIS ni almacenamiento y `172.16.42.1:22` no
+  responde. Sólo aparecen dispositivos USB desconocidos por error de
+  descriptor;
+- la consola fotografiada ya anticipa la causa: DWC3 informa
+  `-ETIMEDOUT: failed to initialize core`. El DTS v0 había omitido
+  deliberadamente el repetidor NXP I2C y confiaba en su estado de ABL;
+- volver a TWRP y extraer de la microSD el journal persistente, dmesg o logs
+  disponibles para fijar la secuencia exacta de USB y auditar también el
+  Goodix GT9916;
+- portar al framework PHY mainline el soporte mínimo del repetidor físico NXP
+  `0x4f`, con sus rails, reset PM8550VS GPIO4 y overrides exactos del FDT X910;
+  enlazarlo como `usb2-repeater` en `usb_1`, conservar modo peripheral/HS y
+  generar una nueva prueba reproducible;
+- una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
+  hardware sin depender de ciclos TWRP.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -403,6 +407,14 @@ lado del workspace.
   `bedcad22a49dbf442641dcaf13e3290edd87b221cbca6fb8f47b8f2460c16922`);
   se validó, reprodujo, copió a `/sdcard` y verificó allí. El asistente no lo
   flasheó.
+- La prueba física v0.11 supera completamente el panic: monta las dos
+  particiones pmOS de la microSD, arranca systemd y muestra LightDM/XFCE4 a
+  resolución completa mediante simpledrm. Es el primer escritorio mainline
+  arrancado en la SM-X910.
+- El sondeo del host con el sistema vivo no encontró NCM/RNDIS, ACM ni SSH en
+  `172.16.42.1`. Windows conserva dos errores de descriptor y la consola de
+  Linux muestra que DWC3 no inicializa el core por timeout. Pantalla y SD son
+  independientes de este fallo.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -491,6 +503,10 @@ lado del workspace.
   válido y mainline tenga `CONFIG_RD_GZIP`. Con el vendor ramdisk LZ4, Samsung
   ABL produjo un initrd que falló por magia inválida. Ambos deben usar LZ4
   legacy como el firmware stock y el validador lo exige desde v0.11.
+- No confiar en que ABL deje el repetidor NXP eUSB2 listo para mainline. v0.11
+  llega al userspace pero DWC3 termina en `-ETIMEDOUT` y el host sólo ve
+  errores de descriptor. Hay que describir, alimentar, sacar de reset e
+  inicializar explícitamente el NXP por I2C antes del core USB.
 
 ## Referencias locales
 

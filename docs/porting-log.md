@@ -618,3 +618,34 @@ física.
   Pasó dos generaciones idénticas, hashes internos, tamaños Android v4, AVB,
   appended-DTB, reservas TLMM/memoria, CRC y comparación íntegra del CPIO. Se
   copió a `/sdcard` y el hash remoto coincide; el asistente no lo flasheó.
+
+## 2026-07-18 — sesión 14: primer login gráfico mainline y bloqueo USB
+
+- La usuaria flasheó v0.11 y confirmó el primer arranque completo. La tablet
+  ejecuta el initramfs LZ4, monta `pmOS_boot`/`pmOS_root`, arranca systemd y
+  presenta el login de LightDM/XFCE4 para `phablet`. Simpledrm mantiene el
+  framebuffer a resolución completa. Se validan así kernel, SD, initramfs,
+  rootfs y escritorio ligero en hardware real.
+- Buffyboard aparece como teclado en pantalla, pero el Goodix GT9916 todavía
+  no produce entrada, de modo que no se puede iniciar sesión localmente.
+- Con la tablet viva y conectada se inventariaron PnP, adaptadores, DHCP, ARP,
+  ICMP y TCP/22. No aparece ACM, NCM/RNDIS ni una interfaz `172.16.42.0/24`;
+  `172.16.42.1` no responde y Windows conserva dos dispositivos desconocidos
+  con error al solicitar descriptor. No existe aún un canal SSH.
+- La foto anterior del verbose contiene la causa temprana de ese síntoma:
+  DWC3 registra `-ETIMEDOUT: failed to initialize core`. El DTS actual habilita
+  sólo `usb_1_hsphy`, elimina el superspeed y fuerza peripheral/HS, pero no
+  modela el repetidor físico NXP; confiaba experimentalmente en el estado de
+  ABL.
+- El FDT vivo X910 confirma el repetidor `nxp,eusb2-repeater` en I2C `0x4f`,
+  rails `vdd18`/`vdd3`, reset PM8550VS GPIO4 y overrides
+  `<0x20 0x06 0x21 0x07 0x63 0x08 0x01 0x0a>`. La PHY eUSB2 stock lo referencia
+  como `usb-repeater`.
+- Linux 7.2-rc3 tiene el framework PHY y soporte para repetidores Qualcomm
+  SPMI, pero no para el NXP I2C. El kernel Samsung de referencia contiene
+  `drivers/usb/repeater/repeater-i2c-eusb2.c`; usa un framework downstream no
+  presente en mainline, así que se portará sólo la secuencia NXP necesaria al
+  framework genérico `struct phy`, no el subsistema Samsung completo.
+- Próximo paso: volver a TWRP, recoger logs persistentes de la rootfs y crear
+  el driver/DTS mínimo del repetidor. Después se prioriza SSH y a continuación
+  el Goodix GT9916.
