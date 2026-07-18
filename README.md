@@ -53,28 +53,29 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ v0.4 confirmó ejecución física de Linux 7.2-rc3 y salida simpledrm; después reinició por fatal NoC de TrustZone |
-| DTS `gts9uwifi` | 🟡 v0.5 añade los carveouts Samsung ausentes; framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos |
+| DTS `gts9uwifi` | 🟡 v0.6 aísla `lpass_ag_noc`; framebuffer, SD, UART, log persistente Samsung, USB2 y GT9916 descritos |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
-| Paquetes pmaports | ✅ Device y kernel APK construidos; rootfs usa el mismo kernel empaquetado |
-| Rootfs postmarketOS | ✅ Imagen GPT ext2/ext4 construida y validada estáticamente |
+| Paquetes pmaports | ✅ Kernel APK `7.2_rc3-r4` reconstruido; kernel, módulos y DTB v0.6 coinciden |
+| Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
 | Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 v0.5 reproducible y verificada en `/sdcard`; pendiente de flash manual y arranque físico |
+| Imagen/paquete de prueba | 🟡 SD y ZIP v0.6 reproducibles; ZIP verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Realizar el quinto arranque físico controlado con mainline v0.5:
+Realizar el sexto arranque físico controlado con mainline v0.6:
 
-- flashear manualmente desde TWRP el ZIP v0.5 ya copiado a `/sdcard`; la imagen
-  de microSD es idéntica a v0 y no hace falta volver a escribirla;
-- verificar si desaparece el reset `TZBSP_ERR_FATAL_NOC_ERROR` observado con
-  v0.4 tras mostrar verbose y el logo Linux;
+- escribir en la microSD la nueva imagen v0.6, porque kernel, módulos e
+  initramfs se reconstruyeron juntos;
+- flashear manualmente desde TWRP el ZIP v0.6 ya copiado a `/sdcard`;
+- verificar si deshabilitar `lpass_ag_noc@7e40000` elimina el reset
+  `TZBSP_ERR_FATAL_NOC_ERROR` reproducido por v0.4 y v0.5;
 - comprobar después si monta `pmOS_root` desde `sdhc_2`, si simpledrm conserva
   el framebuffer y si aparece USB NCM/SSH;
-- si vuelve a fallar, recuperar inmediatamente `/proc/last_kmsg` y pstore. El
-  siguiente aislamiento será deshabilitar USB2 y Goodix sin tocar SD/UART;
+- si vuelve a fallar, regresar a TWRP y leer `/proc/last_kmsg`: v0.6 escribe
+  printk en el ring `LOGM` que entiende el recovery Samsung;
 - si arranca, priorizar red estable y después DRM/DSI nativo para el panel
   dual-DSI, táctil y Turnip.
 
@@ -276,6 +277,28 @@ lado del workspace.
   Headers, AVB, appended DTB, reservas, tamaños, CRC, manifiestos y reproducción
   byte a byte pasaron. Se copió a `/sdcard/` y se verificó allí el mismo hash;
   no se flasheó.
+- El arranque v0.5 volvió a mostrar Linux y terminó con el mismo fatal NoC.
+  TWRP confirmó `restart_reason = 0x5023a01` y
+  `TZBSP_ERR_FATAL_NOC_ERROR`; por tanto los carveouts quedan conservados por
+  corrección, pero no eran el desencadenante inmediato del reset.
+- El vídeo `20260718_033322.mp4` permite leer el final de `initcall_debug`.
+  A `26.772 s` regresan correctamente `7400000.interconnect` y
+  `7430000.interconnect`; el siguiente proveedor según `sm8550.dtsi` es
+  `lpass_ag_noc@7e40000`, pero nunca aparece su retorno antes del apagado.
+- v0.6 deshabilita sólo `lpass_ag_noc`, innecesario para SD/pantalla/SSH. Los
+  otros dos NOC LPASS permanecen activos porque la evidencia demuestra que sus
+  probes terminan. Se añade además una consola built-in que escribe el printk
+  en el ring Samsung `sec_log_buf` con cabecera `LOGM`, legible por el siguiente
+  TWRP mediante `/proc/last_kmsg`.
+- Se reconstruyeron el APK `linux-samsung-gts9uwifi-mainline-7.2_rc3-r4`,
+  módulos, initramfs y rootfs. Release y vermagic son `7.2.0-rc3`; el payload
+  empaquetado contiene la consola persistente y el DTB instalado marca
+  `7e40000` como `disabled`.
+- Artefactos v0.6 reproducidos byte a byte: imagen SD comprimida SHA-256
+  `6250db18ed8afaad2afd8d98dad376305fccefa0518be806c3cf08af0791939e`
+  y ZIP TWRP SHA-256
+  `0890bbe1160aa5b03d40963209ae2a5193d7857531ee2518f0adbaf522d31a9a`.
+  El ZIP se copió a `/sdcard/` y se verificó allí; no se flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -337,6 +360,12 @@ lado del workspace.
 - No omitir los carveouts Samsung al usar appended-DTB. El `sm8550.dtsi` base
   cubre las reservas Qualcomm comunes, pero no las reservas específicas que
   normalmente aporta el overlay X910; v0.5 las incorpora explícitamente.
+- No asumir que esos carveouts resolvían el reset: v0.5 reproduce el mismo
+  fatal NoC que v0.4. La evidencia nueva del vídeo sitúa el corte durante el
+  probe de los interconnects LPASS, inmediatamente antes de `7e40000`.
+- No esperar que pstore v0.4/v0.5 aparezca automáticamente en TWRP: recovery
+  arranca con su propio DT y no registra el backend ramoops mainline. v0.6 usa
+  en su lugar el formato `sec_log_buf` nativo que el recovery sí entiende.
 
 ## Referencias locales
 

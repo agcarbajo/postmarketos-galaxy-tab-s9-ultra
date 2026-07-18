@@ -37,6 +37,7 @@ for symbol in \
 	CONFIG_USB_CONFIGFS_NCM \
 	CONFIG_SERIAL_QCOM_GENI \
 	CONFIG_TOUCHSCREEN_GOODIX_BERLIN_CORE \
+	CONFIG_SAMSUNG_GTS9UWIFI_SEC_LOG \
 	CONFIG_PSTORE \
 	CONFIG_PSTORE_RAM; do
 	grep -qx "$symbol=y" "$package_config" || {
@@ -112,13 +113,19 @@ check_reserved 'sec-xbl-ramdump@a7d00000' '0 a7d00000 0 300000'
 check_reserved 'llcc-lpi@ff800000' '0 ff800000 0 600000'
 check_reserved 'sec-debug-pool@880100000' '8 80100000 0 ff000'
 check_reserved 'sec-reset-info@8801ff000' '8 801ff000 0 1000'
-check_reserved 'ramoops@880200000' '8 80200000 0 200000'
+check_reserved 'sec-log@880200000' '8 80200000 0 200000'
 check_reserved 'sec-debug-bl@880400000' '8 80400000 0 500000'
 check_reserved 'sec-pmsg@880900000' '8 80900000 0 200000'
 check_reserved 'google-debug-kinfo@880b00000' '8 80b00000 0 1000'
 check_reserved 'hdm@880b01000' '8 80b01000 0 1000'
 check_reserved 'sec-qcom-rdx@880c00000' '8 80c00000 0 ad00000'
 check_reserved 'hwfence-shbuf-region@e6440000' '0 e6440000 0 2dd000'
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" /sec-kernel-log compatible)" = \
+	'samsung,gts9uwifi-sec-kernel-log'
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" \
+	/soc@0/interconnect@7e40000 status 2>/dev/null || \
+	fdtget -t s "$tmp/vendor_boot/dtb" /soc/interconnect@7e40000 status)" = \
+	'disabled'
 
 grep -q '^page size: 0x00001000$' "$tmp/vendor_boot.info"
 grep -q '^kernel load address: 0x80008000$' "$tmp/vendor_boot.info"

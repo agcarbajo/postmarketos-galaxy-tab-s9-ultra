@@ -44,7 +44,10 @@ CONFIG_INPUT_TOUCHSCREEN=y
 CONFIG_TOUCHSCREEN_GOODIX_BERLIN_CORE=y
 CONFIG_TOUCHSCREEN_GOODIX_BERLIN_I2C=y
 
-# Persist the early console across a warm reset in Samsung's log carveout.
+# Persist the early console across a warm reset.  The board-specific LOGM
+# console is readable by Samsung recovery through /proc/last_kmsg; retain the
+# generic pstore core for later backends as well.
+CONFIG_SAMSUNG_GTS9UWIFI_SEC_LOG=y
 CONFIG_PSTORE=y
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y

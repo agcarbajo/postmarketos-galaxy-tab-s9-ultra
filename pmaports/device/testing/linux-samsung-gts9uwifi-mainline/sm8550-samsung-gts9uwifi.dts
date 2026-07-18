@@ -115,13 +115,9 @@
 			no-map;
 		};
 
-		/* Reuse Samsung's 2 MiB sec_log_buf carveout for warm-reset logs. */
-		ramoops@880200000 {
-			compatible = "ramoops";
+		/* Shared with Samsung bootloader and recovery for /proc/last_kmsg. */
+		sec_log_buf_mem: sec-log@880200000 {
 			reg = <0x8 0x80200000 0x0 0x200000>;
-			record-size = <0x80000>;
-			console-size = <0x100000>;
-			pmsg-size = <0x80000>;
 		};
 
 		sec_debug_bl_mem: sec-debug-bl@880400000 {
@@ -149,11 +145,26 @@
 			no-map;
 		};
 	};
+
+	sec-kernel-log {
+		compatible = "samsung,gts9uwifi-sec-kernel-log";
+		memory-region = <&sec_log_buf_mem>;
+	};
 };
 
 /* The X910 firmware reserves a slightly larger HW-fence window than MTP. */
 &hwfence_shbuf {
 	reg = <0x0 0xe6440000 0x0 0x2dd000>;
+};
+
+/*
+ * The v0.5 video ends after the two preceding LPASS NOC providers probe and
+ * before this provider can return.  Audio is out of scope for milestone 1;
+ * keep the unsafe access quiescent until its board-specific power sequence is
+ * understood.
+ */
+&lpass_ag_noc {
+	status = "disabled";
 };
 
 &apps_rsc {

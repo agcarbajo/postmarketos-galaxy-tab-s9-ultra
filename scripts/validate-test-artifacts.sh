@@ -3,8 +3,8 @@ set -euo pipefail
 
 project="${PROJECT_MNT:-/mnt/c/Users/agcar/Desktop/Aplicaciones/Custom Roms/GALAXY TAB S9 ULTRA/Ubuntu Touch/PostmarketOS}"
 artifact_dir="$project/artifacts"
-sd_name='postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst'
-metadata='mainline-v0.5-build-info.txt'
+sd_name='postmarketos-edge-xfce-mainline-v0.6-sm-x910-sd.img.zst'
+metadata='mainline-v0.6-build-info.txt'
 
 python3 "$project/scripts/validate-test-artifacts.py" "$artifact_dir"
 zstd -t "$artifact_dir/$sd_name"

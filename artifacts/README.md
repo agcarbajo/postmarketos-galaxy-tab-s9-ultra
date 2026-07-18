@@ -22,7 +22,7 @@ publicado debe figurar aquí con su propósito, validación y SHA-256.
 Este ZIP es una red de seguridad; no debe flashearse salvo para volver desde
 una futura prueba mainline a Ubuntu Touch.
 
-## Bundle experimental mainline v0.5
+## Bundle experimental mainline v0.6
 
 El ZIP v0 anterior, SHA-256 `7af75c71...`, está obsoleto: falla al tratar como
 escribible el `vbmeta` RO de este TWRP. No debe volver a flashearse.
@@ -44,21 +44,25 @@ mostrar Linux, pero después TrustZone reinició el SoC con un fatal NoC. Le
 faltaban los carveouts que la DTBO Samsung aporta normalmente. Está obsoleto y
 no debe volver a flashearse.
 
-`postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`
+El ZIP v0.5, SHA-256 `1ae10d4e...`, añadió esos carveouts pero reprodujo el
+mismo fatal NoC. El vídeo sitúa el último probe completado justo antes de
+`lpass_ag_noc@7e40000`. Está obsoleto y no debe volver a flashearse.
+
+`postmarketos-edge-xfce-mainline-v0.6-sm-x910-sd.img.zst`
 
 - SHA-256:
-  `592deff221c271b03a6830d2b7dc89497e327151951ceac043f4ebadb8c0b237`.
-- Tamaño comprimido: 474.829.040 bytes.
+  `6250db18ed8afaad2afd8d98dad376305fccefa0518be806c3cf08af0791939e`.
+- Tamaño comprimido: 472.948.641 bytes.
 - Al descomprimir: imagen raw GPT de 4.634.705.920 bytes, SHA-256
-  `103fe9980b7322b2fe2878bd6cf191cabe7152f4d31561623be1a9f0b36ef3b4`.
+  `62704236c7faa4b819a19751eefb32dfdafbf6151ce834738ac5a4d3d191a759`.
 - Contiene `pmOS_boot` ext2 y `pmOS_root` ext4 con edge, systemd, XFCE,
-  NetworkManager, OpenSSH y usuario `phablet`.
+  NetworkManager, OpenSSH, usuario `phablet` y kernel/módulos r4.
 
-`postmarketos-edge-xfce-mainline-v0.5-sm-x910-twrp.zip`
+`postmarketos-edge-xfce-mainline-v0.6-sm-x910-twrp.zip`
 
 - SHA-256:
-  `1ae10d4effba444a3d970e9c6a68bd11f9304692a7bffcf309633b9063388314`.
-- Tamaño: 21.885.945 bytes.
+  `0890bbe1160aa5b03d40963209ae2a5193d7857531ee2518f0adbaf522d31a9a`.
+- Tamaño: 21.883.967 bytes.
 - Escribe `boot`, `init_boot`, `vendor_boot` y `dtbo`. Escribe `vbmeta` sólo
   si es RW; si es RO exige AVB flags 2 y lo conserva. Valida todo esto antes de
   escribir la primera partición.
@@ -67,7 +71,7 @@ no debe volver a flashearse.
   `qcom,kalama-mtp`, los IDs SM8550/kalama exactos y `board-id 0x10008/3` que
   Samsung ABL usa para seleccionar el DTB. Está compilado con `-@`, contiene
   474 símbolos y puede actuar como base del overlay ufdt de ABL.
-- En v0.5 ese DTB se concatena también tras el miembro `Image.gz` dentro de
+- En v0.6 ese DTB se concatena también tras el miembro `Image.gz` dentro de
   `boot.img`. `dtbo.img` empieza por cuatro bytes cero en vez de la magia
   Android DT table, forzando a ABL a usar su ruta de DTB appended sin ufdt.
   La imagen mantiene footer AVB válido y los 16 MiB exactos de la partición.
@@ -75,11 +79,15 @@ no debe volver a flashearse.
   `sec_xbl`, LLCC, HW-fence X910 y las reservas altas de bootloader/depuración
   segura. El validador compara individualmente sus 15 rangos contra los
   valores extraídos del FDT vivo.
+- `lpass_ag_noc@7e40000` queda deshabilitado para aislar el fatal observado al
+  final del vídeo v0.5. El kernel incluye una consola `LOGM` sobre
+  `sec_log_buf`, de modo que un nuevo fallo temprano debería quedar legible en
+  `/proc/last_kmsg` desde TWRP.
 
 Validación local: headers Android v4, offsets, prefijo gzip y sufijo FDT de
 `boot` comparados byte a byte, DTB/selectores ABL/`__symbols__`, magia DTBO
 nula deliberada, AVB, tamaños y comparaciones correctos; CRC/modos/hashes del
 ZIP y stream zstd correctos. v0.4 sí confirmó ejecución del kernel y
-simpledrm, pero v0.5 aún requiere prueba física. Se debe realizar siguiendo
+simpledrm, pero v0.6 aún requiere prueba física. Se debe realizar siguiendo
 `../docs/testing-mainline-v0.md`, con una microSD sacrificable y el ZIP de
 restauración a mano.

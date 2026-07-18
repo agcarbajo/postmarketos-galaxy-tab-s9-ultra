@@ -379,3 +379,54 @@ física.
   Pasó AVB, headers v4, offsets, appended-DTB, carveouts, tamaños, CRC, modos,
   manifests y zstd; una segunda generación fue idéntica byte a byte. Se copió
   a `/sdcard/` y se verificó el mismo hash en TWRP. El asistente no lo flasheó.
+
+## 2026-07-18 — sesión 9: vídeo v0.5, LPASS AG NOC y bundle v0.6
+
+- La usuaria probó v0.5 y grabó `C:/Users/agcar/Downloads/20260718_033322.mp4`.
+  Linux volvió a mostrar verbose/logo y reinició. Desde TWRP se recogieron
+  `work/v05-linux-crash-20260718/last_kmsg`, dmesg, iomem y pstore. El reset es
+  de nuevo `TZBSP_ERR_FATAL_NOC_ERROR`, ahora con
+  `restart_reason = 0x5023a01`; pstore continúa vacío. Los carveouts v0.5 se
+  mantienen por corrección, pero no eran el desencadenante inmediato.
+- Se extrajeron fotogramas a 2 fps y capturas originales de los últimos
+  segundos. El último frame legible antes de apagarse muestra a `26.772 s` el
+  retorno correcto de `7400000.interconnect` y `7430000.interconnect`.
+  Según el orden de `sm8550.dtsi`, el siguiente proveedor es
+  `lpass_ag_noc: interconnect@7e40000`; no aparece su línea de retorno.
+- La hipótesis v0.6 deshabilita únicamente `lpass_ag_noc`. Audio no es necesario
+  para el primer rootfs/SSH y los otros dos NOC LPASS quedan activos porque el
+  vídeo demuestra que sus probes terminan. Si v0.6 avanza, habrá que reconstruir
+  la secuencia de alimentación específica X910 antes de reactivarlo.
+- TWRP no expone el ramoops mainline porque recovery arranca con otro DTB y no
+  registra ese backend. Se estudió el driver downstream `sec_log_buf`: usa una
+  cabecera de 16 bytes (`boot_cnt`, magia `0x4d474f4c`/`LOGM`, `idx`,
+  `prev_idx`) y un ring que recovery presenta como `/proc/last_kmsg`.
+- Se añadió un driver built-in mínimo
+  `SAMSUNG_GTS9UWIFI_SEC_LOG`: mapea el carveout real `0x880200000/2 MiB`,
+  inicializa la cabecera compatible, registra una consola con
+  `CON_PRINTBUFFER` y conserva el índice circular. El DTB sustituye el backend
+  ramoops por `sec-log@880200000` y el nodo `sec-kernel-log`. Así, un próximo
+  fatal temprano debería dejar printk recuperable desde TWRP.
+- La build directa compiló el nuevo objeto y confirmó la opción, el texto del
+  driver y `status = "disabled"` en `7e40000`. Después se reconstruyó mediante
+  pmbootstrap el APK completo `linux-samsung-gts9uwifi-mainline-7.2_rc3-r4`,
+  la rootfs y los initramfs, evitando mezclar el kernel directo con módulos
+  anteriores. Kernel release y vermagic son `7.2.0-rc3`.
+- Payload gzip empaquetado: SHA-256
+  `34d1de801785b7bdab795f596ccebfd393557d3cd991af97307e40303c25f0a8`.
+  DTB empaquetado: SHA-256
+  `61b0bc560ad8f62f2aa06cb48bfe20cfdeff62678b8e43655b3434c268528081`.
+  Initramfs: 2.134.007 bytes; `initramfs-extra`: 13.014.904 bytes.
+- Imagen SD v0.6:
+  `postmarketos-edge-xfce-mainline-v0.6-sm-x910-sd.img.zst`, 472.948.641
+  bytes, SHA-256
+  `6250db18ed8afaad2afd8d98dad376305fccefa0518be806c3cf08af0791939e`.
+  Descomprimida mide 4.634.705.920 bytes y tiene SHA-256
+  `62704236c7faa4b819a19751eefb32dfdafbf6151ce834738ac5a4d3d191a759`.
+- ZIP TWRP v0.6:
+  `postmarketos-edge-xfce-mainline-v0.6-sm-x910-twrp.zip`, 21.883.967 bytes,
+  SHA-256
+  `0890bbe1160aa5b03d40963209ae2a5193d7857531ee2518f0adbaf522d31a9a`.
+  Bundle, AVB, DTB/status, consola persistente, tamaños, CRC, manifests y zstd
+  pasaron. ZIP e imagen SD se reprodujeron byte a byte. El ZIP se copió y
+  verificó en `/sdcard`; el asistente no flasheó nada.

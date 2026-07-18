@@ -90,7 +90,7 @@ def main() -> None:
         )
         zf.writestr(
             zip_info("BUNDLE-LABEL"),
-            "postmarketOS mainline v0.5 for SM-X910 (Samsung carveouts)\n",
+            "postmarketOS mainline v0.6 for SM-X910 (LPASS AG isolation)\n",
         )
         zf.writestr(zip_info("SHA256SUMS"), manifest)
 
