@@ -293,3 +293,43 @@ física.
   Pasó todas las validaciones, se reprodujo byte a byte, se copió a
   `/sdcard/` y se verificó allí. La tablet permanece en TWRP; el asistente no
   lo ha flasheado.
+
+## 2026-07-18 — sesión 7: ufdt v0.3 descartado y fallback appended-DTB v0.4
+
+- Tras flashear v0.3, la tablet volvió a Odin. Desde TWRP se capturó
+  `work/mainline-v03-last-kmsg-20260718.txt`, de 4.238.058 bytes. `pstore`
+  sigue vacío.
+- La secuencia es indistinguible de v0.2: ABL descomprime el kernel, selecciona
+  correctamente el DTB, tarda unos 10,6 ms y devuelve `ApplyOverlay: ufdt
+  apply overlay failed`, `Root Node is not found at BoardDtb`, `Invalid device
+  tree header` y `Launching odin`. Los 474 símbolos de v0.3 no cambian el
+  comportamiento del fork Samsung; esa hipótesis queda descartada.
+- Se recuperó como referencia el flujo Qualcomm ABL/Tianocore del commit
+  `2a0c8e9714930333c059b820b857f925d4d3a3dd`. `BootLinux.c` llama a
+  `LoadAndValidateDtboImg`: si la magia/tabla DTBO no es válida, omite
+  `GetBoardDtb` y `ufdt_apply_overlay` y llama a `DeviceTreeAppended` sobre el
+  contenido situado después del gzip. `Decompress.c` devuelve precisamente la
+  posición final del miembro gzip como `DtbOffset`.
+- Se elige ese fallback en vez de inventar IDs PMIC para forzar un supuesto
+  exact-match o seguir alterando un overlay que las implementaciones estándar
+  sí aceptan pero Samsung rechaza.
+- El generador admite ahora `APPEND_DTB_TO_KERNEL=1`: conserva sin cambios el
+  `Image.gz` del package y concatena el DTB raw inmediatamente después. El
+  validador separa ambas regiones y las compara byte a byte con sus fuentes.
+- `DISABLE_RUNTIME_DTBO=1` genera una imagen con prefijo cero, no una Android
+  DT table. Después añade un footer hash AVB correcto y la expande a los
+  16.777.216 bytes exactos. El validador exige la magia nula y sigue ejecutando
+  `avbtool verify_image`. TWRP lleva recovery DTB/DTBO propios; el rollback
+  restaura la DTBO stock si fuese necesario.
+- Hashes de las imágenes modificadas: `boot.img`
+  `342a2dc8e78267b1463d59fb8f889c456ea47bba899d7c314c9cb18a921aaa64`;
+  `dtbo.img`
+  `c17418be08365c03a5ce3a220af734b14ec2e6b03c0cbc1ed9721be6f21d3ef3`.
+  `vendor_boot`, initramfs, vbmeta, kernel ejecutable y SD no cambian.
+- ZIP v0.4:
+  `postmarketos-edge-xfce-mainline-v0.4-sm-x910-twrp.zip`, 21.884.702 bytes,
+  SHA-256
+  `2083daf1ad515b32634a8f5686adc4972064ff8fd03153da0e6654d49f97a679`.
+  Pasó headers, AVB, tamaños, comparaciones, CRC, manifests y zstd; se reprodujo
+  byte a byte, se copió a `/sdcard/` y se verificó allí. La tablet sigue en
+  TWRP y el asistente no lo ha flasheado.

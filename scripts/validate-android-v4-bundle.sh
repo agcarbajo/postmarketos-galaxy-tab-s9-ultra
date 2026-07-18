@@ -13,6 +13,8 @@ tools_root="$base/pmbootstrap-work/chroot_rootfs_samsung-gts9uwifi/usr"
 unpack="${UNPACK_BOOTIMG:-$tools_root/bin/unpack_bootimg}"
 avbtool="${AVBTOOL:-$tools_root/bin/avbtool}"
 tmp=$(mktemp -d "$base/build/validate-bundle.XXXXXX")
+append_dtb="${APPEND_DTB_TO_KERNEL:-0}"
+disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-0}"
 
 cleanup() {
 	case "$tmp" in
@@ -69,7 +71,15 @@ for image in boot init_boot vendor_boot; do
 	grep -q 'header version: 4' "$tmp/$image.info"
 done
 
-cmp "$tmp/boot/kernel" "$tmp/package-Image.gz"
+if [ "$append_dtb" = 1 ]; then
+	package_size=$(stat -c %s "$tmp/package-Image.gz")
+	dtb_size=$(stat -c %s "$package_dtb")
+	test "$(stat -c %s "$tmp/boot/kernel")" -eq "$((package_size + dtb_size))"
+	cmp <(head -c "$package_size" "$tmp/boot/kernel") "$tmp/package-Image.gz"
+	cmp <(tail -c "$dtb_size" "$tmp/boot/kernel") "$package_dtb"
+else
+	cmp "$tmp/boot/kernel" "$tmp/package-Image.gz"
+fi
 test ! -s "$tmp/boot/ramdisk"
 test ! -s "$tmp/init_boot/kernel"
 cmp "$tmp/init_boot/ramdisk" "$rootfs_export/initramfs"
@@ -103,12 +113,16 @@ python3 "$avbtool" info_image --image "$bundle/vbmeta.img" > "$tmp/vbmeta.avb"
 grep -q '^Flags:                    2$' "$tmp/vbmeta.avb"
 grep -q '^Algorithm:                NONE$' "$tmp/vbmeta.avb"
 
-python3 "$project/scripts/inspect-android-dtbo.py" "$bundle/dtbo.img" \
-	> "$tmp/dtbo.txt"
-grep -q '^total=.* entries=2 .* page=4096 version=0$' "$tmp/dtbo.txt"
-grep -q "qcom,board-id = <0x10008 0x0>" "$tmp/dtbo.txt"
-grep -q "qcom,board-id = <0x10008 0x3>" "$tmp/dtbo.txt"
-grep -q 'dtbo-hw_rev_end = <0x20>' "$tmp/dtbo.txt"
+if [ "$disable_runtime_dtbo" = 1 ]; then
+	test "$(od -An -N4 -tx1 "$bundle/dtbo.img" | tr -d ' \n')" = '00000000'
+else
+	python3 "$project/scripts/inspect-android-dtbo.py" "$bundle/dtbo.img" \
+		> "$tmp/dtbo.txt"
+	grep -q '^total=.* entries=2 .* page=4096 version=0$' "$tmp/dtbo.txt"
+	grep -q "qcom,board-id = <0x10008 0x0>" "$tmp/dtbo.txt"
+	grep -q "qcom,board-id = <0x10008 0x3>" "$tmp/dtbo.txt"
+	grep -q 'dtbo-hw_rev_end = <0x20>' "$tmp/dtbo.txt"
+fi
 
 echo 'Android v4 bundle validated byte-for-byte.'
 cat "$bundle/SHA256SUMS"

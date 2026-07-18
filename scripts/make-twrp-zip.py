@@ -90,7 +90,7 @@ def main() -> None:
         )
         zf.writestr(
             zip_info("BUNDLE-LABEL"),
-            "postmarketOS mainline v0.3 for SM-X910 (overlay symbols enabled)\n",
+            "postmarketOS mainline v0.4 for SM-X910 (appended DTB fallback)\n",
         )
         zf.writestr(zip_info("SHA256SUMS"), manifest)
 

@@ -8,9 +8,9 @@ rootfs_export="$base/out/rootfs-gts9uwifi"
 rootfs=$(readlink -f "$rootfs_export/samsung-gts9uwifi.img")
 artifact_dir="$project/artifacts"
 sd_name='postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst'
-zip_name='postmarketos-edge-xfce-mainline-v0.3-sm-x910-twrp.zip'
-manifest='SHA256SUMS-mainline-v0.3.txt'
-metadata='mainline-v0.3-build-info.txt'
+zip_name='postmarketos-edge-xfce-mainline-v0.4-sm-x910-twrp.zip'
+manifest='SHA256SUMS-mainline-v0.4.txt'
+metadata='mainline-v0.4-build-info.txt'
 
 test -s "$rootfs"
 test -d "$bundle"

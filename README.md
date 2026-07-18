@@ -53,7 +53,7 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ Linux 7.2-rc3 compilado y empaquetado; kernel/DTB y símbolos tempranos validados |
-| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos; v0.3 añade selectores ABL y símbolos para overlays |
+| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos; v0.4 lo adjunta al kernel y evita ufdt |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
 | Paquetes pmaports | ✅ Device y kernel APK construidos; rootfs usa el mismo kernel empaquetado |
 | Rootfs postmarketOS | ✅ Imagen GPT ext2/ext4 construida y validada estáticamente |
@@ -61,14 +61,14 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 v0.2 superó la selección del DTB pero falló en ufdt; v0.3 corregida, validada y copiada a la tablet |
+| Imagen/paquete de prueba | 🟡 v0.3 confirmó que ufdt Samsung sigue fallando con símbolos; v0.4 usa el fallback appended-DTB y está en la tablet |
 
 ## Reto en curso
 
-Realizar el tercer arranque físico controlado de mainline v0.3:
+Realizar el cuarto arranque físico controlado de mainline v0.4:
 
 - escribir la imagen ya generada en una microSD sacrificable de 8 GB o más;
-- flashear manualmente desde TWRP el ZIP v0.3: escribe cuatro particiones boot
+- flashear manualmente desde TWRP el ZIP v0.4: escribe cuatro particiones boot
   y conserva `vbmeta` si está RO pero ya tiene AVB flags 2;
 - comprobar primero que ABL ya acepta el DTB y transfiere control a Linux;
 - distinguir después si monta `pmOS_root` desde `sdhc_2`, si
@@ -238,6 +238,19 @@ lado del workspace.
   De nuevo conserva kernel, initramfs, DTBO, vbmeta y rootfs; sólo cambia el DTB
   dentro de `vendor_boot`. Se reprodujo byte a byte, se copió a `/sdcard/` y
   se verificó allí el mismo hash; no se flasheó.
+- El arranque v0.3 volvió a fallar exactamente en `ufdt_apply_overlay`, con
+  los mismos mensajes y unos 10,6 ms que v0.2. Por tanto `/__symbols__` no era
+  suficiente para el fork Samsung. Se deja de iterar sobre el overlay no-op.
+- El flujo Qualcomm ABL de referencia (`BootLinux.c`, commit `2a0c8e97...`)
+  demuestra una segunda ruta: si `dtbo` no es una tabla Android válida, ABL
+  no invoca ufdt y busca un FDT concatenado justo después del miembro gzip del
+  kernel. Esta ruta no necesita adivinar PMIC IDs ni fusionar nodos downstream.
+- Generado el ZIP v0.4, SHA-256
+  `2083daf1ad515b32634a8f5686adc4972064ff8fd03153da0e6654d49f97a679`.
+  `boot` contiene el payload empaquetado original seguido byte a byte por el
+  DTB mainline; `dtbo` conserva tamaño/footer AVB correctos pero empieza por
+  cero para forzar el fallback. `vendor_boot` mantiene otra copia del DTB. El
+  ZIP se reprodujo, se copió a `/sdcard/` y se verificó allí; no se flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -289,6 +302,9 @@ lado del workspace.
   overlay usaba `target-path = "/"` y las herramientas estándar lo aceptaban.
   Todo DTB destinado a `vendor_boot` debe compilarse con `-@` y el validador
   debe exigir `/__symbols__`.
+- No seguir modificando el no-op para el fork ufdt Samsung: v0.2 sin símbolos
+  y v0.3 con 474 símbolos fallaron en el mismo punto. v0.4 evita por completo
+  esa ruta mediante el fallback appended-DTB documentado en ABL.
 
 ## Referencias locales
 

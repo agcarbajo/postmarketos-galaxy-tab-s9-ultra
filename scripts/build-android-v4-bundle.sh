@@ -45,6 +45,8 @@ dtb="${KERNEL_DTB:-$rootfs_chroot/boot/sm8550-samsung-gts9uwifi.dtb}"
 cmdline_file="$project/configs/vendor_boot/cmdline.txt"
 bootconfig="$project/configs/vendor_boot/bootconfig.txt"
 dtbo_configs="$project/configs/dtbo"
+append_dtb="${APPEND_DTB_TO_KERNEL:-0}"
+disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-0}"
 
 for file in "$mkbootimg" "$mkdtimg" "$avbtool" "$dtb" "$package_zboot" \
 	"$package_config" "$initramfs" "$cmdline_file" "$bootconfig"; do
@@ -84,10 +86,17 @@ fi
 
 cmdline=$(tr '\n' ' ' < "$cmdline_file" | sed 's/[[:space:]]*$//')
 
-# Android boot header v4: kernel only.  X910 ABL obtains the generic ramdisk
-# from init_boot and the DTB/vendor cmdline from vendor_boot.
+boot_kernel="$image"
+if [ "$append_dtb" = 1 ]; then
+	boot_kernel="$tmp/Image.gz-dtb"
+	cat "$image" "$dtb" > "$boot_kernel"
+fi
+
+# Android boot header v4: kernel (plus optional raw appended DTB) only.  X910
+# ABL obtains the generic ramdisk from init_boot and vendor cmdline from
+# vendor_boot.
 python3 "$mkbootimg" \
-	--kernel "$image" \
+	--kernel "$boot_kernel" \
 	--cmdline '' \
 	--header_version 4 \
 	--os_version 13 \
@@ -125,12 +134,20 @@ python3 "$mkbootimg" \
 	--vendor_bootconfig "$bootconfig"
 add_hash_footer "$linux_out/vendor_boot.img" vendor_boot "$vendor_boot_size"
 
-dtc -@ -I dts -O dtb \
-	-o "$tmp/board00.dtbo" "$dtbo_configs/gts9uwifi-board00-noop.dts"
-dtc -@ -I dts -O dtb \
-	-o "$tmp/board03.dtbo" "$dtbo_configs/gts9uwifi-board03-noop.dts"
-python3 "$mkdtimg" create "$linux_out/dtbo.img" \
-	--page_size=4096 "$tmp/board00.dtbo" "$tmp/board03.dtbo"
+if [ "$disable_runtime_dtbo" = 1 ]; then
+	# Qualcomm ABL falls back to an appended kernel DTB when the dtbo partition
+	# is not an Android DT table.  The zero prefix is deliberate; AVB still
+	# authenticates the full partition-sized image below.
+	rm -f "$linux_out/dtbo.img"
+	truncate -s 4096 "$linux_out/dtbo.img"
+else
+	dtc -@ -I dts -O dtb \
+		-o "$tmp/board00.dtbo" "$dtbo_configs/gts9uwifi-board00-noop.dts"
+	dtc -@ -I dts -O dtb \
+		-o "$tmp/board03.dtbo" "$dtbo_configs/gts9uwifi-board03-noop.dts"
+	python3 "$mkdtimg" create "$linux_out/dtbo.img" \
+		--page_size=4096 "$tmp/board00.dtbo" "$tmp/board03.dtbo"
+fi
 add_hash_footer "$linux_out/dtbo.img" dtbo "$dtbo_size"
 
 python3 "$avbtool" make_vbmeta_image \
@@ -162,8 +179,11 @@ done
 	printf 'kernel_release=%s\n' "$(cat "$rootfs_chroot/usr/share/kernel/samsung-gts9uwifi-mainline/kernel.release")"
 	printf 'kernel_zboot_sha256=%s\n' "$(sha256sum "$package_zboot" | cut -d' ' -f1)"
 	printf 'kernel_payload_sha256=%s\n' "$(sha256sum "$image" | cut -d' ' -f1)"
+	printf 'boot_kernel_sha256=%s\n' "$(sha256sum "$boot_kernel" | cut -d' ' -f1)"
 	printf 'kernel_config_sha256=%s\n' "$(sha256sum "$package_config" | cut -d' ' -f1)"
 	printf 'kernel_dtb_sha256=%s\n' "$(sha256sum "$dtb" | cut -d' ' -f1)"
+	printf 'append_dtb_to_kernel=%s\n' "$append_dtb"
+	printf 'disable_runtime_dtbo=%s\n' "$disable_runtime_dtbo"
 	printf 'initramfs_sha256=%s\n' "$(sha256sum "$initramfs" | cut -d' ' -f1)"
 } > "$linux_out/BUILD-METADATA.txt"
 
