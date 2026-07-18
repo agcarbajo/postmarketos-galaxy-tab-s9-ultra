@@ -576,3 +576,45 @@ física.
   `/pmOS_init.log` y lo copie a `pmOS_boot` cuando la SD sea visible. La primera
   decisión será si `sdhc_2` no enumera o si el fallo ocurre después de montar
   boot/root; no se tocará hardware sin esa evidencia.
+
+## 2026-07-18 — sesión 13: panic transcrito, microSD validada y bundle v0.11
+
+- La foto fija `codex-clipboard-833caf54-71b2-45e3-aea4-305fa3c40946.webp`
+  permitió ampliar el final completo. Corrige la hipótesis de la sesión 12:
+  v0.10 no llega a `fail_halt_boot()` ni ejecuta `/init`; es un panic real del
+  kernel al no poder desempaquetar el initramfs.
+- La secuencia exacta visible es `Initramfs unpacking failed: invalid magic at
+  start of compressed archive`, `Waiting for root device...`,
+  `/dev/root: Can't open blockdev`, `VFS: Cannot open root device "(null)" or
+  unknown-block(0,0): error -6` y la petición de una opción `root=`. Sin
+  initramfs ejecutable y sin `root=` deliberadamente, el panic es consecuencia
+  directa.
+- Antes del fallo, el kernel enumera la tarjeta como `mmcblk1` y lista
+  `mmcblk1p1`/`mmcblk1p2`. Esto valida por primera vez en hardware mainline
+  SDHC2, pinctrl, reguladores, card-detect y el acceso inicial a la microSD.
+- Desde TWRP se verificó que `p1` es ext2 `pmOS_boot`, `p2` es ext4
+  `pmOS_root`, y recovery monta `p1`. `e2fsck -fn` completa las cinco pasadas
+  de boot; el e2fsck antiguo de TWRP no entiende `FEATURE_C12` de root, pero
+  su superbloque figura limpio. No se alteró la tarjeta.
+- Se extrajo el ramdisk real de `init_boot` v0.10: gzip válido de 2.134.007
+  bytes, CPIO válido de 7.168.248 bytes con `/init` y mkinitfs completo. El
+  config empaquetado tiene `CONFIG_BLK_DEV_INITRD=y` y todos los `CONFIG_RD_*`,
+  así que no se trata de un CPIO truncado ni de omitir el descompresor.
+- La comparación con X910XXS5CYG1 muestra que Samsung usa LZ4 legacy, magia
+  `02 21 4c 18`, tanto en `init_boot` (1.747.596 bytes) como en el vendor
+  ramdisk (13.495.656 bytes). v0.10 combinaba vendor LZ4 con generic gzip; ABL
+  entrega esa composición en una forma que mainline rechaza antes de PID 1.
+- `build-android-v4-bundle.sh` recomprime ahora por defecto el mismo CPIO pmOS
+  a LZ4 legacy. `validate-android-v4-bundle.sh` exige la magia stock, verifica
+  LZ4 y compara el stream descomprimido contra el gzip pmOS original. No cambia
+  ningún fichero interno del initramfs.
+- El LZ4 resultante mide 2.410.662 bytes. `init_boot.img` v0.11 tiene SHA-256
+  `bedcad22a49dbf442641dcaf13e3290edd87b221cbca6fb8f47b8f2460c16922`;
+  `boot`, `vendor_boot`, `dtbo` y `vbmeta` son idénticos a v0.10.
+- ZIP v0.11:
+  `postmarketos-edge-xfce-mainline-v0.11-lz4-initramfs-sm-x910-twrp.zip`,
+  21.988.029 bytes, SHA-256
+  `9cdc1bdd4d6be730a3b64fd66c5413794889f6cc1c0fcc25ea1977604a3713f1`.
+  Pasó dos generaciones idénticas, hashes internos, tamaños Android v4, AVB,
+  appended-DTB, reservas TLMM/memoria, CRC y comparación íntegra del CPIO. Se
+  copió a `/sdcard` y el hash remoto coincide; el asistente no lo flasheó.

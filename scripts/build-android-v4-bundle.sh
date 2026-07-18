@@ -47,6 +47,7 @@ bootconfig="$project/configs/vendor_boot/bootconfig.txt"
 dtbo_configs="$project/configs/dtbo"
 append_dtb="${APPEND_DTB_TO_KERNEL:-0}"
 disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-0}"
+generic_ramdisk_format="${GENERIC_RAMDISK_FORMAT:-lz4-legacy}"
 
 for file in "$mkbootimg" "$mkdtimg" "$avbtool" "$dtb" "$package_zboot" \
 	"$package_config" "$initramfs" "$cmdline_file" "$bootconfig"; do
@@ -86,6 +87,27 @@ fi
 
 cmdline=$(tr '\n' ' ' < "$cmdline_file" | sed 's/[[:space:]]*$//')
 
+# Samsung's X910 ABL concatenates the generic init_boot ramdisk with the
+# vendor_boot fragments.  Stock X910XXS5CYG1 uses the legacy LZ4 stream format
+# (magic 02 21 4c 18) for both parts.  Feeding ABL a gzip generic ramdisk is a
+# valid Android v4 image, but the resulting initrd is rejected by Linux before
+# /init with "invalid magic at start of compressed archive".  Recompress the
+# same pmOS CPIO to the stock format; this changes no initramfs contents.
+case "$generic_ramdisk_format" in
+	lz4-legacy)
+		gzip -t "$initramfs"
+		generic_ramdisk="$tmp/initramfs.lz4"
+		gzip -dc "$initramfs" | lz4 -l -12 - "$generic_ramdisk" >/dev/null
+		;;
+	input)
+		generic_ramdisk="$initramfs"
+		;;
+	*)
+		echo "unsupported GENERIC_RAMDISK_FORMAT: $generic_ramdisk_format" >&2
+		exit 1
+		;;
+esac
+
 boot_kernel="$image"
 if [ "$append_dtb" = 1 ]; then
 	boot_kernel="$tmp/Image.gz-dtb"
@@ -105,7 +127,7 @@ python3 "$mkbootimg" \
 add_hash_footer "$linux_out/boot.img" boot "$boot_size"
 
 python3 "$mkbootimg" \
-	--ramdisk "$initramfs" \
+	--ramdisk "$generic_ramdisk" \
 	--header_version 4 \
 	-o "$linux_out/init_boot.img"
 add_hash_footer "$linux_out/init_boot.img" init_boot "$init_boot_size"
@@ -184,7 +206,9 @@ done
 	printf 'kernel_dtb_sha256=%s\n' "$(sha256sum "$dtb" | cut -d' ' -f1)"
 	printf 'append_dtb_to_kernel=%s\n' "$append_dtb"
 	printf 'disable_runtime_dtbo=%s\n' "$disable_runtime_dtbo"
-	printf 'initramfs_sha256=%s\n' "$(sha256sum "$initramfs" | cut -d' ' -f1)"
+	printf 'initramfs_source_sha256=%s\n' "$(sha256sum "$initramfs" | cut -d' ' -f1)"
+	printf 'initramfs_packaging=%s\n' "$generic_ramdisk_format"
+	printf 'initramfs_packaged_sha256=%s\n' "$(sha256sum "$generic_ramdisk" | cut -d' ' -f1)"
 } > "$linux_out/BUILD-METADATA.txt"
 
 install -m 0644 "$linux_out"/*.img "$export_out/"

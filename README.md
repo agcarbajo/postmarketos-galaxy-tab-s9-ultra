@@ -52,38 +52,38 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM; la detención visible probablemente es el bucle de error del initramfs, no un panic demostrado |
+| Kernel mainline SM8550 | ✅ v0.8 supera el fatal NoC/TLMM; v0.10 llega a SDHC2 y hace panic porque ABL entrega un initramfs con formato incompatible |
 | DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
-| Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
+| Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ Baseline APK r4; fuentes r6 incluyen reserva TLMM, traza pre-probe y log persistente tras reinicio manual |
 | Rootfs postmarketOS | ✅ Imagen GPT v0.6 reconstruida con el kernel y módulos r4 |
 | Escritorio | 🟡 XFCE4/LightDM instalados y habilitados; falta primer arranque físico |
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
-| Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
+| Bundle Android v4 | ✅ v0.11 empaqueta initramfs LZ4 legacy como stock; imágenes, AVB, contenido y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 y ZIP v0.10 probados; siguiente iteración será diagnóstica y no requiere reescribir la SD |
+| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.11 copiado/verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Capturar de forma fiable el primer error del initramfs y comprobar la microSD:
+Validar que el initramfs LZ4 v0.11 llega a `/init` y monta la microSD:
 
-- v0.10 no conservó mainline en `/proc/last_kmsg`: tanto el reinicio anterior
-  como la repetición terminan con `XBL(... restored from storage)` y recovery
-  sólo expone el ring antiguo. Se abandona ese canal para errores no fatales;
-- la detención visible no se puede llamar aún kernel panic. El initramfs
-  `postmarketos-mkinitfs 3.12.0-r0` busca `pmOS_boot` por etiqueta durante 30 s
-  y, al fallar, `fail_halt_boot()` exporta logs, abre una shell y duerme para
-  siempre; `panic=10` no actúa sobre ese bucle;
-- la prueba en vivo de la v0.10 no expuso el volumen FAT `PMOS_LOGS`, USB ACM,
-  NCM/RNDIS ni telnet `172.16.42.1`. Windows sólo observó intentos USB con
-  error de descriptor, así que el gadget mainline todavía no es recuperable;
-- obtener una foto fija legible de la detención actual para distinguir el
-  punto exacto. Si no basta, generar una v0.11 diagnóstica que muestre en
-  pantalla un resumen determinista y persista `/pmOS_init.log` en
-  `pmOS_boot` cuando la partición exista;
-- verificar después si `sdhc_2` termina su probe, aparecen `mmcblk*` y las
-  etiquetas `pmOS_boot`/`pmOS_root`; corregir sólo el primer fallo probado;
-- avanzar hasta montar `pmOS_root`, conservar simpledrm y obtener USB NCM/SSH.
+- la foto ampliada de v0.10 demuestra un panic real anterior a userspace:
+  `Initramfs unpacking failed: invalid magic at start of compressed archive`,
+  seguido de `VFS: Cannot open root device "(null)"`;
+- antes del panic mainline enumera `mmcblk1` y sus particiones `p1`/`p2`. La
+  controladora, GPIO de detección, rails, pinctrl y tarjeta quedan validados;
+- el CPIO pmOS de v0.10 es un gzip íntegro y el kernel tiene `CONFIG_RD_GZIP`,
+  pero el firmware stock X910XXS5CYG1 usa LZ4 legacy para los ramdisks de
+  `init_boot` y `vendor_boot`. La concatenación producida por Samsung ABL no
+  acepta nuestra combinación vendor-LZ4 + generic-gzip;
+- v0.11 conserva byte a byte el CPIO y sólo recomprime el ramdisk genérico a
+  LZ4 legacy, con la misma magia `02 21 4c 18` que stock. No modifica kernel,
+  DTB, `vendor_boot`, `boot`, `dtbo`, módulos ni la SD v0.6;
+- flashear manualmente el ZIP v0.11 ya copiado a `/sdcard` y arrancar. El
+  resultado esperado es ejecutar `/init`, localizar `pmOS_boot`, extraer
+  `initramfs-extra` y montar `pmOS_root`;
+- si se detiene, fotografiar sólo las últimas líneas; si arranca más lejos,
+  comprobar inmediatamente USB NCM/ACM, LightDM y SSH.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -381,6 +381,28 @@ lado del workspace.
   más de 80 s. No aparecieron almacenamiento masivo, ACM ni red USB; sí dos
   instancias de dispositivo USB desconocido por fallo al solicitar descriptor.
   Esto confirma actividad física parcial del enlace, pero no un gadget usable.
+- La foto fija de v0.10 hizo legible el diagnóstico que faltaba: Linux imprime
+  `Initramfs unpacking failed: invalid magic at start of compressed archive`,
+  espera root, lista `mmcblk1`, `mmcblk1p1` y `mmcblk1p2`, y finalmente hace
+  panic por `unknown-block(0,0)`. No llegó a ejecutar `/init`; la hipótesis del
+  bucle de `fail_halt_boot()` queda descartada para esta versión.
+- TWRP confirma que la misma SD tiene `pmOS_boot` ext2 y `pmOS_root` ext4;
+  puede montar `p1`, y un `e2fsck -n` recorre sus cinco pasadas. El fallo no es
+  ausencia de tarjeta ni de particiones.
+- El ramdisk genérico v0.10 es un gzip válido de 2.134.007 bytes que expande a
+  un CPIO válido de 7.168.248 bytes. El kernel tiene todos los descompresores
+  `CONFIG_RD_*`, pero stock empaqueta ambos ramdisks Android v4 con LZ4 legacy.
+- El generador usa ahora LZ4 legacy por defecto para `init_boot`; el validador
+  exige la magia stock, prueba ambos streams y compara el CPIO descomprimido
+  con el initramfs pmOS original.
+- ZIP v0.11 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.11-lz4-initramfs-sm-x910-twrp.zip`,
+  21.988.029 bytes, SHA-256
+  `9cdc1bdd4d6be730a3b64fd66c5413794889f6cc1c0fcc25ea1977604a3713f1`.
+  Sólo cambia `init_boot.img` (SHA-256
+  `bedcad22a49dbf442641dcaf13e3290edd87b221cbca6fb8f47b8f2460c16922`);
+  se validó, reprodujo, copió a `/sdcard` y verificó allí. El asistente no lo
+  flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -459,13 +481,16 @@ lado del workspace.
   recovery previo. v0.9 mantiene ese índice sincronizado desde mainline.
 - No dejar TWRP esperando antes de extraer el log: su kernel downstream es muy
   verboso y llena los 2 MiB en aproximadamente 17 minutos.
-- No seguir usando `sec_log_buf`/`last_kmsg` para esta detención: v0.10 también
-  acaba en `XBL(... restored from storage)` y no conserva mainline. Además, el
-  `fail_halt_boot()` real del initramfs no provoca panic; `panic=10` no puede
-  reiniciar un proceso PID 1 que permanece en un bucle deliberado.
+- No seguir usando `sec_log_buf`/`last_kmsg` para este panic: v0.10 acaba en
+  `XBL(... restored from storage)` y no conserva mainline. La foto de la
+  consola es la evidencia fiable hasta disponer de pstore o USB.
 - No asumir que `export_logs()` garantiza una captura USB. En la prueba v0.10
   no enumeró `PMOS_LOGS`, ACM ni NCM/RNDIS; el host sólo vio errores de
   descriptor. Hasta arreglar USB, usar pantalla y persistencia en la SD.
+- No empaquetar el initramfs genérico X910 como gzip aunque sea un stream
+  válido y mainline tenga `CONFIG_RD_GZIP`. Con el vendor ramdisk LZ4, Samsung
+  ABL produjo un initrd que falló por magia inválida. Ambos deben usar LZ4
+  legacy como el firmware stock y el validador lo exige desde v0.11.
 
 ## Referencias locales
 

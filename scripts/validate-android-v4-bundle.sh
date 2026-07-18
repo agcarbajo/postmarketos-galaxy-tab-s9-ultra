@@ -88,9 +88,14 @@ else
 fi
 test ! -s "$tmp/boot/ramdisk"
 test ! -s "$tmp/init_boot/kernel"
-cmp "$tmp/init_boot/ramdisk" "$rootfs_export/initramfs"
+test "$(xxd -p -l 4 "$tmp/init_boot/ramdisk")" = '02214c18'
+gzip -t "$rootfs_export/initramfs"
+lz4 -t "$tmp/init_boot/ramdisk" >/dev/null
+cmp <(lz4 -dc "$tmp/init_boot/ramdisk" 2>/dev/null) \
+	<(gzip -dc "$rootfs_export/initramfs")
 cmp "$tmp/vendor_boot/dtb" "$package_dtb"
 cmp "$tmp/vendor_boot/bootconfig" "$project/configs/vendor_boot/bootconfig.txt"
+test "$(xxd -p -l 4 "$tmp/vendor_boot/vendor_ramdisk00")" = '02214c18'
 lz4 -t "$tmp/vendor_boot/vendor_ramdisk00" >/dev/null
 
 # Samsung ABL uses these downstream root properties before it hands control to
