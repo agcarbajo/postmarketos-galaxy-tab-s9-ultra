@@ -526,3 +526,23 @@ física.
   completa al ring y sobrescrito el boot anterior. Esto no refuta el arreglo
   de índices; impone recuperar el fichero inmediatamente. Se repetirá v0.9 sin
   reflashear ni reescribir la SD.
+- La repetición se capturó con sólo 146 s de TWRP, pero tampoco contiene el
+  mainline. Entre ambas sesiones aparece `XBL(28, restored from storage)` y
+  después arranca directamente el kernel 5.15 Foldiby de recovery. Esto prueba
+  que el reinicio forzado desde la pantalla de panic restaura el log antiguo
+  persistido por XBL; el contenido mainline se pierde antes de TWRP.
+- Se contrastó el formato con el driver Samsung moderno
+  `sec_log_buf_main.c`/`sec_log_buf_last_kmsg.c`: recovery copia el ring según
+  `idx` durante su probe y sólo después empieza a registrar su propio printk.
+  `prev_idx` no selecciona la instantánea en este driver. La estrategia debe
+  conservar físicamente la RAM, no seguir ajustando el lector.
+- v0.10 cambia sólo cmdline: elimina `initcall_debug`, usa `loglevel=7` y añade
+  `panic=10`. Así el log mainline es mucho menor y el kernel reinicia en
+  caliente diez segundos después del panic. La usuaria podrá interceptar ese
+  reinicio para entrar en TWRP sin el reset forzado que activa la restauración
+  de XBL.
+- ZIP v0.10 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.10-auto-panic-sm-x910-twrp.zip`,
+  22.012.502 bytes, SHA-256
+  `47331b9616f68048f381b61d52e9a6e1ff74f3ab35dcb46addae5d39e7ae372a`.
+  Se validó y copió a `/sdcard`; el asistente no lo flasheó.

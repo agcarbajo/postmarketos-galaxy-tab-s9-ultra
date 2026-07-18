@@ -61,22 +61,22 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.9 reproducible y verificado en `/sdcard`, pendiente de prueba física |
+| Imagen/paquete de prueba | 🟡 SD v0.6 se conserva; ZIP v0.10 reproducible y verificado en `/sdcard`, pendiente de prueba física |
 
 ## Reto en curso
 
-Repetir el arranque físico con el ZIP v0.9 para conservar el panic completo:
+Repetir el arranque físico con el ZIP v0.10 para conservar el panic completo:
 
 - conservar la microSD v0.6: kernel release, módulos, initramfs y DTB no
   cambian salvo la propiedad de reserva TLMM; la traza pre-probe sigue activa;
-- flashear manualmente desde TWRP el ZIP v0.9 ya copiado a `/sdcard`;
+- flashear manualmente desde TWRP el ZIP v0.10 ya copiado a `/sdcard`;
 - v0.8 ya demostró que reservar GPIO36–39 elimina el reset de TrustZone: el
   kernel permanece vivo y termina en un panic visible;
-- tras reiniciar manualmente a TWRP, recuperar `/proc/last_kmsg`. v0.9 mantiene
-  `previous_index` sincronizado con el ring para que el recovery vea el boot
-  mainline incluso cuando no hubo un reset gestionado por firmware;
-- leer el fichero inmediatamente: TWRP genera más de 2 MiB de printk en unos
-  17 minutos y termina sobrescribiendo el ring físico compartido;
+- v0.10 elimina `initcall_debug`, baja el loglevel y añade `panic=10`. Tras el
+  panic Linux debe reiniciar en caliente automáticamente; entrar en TWRP
+  durante ese reinicio, sin forzar el reset desde la pantalla congelada;
+- recuperar `/proc/last_kmsg` inmediatamente. El reinicio caliente conserva el
+  `sec_log_buf`, como ya se verificó con los resets v0.6/v0.7;
 - diagnosticar el panic con el log completo, priorizando enumeración de
   `sdhc_2`, detección de `pmOS_root` y ejecución del initramfs;
 - una vez identificado, corregir o aislar el bloque mínimo y avanzar hasta
@@ -356,6 +356,20 @@ lado del workspace.
   recovery actual: sus mensajes habían dado una vuelta completa al ring y
   sobrescrito el panic. No requiere otra build; se repetirá el mismo v0.9 y se
   extraerá el fichero inmediatamente después de volver a TWRP.
+- Repetir v0.9 y capturar a los 146 s tampoco recuperó mainline. El ring muestra
+  `XBL(28, restored from storage)`: el reset forzado desde el panic restaura la
+  copia persistida del recovery anterior y descarta el `sec_log_buf` mainline;
+  no era sólo una carrera contra el volumen de printk.
+- El driver Samsung moderno confirma que `last_kmsg` copia el ring usando
+  `idx` al arrancar y después registra el logger actual. La solución práctica
+  es conservar RAM mediante un reinicio caliente del propio kernel.
+- ZIP v0.10 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.10-auto-panic-sm-x910-twrp.zip`,
+  22.012.502 bytes, SHA-256
+  `47331b9616f68048f381b61d52e9a6e1ff74f3ab35dcb46addae5d39e7ae372a`.
+  Sólo cambia la cmdline de `vendor_boot`: `panic=10`, sin `initcall_debug` y
+  con `loglevel=7`. Kernel, DTB, initramfs, módulos y SD no cambian. Pasó AVB,
+  bundle, hashes, tamaños, CRC y reproducción; se verificó en `/sdcard`.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -434,6 +448,9 @@ lado del workspace.
   recovery previo. v0.9 mantiene ese índice sincronizado desde mainline.
 - No dejar TWRP esperando antes de extraer el log: su kernel downstream es muy
   verboso y llena los 2 MiB en aproximadamente 17 minutos.
+- No reiniciar a la fuerza desde el panic si se busca conservar `sec_log_buf`:
+  XBL restaura una copia antigua desde almacenamiento. Usar el reinicio
+  automático `panic=10` de v0.10 y entrar entonces en recovery.
 
 ## Referencias locales
 
