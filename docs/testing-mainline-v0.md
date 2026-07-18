@@ -1,8 +1,10 @@
-# Prueba física de mainline v0.1
+# Prueba física de mainline v0.2
 
 Esta es una prueba **experimental de primer arranque**, no una versión ya
 confirmada en hardware. La compilación y las validaciones estáticas han pasado,
-pero todavía no sabemos si ABL aceptará el kernel mainline, si `simpledrm`
+La v0.1 demostró que ABL puede descomprimir el kernel, pero rechazó el DTB por
+carecer de sus selectores legacy y abrió Odin antes de entrar en Linux. La v0.2
+añade esos selectores exactos. Todavía no sabemos si `simpledrm`
 conservará la imagen o si el USB2 del X910 sobrevivirá a la transición desde el
 bootloader.
 
@@ -15,7 +17,7 @@ AVB flags 2. Conviene mantener el ZIP de restauración accesible desde TWRP.
 
 - Una microSD sacrificable de **8 GB o más**. Todo su contenido se borrará.
 - `postmarketos-edge-xfce-mainline-v0-sm-x910-sd.img.zst`.
-- `postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`.
+- `postmarketos-edge-xfce-mainline-v0.2-sm-x910-twrp.zip`.
 - `restore-ubuntu-touch-v8-boot-sm-x910.zip` como vuelta atrás.
 - TWRP ya instalado/arrancable en la tablet.
 
@@ -24,7 +26,7 @@ expresamente fuera de esta prueba.
 
 ## 1. Verificar los ficheros
 
-Comprueba los SHA-256 publicados en `artifacts/SHA256SUMS-mainline-v0.1.txt` y en
+Comprueba los SHA-256 publicados en `artifacts/SHA256SUMS-mainline-v0.2.txt` y en
 `artifacts/README.md`. Si un hash no coincide, no continúes.
 
 ## 2. Preparar la microSD
@@ -49,7 +51,7 @@ La imagen contiene GPT y dos particiones:
 2. Apaga la tablet e inserta la microSD preparada.
 3. Arranca TWRP.
 4. Flashea únicamente
-   `postmarketos-edge-xfce-mainline-v0.1-sm-x910-twrp.zip`.
+   `postmarketos-edge-xfce-mainline-v0.2-sm-x910-twrp.zip`.
 5. Comprueba que TWRP anuncia que `vbmeta` es RO, que ya tiene AVB flags 2 y
    que lo conservará. Después debe escribir exactamente `boot`, `init_boot`,
    `vendor_boot` y `dtbo` y terminar sin error.
@@ -98,7 +100,11 @@ recuperación; no flashees PIT ni marques repartition.
 
 ## Diagnóstico posterior
 
-Tras un fallo reproducible, el siguiente paso será recuperar ramoops/pstore si
-TWRP lo expone y ajustar el DTS/cmdline con esa evidencia. No conviene probar
-variantes al azar: una sola descripción precisa del primer arranque distingue
-entre rechazo de ABL, kernel temprano, montaje de la SD y fallo gráfico.
+Tras un fallo reproducible, vuelve primero a TWRP sin restaurar ni borrar nada.
+Se recogerán `/proc/last_kmsg`, ramoops/pstore y los logs del recovery antes de
+ajustar el DTS/cmdline. No conviene probar variantes al azar: esos registros
+distinguen entre rechazo de ABL, kernel temprano, montaje de la SD y fallo
+gráfico. Si vuelve a aparecer exactamente `Appended Soc Device Tree blob not
+found`, el siguiente experimento será adjuntar también el DTB al payload del
+kernel; no se hará preventivamente porque el boot UT funcional usa el DTB de
+`vendor_boot`.

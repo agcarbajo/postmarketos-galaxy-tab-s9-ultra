@@ -203,3 +203,48 @@ física.
   sólo como comodidad. La prioridad de seguridad sigue siendo conservar TWRP,
   Download Mode/Odin, bootloader y particiones de calibración, no el estado de
   `super`/userdata.
+
+## 2026-07-18 — sesión 5: rechazo del DTB por ABL y bundle v0.2
+
+- La usuaria flasheó v0.1 y reinició. La tablet mostró el splash Samsung con
+  información RPMB/secure boot y código de barras, y después volvió a TWRP.
+  No era un panic ni una consola del kernel: era Odin lanzado por ABL.
+- Desde TWRP se recogió un diagnóstico de sólo lectura en
+  `work/mainline-first-boot-twrp-20260718.txt`. `pstore` estaba montado pero
+  vacío. `/proc/last_kmsg`, de 2 MiB, sí conservaba el log completo de XBL/ABL.
+- Secuencia determinante del log: ABL reconoce Hyp, fija memoria en
+  `0x80000000`, descomprime el kernel en 364 ms, registra `No match found for
+  Soc Dtb type`, luego `Error: Appended Soc Device Tree blob not found` y
+  finalmente `Launching odin`. Linux nunca llegó a ejecutarse, por lo que no
+  hay todavía evidencia sobre SD, initramfs, simpledrm o USB.
+- Se compararon las imágenes v0.1 con el rollback UT funcional. Ambos kernels
+  son payloads ARM64 gzip válidos; el kernel UT no contiene un FDT appended
+  detectable, de modo que el texto de ABL es un fallback genérico y no prueba
+  que Samsung exija adjuntar el DTB al kernel. UT arranca usando el DTB de
+  `vendor_boot`.
+- El FDT vivo downstream tiene en la raíz `qcom,kalama-mtp`, `qcom,kalama`,
+  `qcom,mtp`; `qcom,msm-id = <0x218 0x20000 0x207 0x20000 0x207 0x10000
+  0x218 0x10000>`; y `qcom,board-id = <0x10008 0x03>`. El DTB mainline v0.1
+  sólo tenía `samsung,gts9uwifi`, `qcom,sm8550` y carecía de ambos IDs.
+- Causa raíz: ABL filtra el DTB base de `vendor_boot` usando esos metadatos
+  downstream antes de arrancar Linux. Al no encontrar coincidencia, buscó un
+  DTB appended inexistente y abrió Odin.
+- El DTS mainline conserva sus compatibles upstream pero antepone exactamente
+  los tres compatibles Qualcomm y añade los IDs del FDT vivo. Se incrementó
+  `pkgrel` y se añadió una validación que extrae el DTB desde `vendor_boot` y
+  exige los tres valores exactos.
+- La recompilación incremental produjo un DTB de 115.742 bytes, SHA-256
+  `571d04dc585702a04db219a78666f07509ccdbe641417a861e6e9d8b869f949a`.
+  Para aislar esta hipótesis, v0.2 conserva el payload del kernel empaquetado
+  (y por tanto su correspondencia con los módulos de la SD) y sustituye sólo
+  el DTB en `vendor_boot`; no usa el `Image.gz` de la build directa.
+- Nuevo `vendor_boot.img`: SHA-256
+  `3ddf6ddbbb02fc4d687145ba74e52c3085373aff9c919bf56e9248bb4514c9e9`.
+  El resto de imágenes no cambió. Todos los headers Android v4, offsets, AVB,
+  tamaños, DTBO, comparaciones byte a byte, selectores de ABL, CRC, modos,
+  manifests y el stream zstd pasaron.
+- Artefacto listo:
+  `postmarketos-edge-xfce-mainline-v0.2-sm-x910-twrp.zip`, SHA-256
+  `9288af69c694fdc84b7b1f9694265152c5f7959a880d338f98b2e3d106c0f65c`,
+  21.850.752 bytes. Se copió a `/sdcard/` y se verificó allí el mismo hash.
+  La tablet permanece en TWRP y el asistente no lo ha flasheado.

@@ -163,6 +163,7 @@ done
 	printf 'kernel_zboot_sha256=%s\n' "$(sha256sum "$package_zboot" | cut -d' ' -f1)"
 	printf 'kernel_payload_sha256=%s\n' "$(sha256sum "$image" | cut -d' ' -f1)"
 	printf 'kernel_config_sha256=%s\n' "$(sha256sum "$package_config" | cut -d' ' -f1)"
+	printf 'kernel_dtb_sha256=%s\n' "$(sha256sum "$dtb" | cut -d' ' -f1)"
 	printf 'initramfs_sha256=%s\n' "$(sha256sum "$initramfs" | cut -d' ' -f1)"
 } > "$linux_out/BUILD-METADATA.txt"
 

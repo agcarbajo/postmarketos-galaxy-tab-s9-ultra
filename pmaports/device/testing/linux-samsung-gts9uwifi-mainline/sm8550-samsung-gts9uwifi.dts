@@ -23,7 +23,16 @@
 
 / {
 	model = "Samsung Galaxy Tab S9 Ultra Wi-Fi";
-	compatible = "samsung,gts9uwifi", "qcom,sm8550";
+	/*
+	 * The first three strings and the legacy IDs are consumed by Samsung ABL
+	 * when it selects the base DTB.  Keep the upstream compatibles as well so
+	 * Linux still identifies the actual board and SoC normally.
+	 */
+	compatible = "qcom,kalama-mtp", "qcom,kalama", "qcom,mtp",
+		     "samsung,gts9uwifi", "qcom,sm8550";
+	qcom,msm-id = <0x218 0x20000 0x207 0x20000
+		       0x207 0x10000 0x218 0x10000>;
+	qcom,board-id = <0x10008 0x03>;
 	chassis-type = "tablet";
 
 	aliases {

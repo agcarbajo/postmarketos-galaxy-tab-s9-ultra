@@ -77,6 +77,15 @@ cmp "$tmp/vendor_boot/dtb" "$package_dtb"
 cmp "$tmp/vendor_boot/bootconfig" "$project/configs/vendor_boot/bootconfig.txt"
 lz4 -t "$tmp/vendor_boot/vendor_ramdisk00" >/dev/null
 
+# Samsung ABL uses these downstream root properties before it hands control to
+# Linux.  Without them it reports "No match found for Soc Dtb type" and enters
+# Odin instead of booting the kernel.
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" / compatible)" = \
+	'qcom,kalama-mtp qcom,kalama qcom,mtp samsung,gts9uwifi qcom,sm8550'
+test "$(fdtget -t x "$tmp/vendor_boot/dtb" / qcom,msm-id)" = \
+	'218 20000 207 20000 207 10000 218 10000'
+test "$(fdtget -t x "$tmp/vendor_boot/dtb" / qcom,board-id)" = '10008 3'
+
 grep -q '^page size: 0x00001000$' "$tmp/vendor_boot.info"
 grep -q '^kernel load address: 0x80008000$' "$tmp/vendor_boot.info"
 grep -q '^ramdisk load address: 0x82000000$' "$tmp/vendor_boot.info"

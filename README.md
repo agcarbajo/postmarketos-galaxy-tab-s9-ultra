@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-17.
+> Última actualización: 2026-07-18.
 
 ## Objetivo
 
@@ -53,7 +53,7 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ Linux 7.2-rc3 compilado y empaquetado; kernel/DTB y símbolos tempranos validados |
-| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos y compilados; falta validar en la tablet |
+| DTS `gts9uwifi` | 🟡 Framebuffer, SD, UART, ramoops, USB2 experimental y GT9916 descritos; v0.2 añade los selectores exactos que ABL exige |
 | Acceso temprano a microSD | 🟡 Driver/pines/rails confirmados y built-in; falta el primer boot físico |
 | Paquetes pmaports | ✅ Device y kernel APK construidos; rootfs usa el mismo kernel empaquetado |
 | Rootfs postmarketOS | ✅ Imagen GPT ext2/ext4 construida y validada estáticamente |
@@ -61,16 +61,17 @@ demostrarlo en este dispositivo.
 | SSH | 🟡 OpenSSH habilitado; falta que USB NCM o una red funcionen en hardware |
 | Bundle Android v4 | ✅ Cinco imágenes reproducibles, AVB/headers/offsets/DTBO validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 v0.1 corrige `vbmeta` RO observado en TWRP; primer boot pendiente |
+| Imagen/paquete de prueba | 🟡 v0.1 llegó hasta ABL pero fue rechazada por el DTB; v0.2 corregida, validada y copiada a la tablet |
 
 ## Reto en curso
 
-Realizar el primer arranque físico controlado de mainline v0.1:
+Realizar el segundo arranque físico controlado de mainline v0.2:
 
 - escribir la imagen ya generada en una microSD sacrificable de 8 GB o más;
-- flashear manualmente desde TWRP el ZIP v0.1: escribe cuatro particiones boot
+- flashear manualmente desde TWRP el ZIP v0.2: escribe cuatro particiones boot
   y conserva `vbmeta` si está RO pero ya tiene AVB flags 2;
-- distinguir si ABL acepta el kernel, si monta `pmOS_root` desde `sdhc_2`, si
+- comprobar primero que ABL ya acepta el DTB y transfiere control a Linux;
+- distinguir después si monta `pmOS_root` desde `sdhc_2`, si
   simpledrm conserva el framebuffer y si aparece USB NCM/SSH;
 - si falla, volver a TWRP y recuperar ramoops/pstore antes de modificar DTS o
   cmdline; restaurar Ubuntu Touch es opcional;
@@ -206,6 +207,22 @@ lado del workspace.
   `eee755c73105ce55311e63eb4a8a50dff42ca6338b1930c017825c510a563e06`):
   restaura las cuatro particiones boot escribibles y `vbmeta` si recovery lo
   permite; nunca reescribe `super`. Pasó CRC, modo y hashes internos.
+- El primer reboot con v0.1 no llegó a Linux: la pantalla con datos RPMB y
+  código de barras era Odin lanzado por ABL. `/proc/last_kmsg` conserva la
+  causa exacta: ABL descomprime el kernel, registra `No match found for Soc
+  Dtb type` y `Appended Soc Device Tree blob not found`, y entra en Odin.
+  `pstore` está vacío porque el kernel nunca recibió el control.
+- Comparar el DTB mainline con el FDT vivo reveló que la raíz mainline sólo
+  tenía `samsung,gts9uwifi`/`qcom,sm8550`; faltaban los selectores downstream
+  que Samsung ABL usa antes de arrancar. El DTS contiene ahora, exactamente,
+  `qcom,kalama-mtp`, `qcom,kalama`, `qcom,mtp`, los cuatro pares
+  `qcom,msm-id` y `qcom,board-id = <0x10008 0x03>`.
+- Generado el ZIP v0.2, SHA-256
+  `9288af69c694fdc84b7b1f9694265152c5f7959a880d338f98b2e3d106c0f65c`.
+  Conserva kernel, initramfs, DTBO, vbmeta y rootfs de v0.1; sólo cambia
+  `vendor_boot` por el DTB corregido. El validador comprueba también los
+  selectores de ABL extraídos del propio `vendor_boot`. El ZIP se copió a
+  `/sdcard/` y se verificó allí el mismo hash; no se flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -245,6 +262,13 @@ lado del workspace.
   En este TWRP `vbmeta` apunta correctamente a `sde15`, pero el kernel la marca
   RO y `blockdev --setrw` no lo cambia. El instalador debe prevalidar el flag RO
   y los bytes AVB flags antes de escribir las demás particiones.
+- No interpretar la pantalla Samsung con overlay RPMB/código de barras como
+  un panic de Linux. En la prueba v0.1 fue Odin iniciado deliberadamente por
+  ABL tras rechazar el DTB, y el diagnóstico fiable estaba en
+  `/proc/last_kmsg`, no en `pstore`.
+- No usar un DTB mainline con sólo compatibles upstream en esta cadena de
+  arranque Samsung. ABL necesita además sus compatibles Qualcomm legacy,
+  `qcom,msm-id` y `qcom,board-id` en la raíz.
 
 ## Referencias locales
 
