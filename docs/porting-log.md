@@ -859,3 +859,17 @@ física.
   Goodix 8/16 sin checksum errors y cuatro overrides PTN antes de DWC3. Si USB
   enumera, conectar por SSH; si el táctil responde, validar orientación y
   escala en LightDM antes de avanzar a DRM nativo.
+
+## 2026-07-19 — sesión 20: resultado físico inicial v0.14
+
+- La usuaria flasheó v0.14 y el sistema alcanzó de nuevo LightDM. El táctil
+  continúa sin producir entrada utilizable.
+- Windows sigue sin ADB, ACM ni NCM/RNDIS y conserva los dos dispositivos USB
+  desconocidos por error de descriptor. `172.16.42.1:22` no responde.
+- Se sondeó en paralelo el puerto 22 de toda `<LAN_SUBNET>`, excluyendo el
+  host y los equipos conocidos `.138`/`.150`; no apareció ningún SSH nuevo
+  atribuible a la tablet.
+- No se puede distinguir externamente si el override Goodix no se activó, si
+  cambió el checksum esperado o si la escritura PTN3222 falló/progresó sin
+  resolver DWC3. Próximo paso: volver a TWRP y extraer el journal v0.14 en sólo
+  lectura antes de introducir otro cambio.

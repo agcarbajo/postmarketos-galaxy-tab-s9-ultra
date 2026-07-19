@@ -58,15 +58,15 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r9 reproducen GPI DMA, EVDEV, Goodix Samsung y tuning I2C PTN3222; build limpia validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🟡 v0.13 llega a DWC3 pero falla soft reset; programación PTN3222 v0.14 pendiente de prueba física |
-| Táctil | 🟡 v0.13 confirma metadata 8 falsa y eventos 16; override PID 6936 v0.14 pendiente de prueba |
+| SSH | 🔴 v0.14 no enumera NCM/RNDIS ni ofrece SSH por USB/LAN; pendiente journal v0.14 |
+| Táctil | 🔴 v0.14 llega a LightDM pero sigue sin entrada; pendiente confirmar layout 8/16 en journal |
 | Bundle Android v4 | ✅ v0.14 LZ4 legacy, imágenes, AVB, Goodix forzado, tuning PTN y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.14 copiado a `/sdcard`; pendiente táctil y USB/SSH |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.14 arrancan hasta login; táctil y USB/SSH siguen bloqueados |
 
 ## Reto en curso
 
-Validar físicamente v0.14 para obtener el primer acceso interactivo:
+Extraer el journal v0.14 para obtener el primer acceso interactivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -91,9 +91,12 @@ Validar físicamente v0.14 para obtener el primer acceso interactivo:
   estar diferido, pero DWC3 falla el soft reset. El driver mainline sólo saca
   el repetidor de reset; Samsung además escribe `06=20`, `07=21`, `08=63` y
   `0a=01`. v0.14 aplica esa secuencia I2C exacta tras esperar 4–5 ms;
-- flashear manualmente v0.14 y probar táctil/USB. El kernel debe registrar
-  `event layout 8/16`, dejar de emitir checksum errors y anunciar cuatro
-  overrides PTN3222 antes de que DWC3 sondee;
+- la prueba física v0.14 vuelve a LightDM, pero el táctil no responde. Windows
+  conserva dos errores de descriptor, sin ADB/ACM/NCM/RNDIS; no responde
+  `172.16.42.1:22` ni apareció otro SSH en la LAN al excluir `.138` y `.150`;
+- volver a TWRP y extraer el journal v0.14 en sólo lectura. Hay que verificar
+  si registra `event layout 8/16`, si persisten los checksum errors, si el
+  PTN3222 anuncia cuatro overrides o falla al escribirlos, y el estado DWC3;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
