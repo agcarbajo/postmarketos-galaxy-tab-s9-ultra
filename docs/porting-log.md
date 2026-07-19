@@ -1069,3 +1069,36 @@ física.
 - Reto inmediato: volver a TWRP, extraer el journal v0.17 en sólo lectura y
   comparar los registros diferidos PTN3222 `DEVICE_STATUS(0f)` y
   `LINK_STATUS(10)` con la referencia Samsung funcional `09/05`.
+
+## 2026-07-19 — sesión 27: PTN3222 descartado y bundle DWC3 v0.18
+
+- En TWRP se montó `mmcblk1p2` como `ro,norecovery`, se extrajeron journal,
+  Xorg y LightDM a `work/v017-rootfs-logs-20260719/` y se desmontó la tarjeta.
+  Boot ID `66eb6939ed4649e197dcd6be06c0cd46`; SHA-256 de `system.journal`
+  `201b71a79f2344904f9153b13e8826b32bd59a9a710d625a5ae868aa6193c13b`.
+- La PHY mainline registra referencia de 38,4 MHz y los valores efectivos de
+  sus controles. El PTN3222 queda fuera de reset (`logical=0`, `raw=1`) y sus
+  registros `00..16` coinciden con TWRP byte a byte: revisión `A2`, overrides
+  `06=20`, `07=21`, `08=63`, `0a=01`, estado `0f=09` y enlace `10=05`.
+- Como el repetidor funcional y mainline presentan el mismo enlace, se
+  descartan nuevos cambios de tuning/PHY. El host alcanza el enlace físico,
+  pero Windows no obtiene VID/PID; el ámbito pasa a DWC3/UDC/EP0.
+- La configuración de initramfs es la ruta estándar postmarketOS configfs:
+  crea `ncm.usb0`, configura VID `18d1`/PID `d001`, enlaza `c.1` y escribe el
+  primer UDC disponible. El journal no contiene errores de esos pasos.
+- Se añadió `diagnose-dwc3-ep0-enumeration.patch`, que registra solicitud y
+  resultado del pull-up, DCTL/DSTS/DEVTEN/event count, cada evento DWC3, estado
+  EP0 y paquetes SETUP. No cambia lógica del controlador. APKBUILD r13 y script
+  de build lo reproducen.
+- Recompilación incremental v0.18 terminada en 58 s: kernel
+  `6d1feaff85d4d50131a2fdb114f28ac6be410420d0226c22c09edf8465b4ffef`,
+  DTB `8d600347ad1a826e0c0ef33fbf0fb68125d18d5a64939307ac4b93599c12bddf`,
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+- ZIP único v0.18:
+  `postmarketos-edge-xfce-mainline-v0.18-dwc3-ep0-diagnostics-sm-x910-twrp.zip`,
+  22.017.000 bytes, SHA-256
+  `6706f3778c2df2b1384e1b225cf3c5af315ca0986056599dfb3fc4c42f8542e0`.
+  Se copió a `/sdcard` y el único hash posterior coincide; no se flasheó.
+- Reto inmediato: flash manual v0.18, esperar 15 s y probar USB/SSH. Si falla,
+  volver a TWRP y clasificar el primer punto ausente entre pull-up, RUN/STOP,
+  IRQ reset/connect, SETUP y respuesta EP0.

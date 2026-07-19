@@ -62,6 +62,11 @@ if ! grep -q 'delayed link state: reset' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/diagnose-sm8550-eusb2-link.patch"
 fi
+if ! grep -q 'SM-X910 diag pullup request' \
+	"$kernel_tree/drivers/usb/dwc3/gadget.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/diagnose-dwc3-ep0-enumeration.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

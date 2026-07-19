@@ -52,21 +52,21 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.17 compila Linux 7.2-rc3 con orientación corregida y diagnóstico eUSB2 diferido |
+| Kernel mainline SM8550 | ✅ v0.18 compila Linux 7.2-rc3 con orientación corregida y diagnóstico DWC3/EP0 |
 | DTS `gts9uwifi` | 🧪 v0.17 usa inversión X física antes del intercambio X/Y; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r12 reproducen v0.17: eje Goodix correcto y registros efectivos PHY/PTN3222 en el journal |
+| Paquetes pmaports | ✅ Fuentes r13 reproducen v0.18: Goodix correcto y trazas PHY/PTN3222/DWC3/EP0 |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.17 sigue sin enumerar: no hay NCM/RNDIS ni host SSH nuevo; pendiente leer estados PTN3222 del journal |
+| SSH | 🧪 v0.17 no enumera aunque PTN3222 coincide con Samsung; v0.18 trazará pull-up, IRQ y EP0 |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.17 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
+| Bundle Android v4 | ✅ v0.18 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.17 arrancan; táctil correcto, USB/SSH aún no enumeran |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.18 copiado/verificado; pendiente flash manual |
 
 ## Reto en curso
 
-Extraer el journal v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
+Validar v0.18 y localizar el fallo de enumeración en DWC3/EP0:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -133,8 +133,17 @@ Extraer el journal v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
 - la prueba física v0.17 valida completamente la orientación táctil. USB sigue
   sin enumerar NCM/RNDIS, `172.16.42.1:22` no responde y el barrido de la LAN
   sólo encuentra `.138`/`.150`, dispositivos excluidos conocidos;
-- volver a TWRP y extraer el journal v0.17 para comparar los estados PTN3222
-  `0f/10` con la referencia Samsung `09/05`;
+- el journal v0.17 muestra exactamente los mismos `00..16` del PTN3222 que el
+  kernel Samsung funcional, incluidos `0f=09`, `10=05`, revisión `A2` y los
+  cuatro overrides. Reset lógico/físico y reloj PHY de 38,4 MHz son coherentes;
+- por tanto no se debe volver a cambiar PHY, repetidor, alimentación o tuning.
+  El host alcanza el enlace pero no recibe ni VID/PID: el fallo queda en
+  DWC3/UDC/EP0 o en la entrega del descriptor;
+- v0.18 registra el pull-up solicitado/efectivo, DCTL/DSTS/DEVTEN/event count,
+  todos los eventos DWC3, transiciones EP0 y cada paquete SETUP decodificado;
+- flashear manualmente v0.18, esperar al menos 15 segundos y comprobar USB/SSH.
+  Si no enumera, volver a TWRP y extraer el journal para clasificar si falta
+  RUN/STOP, IRQ/reset/connect, SETUP o la respuesta de EP0;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -639,6 +648,25 @@ lado del workspace.
   y alineado. Windows aún muestra errores de solicitud de descriptor, no crea
   NCM/RNDIS y no hay SSH por USB ni en un host nuevo de la LAN; `.138` y `.150`
   siguen siendo los dos únicos SSH y pertenecen a otros dispositivos.
+- El journal v0.17 extraído en sólo lectura tiene boot ID
+  `66eb6939ed4649e197dcd6be06c0cd46`; `system.journal` SHA-256
+  `201b71a79f2344904f9153b13e8826b32bd59a9a710d625a5ae868aa6193c13b`.
+  PTN3222 mainline coincide byte a byte en `00..16` con TWRP: `0f=09`,
+  `10=05`, revisión `A2` y overrides correctos. La PHY usa 38,4 MHz y registra
+  todos sus controles efectivos sin errores.
+- `diagnose-dwc3-ep0-enumeration.patch` añade trazas pasivas a pull-up,
+  registros DWC3, eventos, EP0 y SETUP. El APKBUILD sube a r13 y el build
+  directo aplica el parche en futuras compilaciones.
+- Build incremental v0.18: `Image.gz` SHA-256
+  `6d1feaff85d4d50131a2fdb114f28ac6be410420d0226c22c09edf8465b4ffef`;
+  DTB sin cambios
+  `8d600347ad1a826e0c0ef33fbf0fb68125d18d5a64939307ac4b93599c12bddf`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+- ZIP v0.18 generado una vez:
+  `postmarketos-edge-xfce-mainline-v0.18-dwc3-ep0-diagnostics-sm-x910-twrp.zip`,
+  22.017.000 bytes, SHA-256
+  `6706f3778c2df2b1384e1b225cf3c5af315ca0986056599dfb3fc4c42f8542e0`.
+  Copiado a `/sdcard`; la única comprobación posterior coincide. No se flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
