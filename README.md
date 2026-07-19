@@ -58,15 +58,15 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r7 reproducen reserva TLMM, trazas, log persistente, GPI DMA y PTN3222; build directa validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🟡 OpenSSH instalado; v0.12 corrige la causa física probable del timeout DWC3 y espera prueba en hardware |
-| Táctil | 🟡 Goodix GT9916 descrito; v0.12 integra y habilita el GPI DMA que bloqueaba I2C4; espera prueba física |
+| SSH | 🔴 v0.12 sigue sin enumerar NCM/RNDIS y no ofrece un endpoint remoto confirmado; pendiente journal nuevo |
+| Táctil | 🔴 v0.12 llega a LightDM pero el GT9916 sigue sin producir entrada; pendiente journal nuevo |
 | Bundle Android v4 | ✅ v0.12 LZ4 legacy, imágenes, AVB, contenido, DT de USB/táctil y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.12 copiado a `/sdcard`; pendiente de flasheo manual y prueba de USB/táctil |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.12 arrancan hasta login; USB y táctil siguen bloqueados |
 
 ## Reto en curso
 
-Validar físicamente USB y táctil con el ZIP v0.12:
+Diagnosticar con el journal por qué USB y táctil siguen bloqueados en v0.12:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -82,8 +82,12 @@ Validar físicamente USB y táctil con el ZIP v0.12:
 - v0.12 integra `QCOM_GPI_DMA`, habilita `gpi_dma1` y fija I2C4/I2C6 a
   400 kHz. Esto permite que GENI I2C pueda alcanzar tanto Goodix como PTN3222
   antes de disponer de módulos en userspace;
-- el ZIP v0.12 está validado, reproducido y copiado a `/sdcard`; la siguiente
-  evidencia debe ser si enumera USB/NCM y si aparecen eventos del GT9916;
+- la prueba física v0.12 vuelve a LightDM, pero el táctil no responde y Windows
+  sigue viendo sólo errores de descriptor, sin NCM/RNDIS. Un barrido de la LAN
+  tampoco localizó un SSH atribuible con seguridad a la tablet;
+- volver a TWRP y extraer el journal v0.12 para comprobar si `gpi_dma1` ya
+  registró, si I2C4/I2C6 salen de deferred probe, y los errores exactos de
+  PTN3222, DWC3 y Goodix antes de introducir otro cambio;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -532,6 +536,11 @@ lado del workspace.
   llega al userspace pero DWC3 termina en `-ETIMEDOUT` y el host sólo ve
   errores de descriptor. Hay que describir, alimentar, sacar de reset e
   inicializar explícitamente el NXP por I2C antes del core USB.
+- No considerar suficiente la descripción upstream inicial del PTN3222 ni
+  integrar GPI DMA sin comprobar el hardware: v0.12 arranca hasta LightDM,
+  pero físicamente siguen sin funcionar táctil ni enumeración USB. El journal
+  v0.12 debe decidir si falta una secuencia específica X910, firmware Goodix o
+  alguna dependencia de reloj/alimentación; no se añadirán overrides a ciegas.
 
 ## Referencias locales
 

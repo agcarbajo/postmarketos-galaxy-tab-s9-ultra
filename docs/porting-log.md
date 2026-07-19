@@ -698,3 +698,23 @@ física.
   comprobar `dmesg`, `ip`, el gadget y `libinput`; en paralelo verificar si el
   GT9916 crea `/dev/input/event*`. Si falla, el journal de la SD permitirá
   separar init del PTN3222, DWC3 y firmware Goodix sin depender de vídeo.
+
+## 2026-07-19 — sesión 16: resultado físico inicial v0.12
+
+- La usuaria flasheó v0.12. El sistema sigue alcanzando LightDM/XFCE mediante
+  simpledrm, pero el táctil no responde; por tanto integrar `gpi_dma1` no basta
+  por sí solo para exponer el GT9916.
+- Con la tablet encendida, Windows no presenta ADB, ACM, NCM/RNDIS ni un nuevo
+  adaptador IPv4. Permanecen dos dispositivos USB desconocidos por error de
+  descriptor, el mismo síntoma externo de v0.11, y `172.16.42.1:22` no
+  responde. El soporte inicial upstream del PTN3222 no ha resuelto por sí solo
+  el enlace físico.
+- Un barrido concurrente de `<LAN_SUBNET>` encontró SSH en `.138` y `.150`.
+  `.150` anuncia OpenSSH Debian y es otro equipo. `.138` anuncia OpenSSH 10.3,
+  pero rechaza `phablet`/`<DEV_PASSWORD>`; esa contraseña se verificó contra el hash
+  SHA-512 de la rootfs y es correcta, así que no existe evidencia suficiente
+  para atribuir ese host a la tablet. No se obtuvo canal remoto.
+- Próximo paso obligatorio: volver a TWRP, montar `mmcblk1p2` en sólo lectura
+  y extraer el journal de este arranque. Se compararán registro/deferred probe
+  de `gpi_dma1`, I2C4/I2C6, PTN3222, DWC3, firmware Goodix y `/dev/input` antes
+  de preparar v0.13.
