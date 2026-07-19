@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+# LightDM starts X with -novtswitch.  On simpledrm the kernel can report VT7
+# active while the physical scanout still contains VT1's last framebuffer.
+# Bounce away and back after X has created its socket to force LeaveVT/EnterVT
+# and an atomic redraw.  Keep the observations in the persistent journal.
+attempt=0
+while [ ! -S /tmp/.X11-unix/X0 ] && [ "$attempt" -lt 15 ]; do
+	attempt=$((attempt + 1))
+	sleep 1
+done
+
+before=$(fgconsole 2>&1 || true)
+echo "SM-X910 display handoff: X socket=$([ -S /tmp/.X11-unix/X0 ] && echo ready || echo missing) active-before=$before"
+
+chvt 1
+sleep 1
+chvt 7
+sleep 1
+
+after=$(fgconsole 2>&1 || true)
+echo "SM-X910 display handoff: active-after=$after"

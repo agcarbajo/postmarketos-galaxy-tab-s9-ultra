@@ -119,7 +119,8 @@ def main() -> None:
         if overlay_files:
             for path in overlay_files:
                 relative = path.relative_to(args.rootfs_overlay).as_posix()
-                add_file(zf, path, f"rootfs-overlay/{relative}")
+                mode = stat.S_IMODE(path.stat().st_mode)
+                add_file(zf, path, f"rootfs-overlay/{relative}", mode)
             zf.writestr(
                 zip_info("ROOTFS-OVERLAY-SHA256SUMS"), overlay_manifest
             )

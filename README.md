@@ -52,23 +52,23 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.23 compila Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado para estabilizar userspace |
-| DTS `gts9uwifi` | 🧪 v0.23 conserva táctil/pantalla/SD/USB y deshabilita juntos PMU WCN, PCIe0 y su PHY durante el hito SSH |
+| Kernel mainline SM8550 | ✅ v0.24 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.23 demuestra un boot completo y estable |
+| DTS `gts9uwifi` | 🧪 v0.24 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.23 reproducible: device r7, kernel r17 y firmware WCN7850 r1 conservado para reactivarlo después |
-| Rootfs postmarketOS | ✅ v0.23 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.21 inicia LightDM/greeter; v0.22 no llega de forma estable por la carrera PCIe/WCN y v0.23 espera prueba aislada |
+| Paquetes pmaports | ✅ v0.24 reproducible: device r8, kernel r17 y firmware WCN7850 r1; añade handoff VT después de LightDM |
+| Rootfs postmarketOS | ✅ v0.24 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.23 inicia Xorg/LightDM/slick-greeter en VT7, pero el panel conserva el framebuffer de VT1; v0.24 fuerza VT1→VT7 |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
-| SSH | 🧪 v0.21 levanta RNDIS, carrier, `usb0=172.16.42.1` y OpenSSH; v0.23 prioriza validarlo sin WCN |
+| SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.23 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
+| Bundle Android v4 | ✅ v0.24 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.23 copiado y verificado en TWRP; pendiente flash manual, greeter y SSH RNDIS estables |
+| Imagen/paquete de prueba | 🧪 ZIP v0.24 copiado y verificado en TWRP; pendiente flash manual y validación física del handoff/SSH |
 
 ## Reto en curso
 
-Validar físicamente v0.23 sin WCN/PCIe0, con greeter visible y SSH RNDIS
-estable; después reintroducir la enumeración WCN7850 desde el sistema vivo:
+Validar físicamente el handoff de pantalla de v0.24 sobre la base estable
+v0.23, conservar SSH RNDIS y después reintroducir WCN7850 desde el sistema vivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -199,11 +199,23 @@ estable; después reintroducir la enumeración WCN7850 desde el sistema vivo:
   instalado confirma los tres `status = "disabled"`; firmware, módulos y
   fuentes se conservan para reactivarlos después. No se modifica pantalla,
   táctil, SD, DWC3, RNDIS ni OpenSSH;
-- tras el flash manual v0.23, esperar al menos 45 segundos, mantenerla
-  encendida y conectada por USB y probar inmediatamente SSH en
-  `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos;
-- una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
-  hardware sin depender de ciclos TWRP.
+- el boot aislado v0.23 `563abe3add6e4cd893b4ceeaceb88eea` no se cuelga:
+  NetworkManager y OpenSSH arrancan a 21,021/21,024 s, LightDM a 21,316 s y
+  `graphical.target` a 21,373 s. Xorg abre simpledrm a 2960x1848 en VT7 y
+  slick-greeter queda ejecutándose; no hay panic, oops ni probes WCN/PCIe0;
+- la imagen física permanece en los pingüinos aunque LightDM registra
+  `Plymouth is running on VT 1`, lanza X con `-novtswitch` y declara
+  `Activating VT 7`. Los logs de v0.11, que sí mostró el greeter, son
+  esencialmente iguales; el defecto queda acotado al handoff/repintado de VT;
+- v0.24 añade una unidad oneshot después de LightDM: espera el socket X0,
+  registra la VT activa y fuerza VT1→VT7 para provocar `LeaveVT`/`EnterVT` y
+  un redraw de simpledrm. Conserva sin cambios kernel r17 y el aislamiento
+  WCN/PCIe0; el resultado físico está pendiente;
+- tras el flash manual v0.24, mantenerla encendida aunque siga mostrando los
+  pingüinos y conectada por USB. Probar inmediatamente SSH en
+  `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos. Con
+  SSH se leerá el journal de `gts9uwifi-display-handoff.service` y, si hace
+  falta, se podrá repetir el cambio de VT en vivo.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -875,6 +887,31 @@ lado del workspace.
   Incluye overlay completo, appended-DTB y DTBO runtime deshabilitado. Copiado
   a `/sdcard`; la única comprobación local/remota coincide. El asistente no
   flasheó ninguna partición.
+- Los logs v0.23 se extrajeron en sólo lectura a
+  `work/v023-rootfs-logs-20260719/`. El boot
+  `563abe3add6e4cd893b4ceeaceb88eea` prueba que el aislamiento estabiliza el
+  sistema: RNDIS tiene carrier y `usb0=172.16.42.1`, NetworkManager/OpenSSH
+  arrancan a 21,021/21,024 s, LightDM a 21,316 s y los targets multi-user y
+  gráfico a 21,373 s. No existe panic, oops ni actividad WCN/PCIe0.
+- `Xorg.0.log` confirma modesetting sobre `/dev/dri/card0` simpledrm a
+  2960x1848 y VT7; slick-greeter se ejecuta. LightDM observa Plymouth en VT1,
+  arranca X con `-novtswitch` y después registra `Activating VT 7`, pero el
+  panel sigue mostrando el último framebuffer de VT1. Por tanto los pingüinos
+  ya no representan un fallo de boot, SSH, X ni greeter.
+- v0.24 añade `gts9uwifi-display-handoff.service`, habilitada por el paquete
+  device r8. Después de que LightDM cree `/tmp/.X11-unix/X0`, registra
+  `fgconsole` y fuerza VT1→VT7 para provocar el repintado. El overlay TWRP
+  incluye explícitamente script, unidad y activación para actualizar también
+  la microSD existente; `make-twrp-zip.py` preserva ahora el modo ejecutable de
+  los ficheros del overlay.
+- Build v0.24 verificada: device r8, kernel `7.2_rc3-r17`, firmware r1 y
+  `kbd-2.8.0-r0`; script ejecutable, unidad habilitada, cmdline sin
+  `console=tty0` y los tres nodos WCN/PCIe0 aún deshabilitados. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.24-vt-handoff-rndis-sm-x910-twrp.zip`,
+  80.853.551 bytes, SHA-256
+  `b7c1a8bc2e3cc6bb0b68c89a5eea8882d85ef664291e80e54e275cfa8ef37b6e`.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -901,8 +938,12 @@ lado del workspace.
 - No mantener PCIe0/WCN habilitado mientras se valida el primer hito estable:
   v0.21 completa una vez la secuencia, pero boots posteriores v0.21/v0.22 se
   detienen intermitentemente antes de LightDM durante los probes repetidos.
-  Primero validar v0.23 con esos tres nodos aislados; después reactivarlos como
-  un bloque desde una base con SSH.
+  v0.23 ya valida los tres nodos aislados y completa userspace; reactivarlos
+  sólo como un bloque desde esta base estable con SSH.
+- No interpretar una pantalla inmóvil en los pingüinos como cuelgue del kernel
+  sin consultar el journal persistente o probar RNDIS. v0.23 llega a
+  `graphical.target`, Xorg/greeter y OpenSSH; su síntoma visual es un fallo de
+  handoff/repintado entre VT1 y VT7 separado del estado de userspace.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó

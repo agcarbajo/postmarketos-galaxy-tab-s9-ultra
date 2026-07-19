@@ -1367,3 +1367,49 @@ física.
 - Próxima prueba: flash manual v0.23 y mantenerla viva/conectada al menos 45 s.
   Validar greeter y SSH RNDIS en `172.16.42.1`; sólo entonces reintroducir
   PCIe/WCN con acceso remoto y trazas más finas.
+
+## 2026-07-19 — sesión 36: v0.23 estable y handoff VT de v0.24
+
+- La prueba física v0.23 volvió a parecer detenida en los pingüinos. La usuaria
+  regresó manualmente a TWRP y los logs se extrajeron en sólo lectura a
+  `work/v023-rootfs-logs-20260719/`; no fue necesario un vídeo del verbose.
+- El boot `563abe3add6e4cd893b4ceeaceb88eea` usa kernel
+  `#18-samsung-gts9uwifi-mainline`/paquete r17 y demuestra que el aislamiento
+  WCN funciona: no aparecen probes WCN/PCIe0, panic, oops ni interrupción del
+  journal. RNDIS crea `usb0=172.16.42.1` con carrier; NetworkManager arranca a
+  21,021 s, OpenSSH a 21,024 s, LightDM a 21,316 s y los targets multi-user y
+  gráfico se alcanzan a 21,373 s.
+- `Xorg.0.log` tiene 11.076 bytes y no contiene fallo fatal. Xorg abre
+  `/dev/dri/card0` mediante modesetting/simpledrm, selecciona 2960x1848 y usa
+  VT7. `lightdm.log` tiene 3.654 bytes, lanza `slick-greeter` y lo deja en
+  autenticación de `phablet`.
+- La discrepancia queda aislada al scanout: LightDM registra que Plymouth sigue
+  en VT1, inicia X con `vt7 -novtswitch` y luego dice `Activating VT 7`, pero la
+  pantalla física conserva el framebuffer de VT1. Los logs X/LightDM de v0.11,
+  que sí mostró el login, son esencialmente iguales; no hay evidencia para
+  cambiar kernel, simpledrm, resolución ni greeter en esta iteración.
+- v0.24 mantiene sin cambios kernel r17, DTB y aislamiento WCN. El paquete
+  device sube a r8, depende explícitamente de `kbd` y añade una unidad oneshot
+  posterior a LightDM. El script espera hasta 15 s el socket X0, registra la VT
+  antes/después y fuerza `chvt 1`, pausa y `chvt 7` para provocar
+  `LeaveVT`/`EnterVT` y un redraw de simpledrm.
+- La build limpia contiene device r8, kernel `7.2_rc3-r17`, firmware r1 y
+  `kbd-2.8.0-r0`. Se verificaron script ejecutable/sintácticamente válido,
+  unidad habilitada, `chvt`/`fgconsole`, cmdline sin `console=tty0` y
+  `status=disabled` en PMU WCN, PCIe0 y su PHY.
+- Durante el empaquetado se detectó que el overlay incremental anterior sólo
+  incluía módulos, firmware y deviceinfo: el paquete r8 nuevo no habría
+  actualizado por sí mismo la microSD ya instalada. v0.24 transporta además el
+  script, la unidad y su activación. `make-twrp-zip.py` preserva ahora los modos
+  POSIX del overlay; se comprobó que el script queda `0755` dentro del ZIP.
+- ZIP TWRP final:
+  `postmarketos-edge-xfce-mainline-v0.24-vt-handoff-rndis-sm-x910-twrp.zip`,
+  80.853.551 bytes, SHA-256
+  `b7c1a8bc2e3cc6bb0b68c89a5eea8882d85ef664291e80e54e275cfa8ef37b6e`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
+- Próxima prueba: flash manual v0.24, dejar la tablet arrancada incluso si aún
+  muestra pingüinos y mantener USB conectado. Probar SSH inmediatamente en
+  `172.16.42.1` y leer el journal de
+  `gts9uwifi-display-handoff.service`; si el rebote automático no repinta, se
+  podrá repetir en vivo y observar DRM/VT sin otro ciclo ciego.
