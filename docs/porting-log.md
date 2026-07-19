@@ -946,3 +946,48 @@ física.
   soft reset y el fallo está ahora en el gadget, o si DWC3 sigue en timeout.
   Próximo paso: volver a TWRP, extraer el journal v0.15 en sólo lectura y usar
   esa evidencia para el siguiente cambio USB junto con la inversión de eje.
+
+## 2026-07-19 — sesión 23: journal v0.15 y bundle v0.16
+
+- En TWRP se montó `/dev/block/mmcblk1p2` como `ro,norecovery`, se extrajeron
+  journal, Xorg, boot y LightDM a `work/v015-rootfs-logs-20260719/`, y se
+  desmontó la microSD. El journal actual tiene SHA-256
+  `ab71752f62067cea8bd92d87850f42c873c9aace2090a2e6aba50c1d001f5496`;
+  boot ID `50f794db540749b2bde8ed6ef92011c8`.
+- Goodix registra `event layout 8/16` y no aparecen checksum, GPI-I2C ni DMA
+  timeouts. Esto concuerda con la entrada física estable observada en v0.15.
+- UTMI-PIPE resolvió el soft reset DWC3: ya no existe `-ETIMEDOUT`. El kernel
+  registra el controlador, configfs crea el gadget y `usb0`; initramfs asigna
+  `172.16.42.1` e inicia DHCP. En userspace Avahi publica esa dirección y sshd
+  escucha en `0.0.0.0:22` y `[::]:22`.
+- Como Windows sigue mostrando errores de descriptor, el fallo restante queda
+  después del core/gadget y antes de una enumeración física correcta. No se
+  debe seguir modificando userspace de red para este síntoma.
+- Se comparó el driver mainline `drivers/phy/phy-snps-eusb2.c` con el Samsung
+  funcional `drivers/usb/phy/phy-msm-snps-eusb2.c`. Divisores PLL, VREF y los
+  cinco parámetros TX coinciden. Las dos diferencias concretas son una espera
+  de 10 µs tras afirmar `POR` y `PHY_CFG_PLL_CPBIAS_CNTRL=1`; mainline omite la
+  espera y usa cero.
+- Se añadió `match-samsung-sm8550-eusb2-phy-init.patch` para reproducir ambos
+  detalles. El DTS añade además `touchscreen-inverted-y`. El paquete sube a
+  r11, actualiza hashes y el validador exige inversión e intercambio de ejes.
+- Build limpia v0.16: kernel
+  `e1ece41124f5f365e5a123fd7ec67531682397bb5cf1d3c3df2a088b525624be`,
+  DTB `ce4ce2e2d09b0835641e95f26971188fa5be479c0d65aa626eed4cade9f87093`,
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  La compilación limpia terminó en 585 s y las comprobaciones inspeccionaron
+  fuente y DTB efectivos.
+- ZIP v0.16:
+  `postmarketos-edge-xfce-mainline-v0.16-touch-usb-phy-sm-x910-twrp.zip`,
+  22.016.593 bytes, SHA-256
+  `c0d768a2eb179cab95bc2776840828e36c8a50a2df598f7bbb1df6835c457ef9`.
+  Hashes internos: boot
+  `09984ff41ef3f799378c91d9572618742cce7375dcf2e37074ee39d0705794d7`,
+  vendor_boot
+  `1a57a0a114c63a30fb1e6e00f9850dee09acdf10da9c5b15ebe243a6b35aa5ed`.
+  Dos generaciones fueron idénticas; pasó Android v4/LZ4/AVB y el hash en
+  `/sdcard` coincide. El asistente no flasheó particiones.
+- Reto inmediato: flashear manualmente v0.16, validar orientación táctil y
+  enumeración NCM/RNDIS. Si aparece la interfaz, conectar por SSH a
+  `172.16.42.1`; si no, capturar el journal y añadir lecturas diagnósticas de
+  los registros PHY/PTN3222 antes de otro cambio.

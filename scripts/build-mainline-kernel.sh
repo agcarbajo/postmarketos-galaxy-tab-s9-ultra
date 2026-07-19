@@ -42,6 +42,11 @@ fi
 if ! grep -q 'probing %s with driver %s' "$kernel_tree/drivers/base/dd.c"; then
 	patch -d "$kernel_tree" -p1 < "$package/log-probe-entry-before-call.patch"
 fi
+if ! grep -q 'Match Samsung SM8550 sequencing' \
+	"$kernel_tree/drivers/phy/phy-snps-eusb2.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/match-samsung-sm8550-eusb2-phy-init.patch"
+fi
 if ! grep -q 'GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK' \
 	"$kernel_tree/drivers/input/touchscreen/goodix_berlin_core.c"; then
 	patch -d "$kernel_tree" -p1 \

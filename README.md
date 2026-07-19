@@ -52,21 +52,21 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.15 limita la prelectura Goodix Samsung a un contacto |
-| DTS `gts9uwifi` | 🟡 v0.15 añade UTMI como PIPE al operar DWC3 sin PHY SuperSpeed; framebuffer, SD, UART, GT9916 y PTN3222 descritos |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.16 iguala POR/CPBIAS de la PHY eUSB2 Samsung |
+| DTS `gts9uwifi` | 🟡 v0.16 añade inversión Y del táctil; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r10 reproducen GPI DMA, EVDEV, Goodix Samsung, tuning PTN3222 y UTMI-PIPE; build limpia validada |
+| Paquetes pmaports | ✅ Fuentes r11 reproducen Goodix/orientación y la secuencia Samsung de la PHY eUSB2; build limpia validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🔴 v0.15 no enumera NCM/RNDIS ni ofrece SSH por USB/LAN; pendiente journal v0.15 |
-| Táctil | 🟡 v0.15 produce entrada por primera vez; el eje vertical está invertido y requiere `touchscreen-inverted-y` |
-| Bundle Android v4 | ✅ v0.15 LZ4 legacy, imágenes, AVB, Goodix corto, UTMI-PIPE y reproducción validados |
+| SSH | 🧪 v0.16 preparada con POR/CPBIAS Samsung; v0.15 ya crea gadget, `usb0`, DHCP y `sshd`, pero el host no lee descriptores |
+| Táctil | 🧪 v0.16 añade `touchscreen-inverted-y`; v0.15 ya produce entrada estable pero verticalmente invertida |
+| Bundle Android v4 | ✅ v0.16 LZ4 legacy, imágenes, AVB, orientación y PHY Samsung reproducidos y validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.15 arrancan a login; táctil funcional pero invertido, USB/SSH bloqueado |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.16 listos; pendiente validar orientación y enumeración USB |
 
 ## Reto en curso
 
-Validar físicamente v0.15 para obtener el primer acceso interactivo:
+Validar físicamente v0.16 para obtener el primer acceso interactivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -107,9 +107,17 @@ Validar físicamente v0.15 para obtener el primer acceso interactivo:
   activa abajo, por lo que falta invertir el eje Y tras el intercambio de ejes.
   USB no enumera NCM/RNDIS, conserva dos errores de descriptor y no hay SSH en
   `172.16.42.1`, `.151` ni en la LAN excluyendo `.138`/`.150`;
-- volver a TWRP y extraer el journal v0.15 en sólo lectura. Se añadirá
-  `touchscreen-inverted-y` a la siguiente build y el log decidirá el siguiente
-  cambio DWC3, sin tocar a ciegas relojes, resets o PHY;
+- el journal v0.15 extraído en sólo lectura demuestra que UTMI-PIPE resolvió el
+  soft reset: no hay error DWC3, configfs enlaza el gadget, existe `usb0` con
+  `172.16.42.1`, DHCP arranca y `sshd` escucha en todas las interfaces. El fallo
+  restante está en la señal física/PHY porque Windows no puede leer descriptor;
+- el driver Samsung funcional difiere del mainline sólo en dos detalles de esa
+  inicialización relevante: espera 10 µs tras afirmar `POR` y programa
+  `PHY_CFG_PLL_CPBIAS_CNTRL=1`; mainline no espera y escribe cero. v0.16 porta
+  ambos y añade `touchscreen-inverted-y`;
+- flashear manualmente v0.16, comprobar que el toque coincide y observar si
+  Windows crea NCM/RNDIS. Si enumera, conectar a `172.16.42.1:22`; si no,
+  extraer el journal y añadir lectura diagnóstica de registros PHY/repetidor;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -551,6 +559,29 @@ lado del workspace.
 - El cambio UTMI-PIPE no produjo aún un gadget utilizable. Windows mantiene dos
   errores de descriptor, no crea NCM/RNDIS y no existe SSH en USB ni en la LAN;
   se requiere el journal v0.15 para saber si DWC3 superó el soft reset.
+- El journal v0.15 se extrajo con la raíz como `ro,norecovery`; SHA-256
+  `ab71752f62067cea8bd92d87850f42c873c9aace2090a2e6aba50c1d001f5496`,
+  boot ID `50f794db540749b2bde8ed6ef92011c8`. Goodix no registra fallos y DWC3 ya
+  supera el soft reset. Configfs crea gadget/`usb0`, asigna `172.16.42.1`,
+  Avahi lo publica y OpenSSH escucha en `0.0.0.0:22`/`[::]:22`.
+- La comparación directa entre `phy-snps-eusb2.c` mainline y
+  `phy-msm-snps-eusb2.c` Samsung encontró dos diferencias antes del PLL:
+  downstream espera 10 µs tras `POR` y usa CPBIAS=1; mainline omite la espera
+  y usa cero. El resto de divisores PLL y cinco parámetros TX coincide.
+- La fuente r11 integra `match-samsung-sm8550-eusb2-phy-init.patch`, que porta
+  esas dos diferencias, y el DTS añade `touchscreen-inverted-y`. Ambos parches
+  aplican limpiamente sobre Linux 7.2-rc3.
+- Build limpia v0.16: `Image.gz` SHA-256
+  `e1ece41124f5f365e5a123fd7ec67531682397bb5cf1d3c3df2a088b525624be`;
+  DTB `ce4ce2e2d09b0835641e95f26971188fa5be479c0d65aa626eed4cade9f87093`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  Fuente y DTB compilados se verificaron antes de empaquetar.
+- ZIP v0.16 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.16-touch-usb-phy-sm-x910-twrp.zip`,
+  22.016.593 bytes, SHA-256
+  `c0d768a2eb179cab95bc2776840828e36c8a50a2df598f7bbb1df6835c457ef9`.
+  Pasó Android v4/LZ4/AVB/appended-DTB, se copió a `/sdcard` y el hash remoto
+  coincide. El asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -663,6 +694,9 @@ lado del workspace.
 - No eliminar la PHY SuperSpeed del nodo DWC3 sin seleccionar UTMI como PIPE.
   El core USB necesita ese reloj para liberar el soft reset incluso cuando el
   enlace se limita deliberadamente a `high-speed`.
+- No seguir tratando v0.15 como un fallo de DWC3 o userspace de red: el journal
+  demuestra core, gadget, `usb0`, DHCP y SSH activos. El fallo externo de
+  descriptor queda acotado a PHY/repetidor/señal física.
 - No dejar `CONFIG_INPUT_EVDEV=m` en una build directa que no instala módulos:
   el dispositivo puede registrarse como `input0` sin crear `/dev/input/event*`.
   Desde r8 EVDEV es built-in y el validador lo exige.
