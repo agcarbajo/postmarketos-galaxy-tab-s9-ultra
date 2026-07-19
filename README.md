@@ -52,22 +52,23 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.21 compila Linux 7.2-rc3 r16 con RNDIS, PCIe0, ath12k y trazas del secuenciador WCN7850 |
+| Kernel mainline SM8550 | ✅ v0.22 reutiliza Linux 7.2-rc3 r16 validado: RNDIS, PCIe0, ath12k y trazas del secuenciador WCN7850 |
 | DTS `gts9uwifi` | 🧪 v0.21 conserva táctil/pantalla/SD/USB, revierte el rail WCN que bloqueó v0.20 y prueba GPIO80 pull-up/16 mA sin `output-high` |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.21 reproducible: device r6, kernel r16 y firmware WCN7850 r1 extraído del firmware X910 |
-| Rootfs postmarketOS | ✅ v0.21 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
-| Escritorio | ✅ v0.19.2 demuestra X/LightDM/greeter en VT7; v0.21 restaura `console=tty0` para que el diagnóstico siga visible durante el bring-up |
-| Wi-Fi | 🧪 v0.19.2 levanta PCIe0 sin enumerar `17cb:1107`; v0.21 instrumenta PMU/WLAN_EN tras descartar el rail real ensayado en v0.20 |
-| SSH | 🧪 v0.19.2 crea RNDIS, `usb0=172.16.42.1` y OpenSSH internamente; pendiente comprobar el enlace desde Windows |
+| Paquetes pmaports | ✅ v0.22 reproducible: device r7, kernel r16 y firmware WCN7850 r1 extraído del firmware X910 |
+| Rootfs postmarketOS | ✅ v0.22 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
+| Escritorio | ✅ v0.21 inicia LightDM/greeter y alcanza `graphical.target`; fbcon lo tapa por `console=tty0`, retirada de nuevo en v0.22 |
+| Wi-Fi | 🧪 v0.21 ejecuta sin error los siete rails y WLAN_EN, pero el endpoint `17cb:1107` aún responde `Device not found` |
+| SSH | 🧪 v0.21 levanta RNDIS, carrier, `usb0=172.16.42.1` y OpenSSH; v0.22 espera validación desde Windows |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.21 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
+| Bundle Android v4 | ✅ v0.22 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.21 copiado y verificado en TWRP; pendiente flash manual y extracción de trazas WCN |
+| Imagen/paquete de prueba | 🧪 ZIP v0.22 copiado y verificado en TWRP; pendiente flash manual, greeter visible y SSH RNDIS |
 
 ## Reto en curso
 
-Validar físicamente v0.21 y localizar el bloqueo/enumeración del WCN7850:
+Validar físicamente v0.22 con greeter visible y SSH RNDIS; después continuar
+la enumeración del WCN7850 en vivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -179,11 +180,18 @@ Validar físicamente v0.21 y localizar el bloqueo/enumeración del WCN7850:
   dummy regulator conocido de v0.19.2 y conserva sólo la parte eléctrica
   justificada de GPIO80 (`bias-pull-up`, 16 mA). Elimina `output-high` para que
   `pwrseq-qcom-wcn` eleve WLAN_EN en su secuencia normal;
-- el parche diagnóstico r16 registra la adquisición/activación de los rails y
-  el valor inicial, dirección y transición de WLAN_EN. Tras el flash manual,
-  esperar al menos 45 segundos. Si no aparece SSH por RNDIS en
-  `172.16.42.1`, volver directamente a TWRP y extraer journal/`last_kmsg`; no
-  hace falta grabar vídeo mientras esos logs persistan;
+- el journal v0.21 demuestra que no existe cuelgue: el boot
+  `f1d854a068194803b30089cb0d6554a3` activa sin error los siete rails,
+  conserva WLAN_EN alto, completa el sondeo PCIe con `Device not found`,
+  inicia NetworkManager/OpenSSH/LightDM y alcanza `graphical.target` a los
+  21,604 s. Continúa registrando actividad más allá de 51 s;
+- la pantalla permanece en el último printk sólo porque v0.21 volvió a añadir
+  `console=tty0`. v0.22 reutiliza exactamente kernel r16/DTB/firmware, sube el
+  device a r7 y retira únicamente esa consola de framebuffer tanto del bundle
+  Android como del paquete reproducible;
+- tras el flash manual v0.22, esperar al menos 45 segundos y comprobar el
+  greeter. Mantenerla encendida y conectada por USB para probar inmediatamente
+  SSH en `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -822,6 +830,22 @@ lado del workspace.
   Incluye overlay completo, appended-DTB y DTBO runtime deshabilitado. Se
   copió a `/sdcard` y la única comprobación posterior coincide; el asistente
   no flasheó ninguna partición.
+- Los logs v0.21 se extrajeron en sólo lectura a
+  `work/v021-rootfs-logs-20260719/`. El boot
+  `f1d854a068194803b30089cb0d6554a3` prueba que la aparente congelación era
+  exclusivamente visual: los siete rails retornan 0, WLAN_EN permanece en 1,
+  PCIe devuelve `Device not found`, pero RNDIS obtiene carrier,
+  NetworkManager y OpenSSH arrancan, LightDM se inicia a 21,555 s y
+  `graphical.target` se alcanza a 21,604 s. No hay hang, panic ni oops.
+- Build limpia v0.22: device r7, kernel r16 y firmware r1. Sólo se retira
+  `console=tty0` del cmdline Android y del paquete device para entregar el
+  framebuffer a X; UART, earlycon, journal y todas las trazas permanecen.
+- ZIP TWRP v0.22:
+  `postmarketos-edge-xfce-mainline-v0.22-rndis-ssh-greeter-sm-x910-twrp.zip`,
+  80.851.469 bytes, SHA-256
+  `85c70c79f1b0e0bb3c7facd47ac7b817807dd6159a15a4dd8d6f42f5e204f9c6`.
+  Copiado a `/sdcard`; la única comparación posterior local/remota coincide.
+  El asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 

@@ -1302,3 +1302,34 @@ física.
   el verbose. Si no aparece RNDIS/SSH, volver a TWRP para extraer el journal y
   localizar la última traza `SM-X910 WCN diag`; no hace falta vídeo mientras
   la persistencia de la microSD continúe funcionando.
+
+## 2026-07-19 — sesión 34: v0.21 sí arranca y bundle visual/SSH v0.22
+
+- La foto v0.21 parecía quedar detenida tras `SM-X910 WCN diag: power
+  sequencer registered`. Se volvió manualmente a TWRP y se extrajeron en sólo
+  lectura 19 journals, `last_kmsg` y logs de X/LightDM a
+  `work/v021-rootfs-logs-20260719/`.
+- El boot completo `f1d854a068194803b30089cb0d6554a3` usa kernel r16. El
+  secuenciador adquiere los siete rails, `regulator_bulk_enable()` retorna 0 y
+  WLAN_EN permanece en 1 antes/después de la transición. PCIe termina de forma
+  normal un segundo después con `Device not found`; el WCN7850 aún no enumera,
+  pero no existe deadlock, panic ni oops.
+- Userspace continúa: RNDIS obtiene carrier, `usb0` conserva `172.16.42.1`,
+  NetworkManager arranca a 21,315 s, OpenSSH a 21,318 s, LightDM a 21,555 s y
+  `graphical.target` a 21,604 s. El journal sigue activo al menos hasta 51 s.
+- La causa de la pantalla estática es conocida y aislada: `console=tty0`
+  mantiene fbcon mostrando el último printk mientras X/greeter corre en VT7.
+  Esa consola se restauró deliberadamente en v0.21 para obtener las trazas.
+- v0.22 no recompila ni cambia kernel/DTB: conserva r16 y firmware r1, sube el
+  device a r7 y retira `console=tty0` tanto del cmdline Android como del
+  `kernel-cmdline.conf` reproducible. Se generó un rootfs limpio y se verificó
+  device r7/kernel r16/firmware r1.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.22-rndis-ssh-greeter-sm-x910-twrp.zip`,
+  80.851.469 bytes, SHA-256
+  `85c70c79f1b0e0bb3c7facd47ac7b817807dd6159a15a4dd8d6f42f5e204f9c6`.
+  Usa appended-DTB, DTBO runtime deshabilitado y overlay completo. Se copió a
+  `/sdcard` y el único hash posterior coincide; el asistente no flasheó.
+- Próxima prueba: flash manual v0.22, esperar 45 s, dejar el sistema vivo y
+  conectado por USB. Debe aparecer el greeter; se probará inmediatamente SSH
+  en `172.16.42.1` para continuar la enumeración WCN desde el sistema vivo.
