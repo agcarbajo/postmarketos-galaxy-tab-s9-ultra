@@ -781,3 +781,18 @@ física.
 - Reto inmediato: flashear manualmente v0.13, probar táctil en LightDM y
   observar la enumeración USB. Si NCM/RNDIS aparece, conectar por SSH y
   verificar en vivo eventos Goodix, PTN3222/DWC3 y estado de red.
+
+## 2026-07-19 — sesión 18: resultado físico inicial v0.13
+
+- La usuaria flasheó v0.13. El sistema vuelve a alcanzar LightDM, pero el
+  táctil continúa sin producir entrada utilizable.
+- El host no detecta ADB, ACM ni una interfaz NCM/RNDIS. Siguen presentes dos
+  dispositivos USB desconocidos con error de solicitud de descriptor y
+  `172.16.42.1:22` no responde; por tanto todavía no existe SSH sobre USB.
+- Se sondeó en paralelo el puerto 22 de `<LAN_SUBNET>`, excluyendo el propio
+  host, `.138` y `.150`. La usuaria confirmó que `.138` es otro dispositivo
+  pmOS y `.150` ya estaba identificado como otro equipo; no apareció ningún
+  endpoint SSH nuevo atribuible a la tablet.
+- No se introducen nuevas correcciones a ciegas. El próximo paso es volver a
+  TWRP y extraer en sólo lectura el journal v0.13 para comprobar el layout
+  Goodix registrado, checksum, EVDEV/libinput y la cadena PTN3222/DWC3.

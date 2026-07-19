@@ -58,15 +58,15 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r8 reproducen GPI DMA, PTN3222, EVDEV y el parche Goodix Samsung; build directa validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🟡 v0.12 quedó bloqueada por el pinctrl del reset PTN3222; corrección v0.13 pendiente de prueba física |
-| Táctil | 🟡 v0.12 registra GT9916/input0 pero rechaza eventos de 16 bytes; parser y EVDEV corregidos en v0.13, pendiente de prueba |
+| SSH | 🔴 v0.13 sigue sin enumerar NCM/RNDIS ni ofrecer SSH por USB o LAN; pendiente journal v0.13 |
+| Táctil | 🔴 v0.13 llega a LightDM pero aún no produce entrada utilizable; pendiente journal del parser 16-byte/EVDEV |
 | Bundle Android v4 | ✅ v0.13 LZ4 legacy, imágenes, AVB, parche Goodix, DT USB/táctil y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.13 copiado a `/sdcard`; pendiente validar táctil y USB/SSH |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.13 arrancan hasta login; táctil y USB/SSH siguen bloqueados |
 
 ## Reto en curso
 
-Validar físicamente v0.13 y obtener el primer acceso interactivo:
+Extraer y analizar el journal v0.13 para obtener el primer acceso interactivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -83,8 +83,14 @@ Validar físicamente v0.13 y obtener el primer acceso interactivo:
   copiaba `drive-strength`, no aceptado por `qcom-spmi-gpio`; v0.13 reproduce
   el estado stock con `qcom,drive-strength`, `power-source`, entrada/salida,
   push-pull y bias deshabilitado;
-- flashear manualmente el ZIP v0.13 ya copiado a `/sdcard`, comprobar que el
-  táctil permite usar LightDM y observar si Windows enumera NCM/RNDIS;
+- la prueba física v0.13 sigue llegando a LightDM, pero el táctil no responde.
+  Windows no enumera ADB, ACM ni NCM/RNDIS y conserva dos errores de descriptor;
+  tampoco responde `172.16.42.1:22` ni apareció otro SSH en la LAN, excluyendo
+  expresamente `.138` y `.150`, que son otros dispositivos conocidos;
+- volver a TWRP, montar la raíz pmOS en sólo lectura y extraer el journal v0.13.
+  Hay que comprobar el layout Goodix anunciado, si desapareció el checksum,
+  creación de `event*`/libinput y el nuevo punto exacto de deferred probe de
+  PTN3222/DWC3 antes de modificar otra vez el kernel;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
