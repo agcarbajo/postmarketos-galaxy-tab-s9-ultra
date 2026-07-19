@@ -1102,3 +1102,15 @@ física.
 - Reto inmediato: flash manual v0.18, esperar 15 s y probar USB/SSH. Si falla,
   volver a TWRP y clasificar el primer punto ausente entre pull-up, RUN/STOP,
   IRQ reset/connect, SETUP y respuesta EP0.
+
+## 2026-07-19 — sesión 28: resultado físico inicial v0.18
+
+- v0.18 arranca hasta LightDM y conserva el táctil funcional, pero USB no
+  enumera. Windows muestra dos dispositivos `VID_0000&PID_0002` con error de
+  solicitud de descriptor; no aparece adaptador NCM/RNDIS.
+- No responden `172.16.42.1:22`, `172.16.42.2:22` ni `.151`. El barrido completo
+  de `<LAN_SUBNET>` sólo encuentra SSH en `.138` y `.150`, ambos excluidos por
+  pertenecer a otros dispositivos.
+- Reto inmediato: volver a TWRP, extraer el journal v0.18 en sólo lectura y
+  determinar con las trazas nuevas el primer punto ausente entre pull-up,
+  RUN/STOP, IRQ reset/connect, paquete SETUP y respuesta EP0.

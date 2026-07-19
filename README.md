@@ -58,11 +58,11 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r13 reproducen v0.18: Goodix correcto y trazas PHY/PTN3222/DWC3/EP0 |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.17 no enumera aunque PTN3222 coincide con Samsung; v0.18 trazará pull-up, IRQ y EP0 |
+| SSH | 🧪 v0.18 tampoco enumera; pendiente extraer trazas de pull-up, IRQ y EP0 |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.18 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.18 copiado/verificado; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.18 arrancan; táctil bien, USB/SSH aún no |
 
 ## Reto en curso
 
@@ -141,9 +141,11 @@ Validar v0.18 y localizar el fallo de enumeración en DWC3/EP0:
   DWC3/UDC/EP0 o en la entrega del descriptor;
 - v0.18 registra el pull-up solicitado/efectivo, DCTL/DSTS/DEVTEN/event count,
   todos los eventos DWC3, transiciones EP0 y cada paquete SETUP decodificado;
-- flashear manualmente v0.18, esperar al menos 15 segundos y comprobar USB/SSH.
-  Si no enumera, volver a TWRP y extraer el journal para clasificar si falta
-  RUN/STOP, IRQ/reset/connect, SETUP o la respuesta de EP0;
+- la prueba física v0.18 vuelve a LightDM pero no enumera: Windows conserva dos
+  errores de descriptor, no hay NCM/RNDIS ni SSH en `172.16.42.1/.2`, y la LAN
+  sólo expone los equipos excluidos `.138`/`.150`;
+- volver a TWRP y extraer el journal v0.18 para clasificar si falta RUN/STOP,
+  IRQ reset/connect, SETUP o la respuesta de EP0;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -667,6 +669,10 @@ lado del workspace.
   22.017.000 bytes, SHA-256
   `6706f3778c2df2b1384e1b225cf3c5af315ca0986056599dfb3fc4c42f8542e0`.
   Copiado a `/sdcard`; la única comprobación posterior coincide. No se flasheó.
+- La prueba física v0.18 no cambia el síntoma externo: dos errores de solicitud
+  de descriptor, sin NCM/RNDIS y sin SSH USB. El barrido LAN sólo encuentra
+  `.138` y `.150`, que pertenecen a otros dispositivos. Se requiere su journal
+  para explotar las nuevas trazas DWC3/EP0.
 
 ## Lo que no ha funcionado / no repetir
 
