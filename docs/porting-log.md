@@ -1054,3 +1054,18 @@ física.
 - Reto inmediato: flash manual v0.17, validar ambos ejes táctiles y observar
   USB/SSH. Si no enumera, volver a TWRP y comparar `0f/10` mainline con la
   referencia Samsung `09/05` antes de aplicar el siguiente arreglo.
+
+## 2026-07-19 — sesión 26: resultado físico inicial v0.17
+
+- v0.17 arranca hasta LightDM y la usuaria confirma que el táctil funciona y
+  queda correctamente orientado. Se valida físicamente la combinación
+  `touchscreen-inverted-x` + `touchscreen-swapped-x-y`; el bring-up táctil se
+  considera resuelto.
+- Windows no enumera NCM/RNDIS y mantiene dispositivos USB con error de
+  solicitud de descriptor. No responden `172.16.42.1:22`, `172.16.42.2:22` ni
+  `<LAN_HOST_C>:22`.
+- El barrido TCP/22 de `<LAN_SUBNET>` sólo encuentra `.138` y `.150`, ambos
+  equipos conocidos que deben excluirse. No existe SSH atribuible a la tablet.
+- Reto inmediato: volver a TWRP, extraer el journal v0.17 en sólo lectura y
+  comparar los registros diferidos PTN3222 `DEVICE_STATUS(0f)` y
+  `LINK_STATUS(10)` con la referencia Samsung funcional `09/05`.

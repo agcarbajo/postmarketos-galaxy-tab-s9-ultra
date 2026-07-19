@@ -58,15 +58,15 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r12 reproducen v0.17: eje Goodix correcto y registros efectivos PHY/PTN3222 en el journal |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.16 sigue sin enumerar: internamente v0.15 ya crea gadget, `usb0`, DHCP y `sshd`, pero el host no lee descriptores |
-| Táctil | 🧪 v0.17 usa la combinación correcta `inverted-x` + `swapped-x-y`; pendiente prueba física |
+| SSH | 🧪 v0.17 sigue sin enumerar: no hay NCM/RNDIS ni host SSH nuevo; pendiente leer estados PTN3222 del journal |
+| Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.17 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.17 copiado y verificado en `/sdcard`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.17 arrancan; táctil correcto, USB/SSH aún no enumeran |
 
 ## Reto en curso
 
-Validar físicamente v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
+Extraer el journal v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -130,9 +130,11 @@ Validar físicamente v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
 - v0.17 registra el reloj y los controles efectivos de la PHY al inicializar,
   y ocho segundos después lee `00..16` del PTN3222. La comparación de
   `0f/10` distinguirá el lado eUSB2/repetidor del gadget/EP0;
-- flashear manualmente v0.17, validar la orientación del toque y comprobar
-  NCM/RNDIS/SSH. Si USB sigue sin enumerar, volver a TWRP y extraer el journal
-  para comparar sus estados con `09/05`;
+- la prueba física v0.17 valida completamente la orientación táctil. USB sigue
+  sin enumerar NCM/RNDIS, `172.16.42.1:22` no responde y el barrido de la LAN
+  sólo encuentra `.138`/`.150`, dispositivos excluidos conocidos;
+- volver a TWRP y extraer el journal v0.17 para comparar los estados PTN3222
+  `0f/10` con la referencia Samsung `09/05`;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -633,6 +635,10 @@ lado del workspace.
   `d86e978618bf00d182f705aa4b0704111b42b8f2f8dd8547e40255f205e30439`.
   Se copió a `/sdcard` y una única comprobación posterior dio el mismo hash;
   el asistente no lo flasheó.
+- La prueba física v0.17 confirma que el táctil queda correctamente orientado
+  y alineado. Windows aún muestra errores de solicitud de descriptor, no crea
+  NCM/RNDIS y no hay SSH por USB ni en un host nuevo de la LAN; `.138` y `.150`
+  siguen siendo los dos únicos SSH y pertenecen a otros dispositivos.
 
 ## Lo que no ha funcionado / no repetir
 
