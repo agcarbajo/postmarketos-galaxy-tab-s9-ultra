@@ -1172,3 +1172,21 @@ física.
 - Próximo paso: flash manual v0.19. Probar RNDIS/SSH en `172.16.42.1`; en
   paralelo observar si PCIe0 enumera 17cb:1107 y si NetworkManager obtiene una
   interfaz Wi-Fi. Si no hay red, volver a TWRP para extraer el journal v0.19.
+
+## 2026-07-19 — sesión 30: corrección del validador TWRP v0.19.1
+
+- El intento manual de instalar v0.19 abortó con `microSD rootfs is not
+  postmarketOS`. La comprobación sucede antes de los `dd`, por lo que no se
+  escribió ninguna partición de arranque ni archivo del rootfs.
+- Diagnóstico directo por ADB/TWRP: `/dev/block/mmcblk1p2` existe, monta como
+  ext4 y `/etc/os-release` es un enlace válido a `../usr/lib/os-release`. La
+  identidad real es `ID="postmarketos"`; el instalador sólo aceptaba la forma
+  legal alternativa sin comillas `ID=postmarketos`.
+- El validador acepta ahora exactamente cualquiera de esas dos formas. No se
+  modifica ninguna imagen, módulo, blob ni contenido del overlay v0.19.
+- Se reempaquetó como
+  `postmarketos-edge-xfce-mainline-v0.19.1-rndis-wifi-pcie-sm-x910-twrp.zip`:
+  80.821.400 bytes, SHA-256
+  `3a3431c1ea994536feadc6eb18712b1de38664babadb6b45e40da467dd66f89f`.
+  Copiado a `/sdcard`; el único hash posterior coincide. El asistente no lo
+  flasheó.

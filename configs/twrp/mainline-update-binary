@@ -92,6 +92,7 @@ if unzip -l "$ZIPFILE" ROOTFS-OVERLAY-SHA256SUMS >/dev/null 2>&1; then
     ROOTFS_MOUNTED=1
     [ -f "$ROOTFS_MOUNT/etc/os-release" ] || abort "microSD rootfs has no /etc/os-release"
     grep -q '^ID=postmarketos$' "$ROOTFS_MOUNT/etc/os-release" || \
+        grep -q '^ID="postmarketos"$' "$ROOTFS_MOUNT/etc/os-release" || \
         abort "microSD rootfs is not postmarketOS"
     ui_print "Validated the postmarketOS microSD rootfs overlay target."
 fi

@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.19 empaquetado con LZ4 legacy/AVB y overlay versionado para actualizar módulos/firmware en la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP incremental y SD limpia v0.19 generados; ZIP copiado/verificado en TWRP, pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.19 rechazado antes de escribir por `ID` entrecomillado; v0.19.1 corregido, copiado y verificado en TWRP |
 
 ## Reto en curso
 
@@ -714,6 +714,17 @@ lado del workspace.
   Incluye 2.011 archivos de overlay (69 MiB sin comprimir): árbol completo de
   módulos, firmware WCN7850 y deviceinfo. Se copió a `/sdcard` y el único hash
   posterior coincide; el asistente no lo flasheó.
+- El primer intento manual de instalar ese ZIP abortó antes de cualquier `dd`:
+  la microSD se montó correctamente, pero Alpine publica
+  `ID="postmarketos"` y el validador exigía `ID=postmarketos` sin comillas. La
+  fuente v0.19.1 acepta exactamente ambas formas; no cambia kernel, rootfs ni
+  overlay.
+- ZIP correctivo v0.19.1:
+  `postmarketos-edge-xfce-mainline-v0.19.1-rndis-wifi-pcie-sm-x910-twrp.zip`,
+  80.821.400 bytes, SHA-256
+  `3a3431c1ea994536feadc6eb18712b1de38664babadb6b45e40da467dd66f89f`.
+  Copiado a `/sdcard`; el único hash posterior coincide. Pendiente de flash
+  manual.
 - Imagen SD limpia v0.19 comprimida:
   `postmarketos-edge-xfce-mainline-v0.19-rndis-wifi-pcie-sm-x910-sd.img.zst`,
   513.383.398 bytes, SHA-256
@@ -731,6 +742,9 @@ lado del workspace.
   abuild empareja ambas listas por posición. La primera construcción rootfs
   r14 detectó el orden incorrecto de cuatro parches aunque la build directa
   los aplicaba; se corrigió antes de aceptar el paquete.
+- No asumir que `ID` en `/etc/os-release` carece de comillas. El rootfs físico
+  usa `ID="postmarketos"`; el validador TWRP debe aceptar las dos
+  representaciones exactas antes de rechazar la microSD.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó
