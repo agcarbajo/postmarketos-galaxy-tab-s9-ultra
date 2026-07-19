@@ -58,11 +58,11 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | ✅ Fuentes r10 reproducen GPI DMA, EVDEV, Goodix Samsung, tuning PTN3222 y UTMI-PIPE; build limpia validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.15 preparada con el reloj PIPE corregido; v0.14 fallaba el soft reset DWC3 aun con los cuatro overrides PTN aplicados |
-| Táctil | 🧪 v0.15 preparada con lectura inicial de 26 bytes; v0.14 ya eliminó el fallo de checksum pero la lectura GPI de 42 bytes agotaba timeout |
+| SSH | 🔴 v0.15 no enumera NCM/RNDIS ni ofrece SSH por USB/LAN; pendiente journal v0.15 |
+| Táctil | 🟡 v0.15 produce entrada por primera vez; el eje vertical está invertido y requiere `touchscreen-inverted-y` |
 | Bundle Android v4 | ✅ v0.15 LZ4 legacy, imágenes, AVB, Goodix corto, UTMI-PIPE y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.15 listos; v0.14 arranca a login pero táctil y USB/SSH siguen bloqueados |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.15 arrancan a login; táctil funcional pero invertido, USB/SSH bloqueado |
 
 ## Reto en curso
 
@@ -103,9 +103,13 @@ Validar físicamente v0.15 para obtener el primer acceso interactivo:
   DWC3 sigue fallando `DCTL.CSFTRST`. Como el DTS elimina la PHY SuperSpeed,
   faltaba `qcom,select-utmi-as-pipe-clk`: el glue Qualcomm la usa para
   alimentar PIPE desde UTMI antes de registrar el core. v0.15 lo añade;
-- flashear manualmente v0.15, probar un toque en LightDM y observar si Windows
-  enumera NCM/RNDIS. Si sigue fallando, volver a TWRP y extraer el journal en
-  sólo lectura para comparar GPI-I2C, DWC3 y gadget con v0.14;
+- la prueba física v0.15 confirma que Goodix ya reporta toques: tocar arriba
+  activa abajo, por lo que falta invertir el eje Y tras el intercambio de ejes.
+  USB no enumera NCM/RNDIS, conserva dos errores de descriptor y no hay SSH en
+  `172.16.42.1`, `.151` ni en la LAN excluyendo `.138`/`.150`;
+- volver a TWRP y extraer el journal v0.15 en sólo lectura. Se añadirá
+  `touchscreen-inverted-y` a la siguiente build y el log decidirá el siguiente
+  cambio DWC3, sin tocar a ciegas relojes, resets o PHY;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -540,6 +544,13 @@ lado del workspace.
   `e4f7432ed114227d238d161514796b6cc997a74029abe7ce9b079ef4216ae013`.
   Pasó Android v4, LZ4, AVB, appended-DTB y todas las aserciones. Se copió a
   `/sdcard` y el hash remoto coincide; el asistente no flasheó particiones.
+- La prueba física v0.15 valida la corrección de lectura corta: el táctil
+  produce entrada por primera vez. La geometría está escalada, pero el eje
+  vertical queda invertido (`arriba → abajo`), corrección declarativa pendiente
+  mediante `touchscreen-inverted-y`.
+- El cambio UTMI-PIPE no produjo aún un gadget utilizable. Windows mantiene dos
+  errores de descriptor, no crea NCM/RNDIS y no existe SSH en USB ni en la LAN;
+  se requiere el journal v0.15 para saber si DWC3 superó el soft reset.
 
 ## Lo que no ha funcionado / no repetir
 

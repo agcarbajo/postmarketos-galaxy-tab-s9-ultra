@@ -927,3 +927,22 @@ física.
   Windows enumera NCM/RNDIS, conectar por SSH y validar ambos subsistemas en
   vivo. Si alguno falla, volver a TWRP y extraer el nuevo journal en sólo
   lectura antes del siguiente cambio.
+
+## 2026-07-19 — sesión 22: resultado físico inicial v0.15
+
+- La usuaria flasheó v0.15 y el sistema alcanzó LightDM. La lectura Goodix
+  reducida de 42 a 26 bytes queda validada físicamente: el táctil produce
+  entrada por primera vez.
+- La orientación aún es incorrecta. Tocar la parte superior activa la parte
+  inferior, por lo que el eje vertical expuesto está invertido. El siguiente
+  DTS añadirá `touchscreen-inverted-y` además de `touchscreen-swapped-x-y`.
+- El host no presenta NCM/RNDIS ni otro adaptador USB de red. Permanecen dos
+  dispositivos desconocidos con error de solicitud de descriptor y
+  `172.16.42.1:22`/`<LAN_HOST_C>:22` no responden.
+- Se sondeó el puerto 22 de toda `<LAN_SUBNET>`. Sólo respondieron `.138` y
+  `.150`, ambos equipos conocidos que la usuaria pidió excluir; no existe SSH
+  atribuible a la tablet.
+- El resultado externo no demuestra todavía si UTMI-PIPE permitió superar el
+  soft reset y el fallo está ahora en el gadget, o si DWC3 sigue en timeout.
+  Próximo paso: volver a TWRP, extraer el journal v0.15 en sólo lectura y usar
+  esa evidencia para el siguiente cambio USB junto con la inversión de eje.
