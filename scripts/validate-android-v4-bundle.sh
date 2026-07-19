@@ -188,6 +188,7 @@ test "$(fdtget -t x "$tmp/vendor_boot/dtb" "$hsphy" phys)" = \
 	"$(fdtget -t x "$tmp/vendor_boot/dtb" "$repeater" phandle)"
 test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$usb" dr_mode)" = 'peripheral'
 test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$usb" maximum-speed)" = 'high-speed'
+fdtget "$tmp/vendor_boot/dtb" "$usb" qcom,select-utmi-as-pipe-clk >/dev/null
 
 grep -q '^page size: 0x00001000$' "$tmp/vendor_boot.info"
 grep -q '^kernel load address: 0x80008000$' "$tmp/vendor_boot.info"

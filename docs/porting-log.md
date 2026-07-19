@@ -873,3 +873,57 @@ física.
   cambió el checksum esperado o si la escritura PTN3222 falló/progresó sin
   resolver DWC3. Próximo paso: volver a TWRP y extraer el journal v0.14 en sólo
   lectura antes de introducir otro cambio.
+
+## 2026-07-19 — sesión 21: journal v0.14 y bundle v0.15
+
+- Desde TWRP se montó `/dev/block/mmcblk1p2` como `ro,norecovery`, se
+  extrajeron journals, Xorg, boot y LightDM a
+  `work/v014-rootfs-logs-20260719/`, y se desmontó la microSD sin escribirla.
+  El journal actual tiene SHA-256
+  `19d2ec68fd8d2fa3bdf30232821ba654c473f9f1ed0a7e9ed5340f970fe56e4f`;
+  boot ID `7d1c4dd8eee64b67b41c876851a25cd7`.
+- Goodix registra a 1,628 s `forcing 16-byte Samsung events for firmware PID
+  6936`, crea `input0` y anuncia `event layout 8/16`. Ya no aparece ningún
+  `touch data checksum error`: el forzado por PID de v0.14 funciona.
+- Al tocar, `a90000.i2c` agota el tiempo de la transferencia GPI inicial y el
+  driver termina en `failed get event head data: -110`; después el canal DMA
+  puede fallar también `CH STOP`. La diferencia con v0.13 es el tamaño:
+  26 bytes completaban, mientras v0.14 preleía dos registros Samsung y pedía
+  42. La corrección r10 prelee sólo un contacto (26 bytes en 8/16).
+- El algoritmo multitáctil conserva los dos bytes posteriores al primer
+  contacto: son checksum si `n=1` o el inicio de contacto 1 si `n>1`. En este
+  último caso reanuda en `header + point_len + checksum_size`, escribe desde
+  `data[point_len + checksum_size]` y lee `(n - 1) * point_len`, que completa
+  los contactos restantes y el checksum final sin duplicar datos.
+- USB registra `ptn3222 1-004f: applied 4 register overrides` a 1,748 s. DWC3
+  todavía avisa `controller soft reset failed` y devuelve `-ETIMEDOUT`; queda
+  demostrado que rails, reset y tuning del repetidor ya no son la barrera.
+- La comparación con `dwc3-qcom.c` identificó la omisión exacta al limitar el
+  puerto a HS: el DTS borraba la SSPHY/PIPE, pero no añadía
+  `qcom,select-utmi-as-pipe-clk`. Esa propiedad hace que el glue programe
+  `PIPE_UTMI_CLK_SEL` antes de `dwc3_core_probe()`. Se añadió al DTS y al
+  validador, sin reintroducir todavía la PHY USB3.
+- El parche Goodix modificado aplica limpiamente sobre Linux 7.2-rc3. Una
+  primera build limpia fue terminada a 63 s por el límite del runner, no por
+  un error; la continuación incremental terminó correctamente en 478 s.
+- Build v0.15: `Image.gz` SHA-256
+  `1a8320c6fa49f75cafd3ec3871ce012f59270a3b1d8ba665b2ac3a35b15cd8d2`;
+  DTB `13c909ec802636d7be8a6318c52be0f0b53505f6f4224e457184869ed6376c25`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  La imagen contiene el mensaje Goodix y el DTB compilado contiene la
+  propiedad booleana UTMI-PIPE.
+- ZIP v0.15:
+  `postmarketos-edge-xfce-mainline-v0.15-goodix-usb-pipe-sm-x910-twrp.zip`,
+  22.012.201 bytes, SHA-256
+  `e4f7432ed114227d238d161514796b6cc997a74029abe7ce9b079ef4216ae013`.
+  Hashes internos: boot
+  `837709a9e49e8ee25414c77ac80b3da803c9620bec155cf61529f2c66ee95aa2`,
+  vendor_boot
+  `9886dd75d9990d1656a00888bcc9559e984441fb8038cb1b7099d3f8b0a79921`.
+  Dos generaciones fueron idénticas, pasaron Android v4/LZ4/AVB y todas las
+  aserciones. El ZIP se copió a `/sdcard` y su hash remoto coincide; el
+  asistente no flasheó ninguna partición.
+- Reto inmediato: flashear manualmente v0.15 y probar un toque en LightDM. Si
+  Windows enumera NCM/RNDIS, conectar por SSH y validar ambos subsistemas en
+  vivo. Si alguno falla, volver a TWRP y extraer el nuevo journal en sólo
+  lectura antes del siguiente cambio.

@@ -369,6 +369,7 @@
 	/delete-property/ phy-names;
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
+	qcom,select-utmi-as-pipe-clk;
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
 	status = "okay";

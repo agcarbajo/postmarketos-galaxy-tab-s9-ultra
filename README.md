@@ -52,21 +52,21 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.14 fuerza el layout Goodix 6936 real y programa el PTN3222 por I2C |
-| DTS `gts9uwifi` | 🟡 v0.14 incluye tamaño táctil, reset y tuning PTN3222 exactos; framebuffer, SD, UART y GT9916 descritos |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.15 limita la prelectura Goodix Samsung a un contacto |
+| DTS `gts9uwifi` | 🟡 v0.15 añade UTMI como PIPE al operar DWC3 sin PHY SuperSpeed; framebuffer, SD, UART, GT9916 y PTN3222 descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r9 reproducen GPI DMA, EVDEV, Goodix Samsung y tuning I2C PTN3222; build limpia validada |
+| Paquetes pmaports | ✅ Fuentes r10 reproducen GPI DMA, EVDEV, Goodix Samsung, tuning PTN3222 y UTMI-PIPE; build limpia validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🔴 v0.14 no enumera NCM/RNDIS ni ofrece SSH por USB/LAN; pendiente journal v0.14 |
-| Táctil | 🔴 v0.14 llega a LightDM pero sigue sin entrada; pendiente confirmar layout 8/16 en journal |
-| Bundle Android v4 | ✅ v0.14 LZ4 legacy, imágenes, AVB, Goodix forzado, tuning PTN y reproducción validados |
+| SSH | 🧪 v0.15 preparada con el reloj PIPE corregido; v0.14 fallaba el soft reset DWC3 aun con los cuatro overrides PTN aplicados |
+| Táctil | 🧪 v0.15 preparada con lectura inicial de 26 bytes; v0.14 ya eliminó el fallo de checksum pero la lectura GPI de 42 bytes agotaba timeout |
+| Bundle Android v4 | ✅ v0.15 LZ4 legacy, imágenes, AVB, Goodix corto, UTMI-PIPE y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.14 arrancan hasta login; táctil y USB/SSH siguen bloqueados |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.15 listos; v0.14 arranca a login pero táctil y USB/SSH siguen bloqueados |
 
 ## Reto en curso
 
-Extraer el journal v0.14 para obtener el primer acceso interactivo:
+Validar físicamente v0.15 para obtener el primer acceso interactivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -94,9 +94,18 @@ Extraer el journal v0.14 para obtener el primer acceso interactivo:
 - la prueba física v0.14 vuelve a LightDM, pero el táctil no responde. Windows
   conserva dos errores de descriptor, sin ADB/ACM/NCM/RNDIS; no responde
   `172.16.42.1:22` ni apareció otro SSH en la LAN al excluir `.138` y `.150`;
-- volver a TWRP y extraer el journal v0.14 en sólo lectura. Hay que verificar
-  si registra `event layout 8/16`, si persisten los checksum errors, si el
-  PTN3222 anuncia cuatro overrides o falla al escribirlos, y el estado DWC3;
+- el journal v0.14 extraído en sólo lectura confirma `event layout 8/16` y
+  elimina por completo los errores de checksum. Al tocar, la lectura inicial
+  de 42 bytes bloquea GPI-I2C con `-ETIMEDOUT`; las lecturas de 26 bytes de
+  v0.13 sí completaban. v0.15 prelee sólo un contacto (26 bytes para Samsung)
+  y recupera el resto únicamente cuando el contador indica multitáctil;
+- el mismo journal confirma `applied 4 register overrides` en PTN3222, pero
+  DWC3 sigue fallando `DCTL.CSFTRST`. Como el DTS elimina la PHY SuperSpeed,
+  faltaba `qcom,select-utmi-as-pipe-clk`: el glue Qualcomm la usa para
+  alimentar PIPE desde UTMI antes de registrar el core. v0.15 lo añade;
+- flashear manualmente v0.15, probar un toque en LightDM y observar si Windows
+  enumera NCM/RNDIS. Si sigue fallando, volver a TWRP y extraer el journal en
+  sólo lectura para comparar GPI-I2C, DWC3 y gadget con v0.14;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -505,6 +514,32 @@ lado del workspace.
   Dos generaciones fueron idénticas, el validador confirmó las cadenas del
   kernel, la secuencia DT, Android v4 y AVB, y el hash copiado a `/sdcard`
   coincide. El asistente no lo flasheó.
+- El journal v0.14 se extrajo desde TWRP con la raíz microSD montada como
+  `ro,norecovery`; SHA-256
+  `19d2ec68fd8d2fa3bdf30232821ba654c473f9f1ed0a7e9ed5340f970fe56e4f`.
+  Goodix fuerza correctamente 8/16 y ya no genera errores de checksum. Los
+  toques disparan en cambio timeouts GPI-I2C sobre la lectura inicial de 42
+  bytes, mientras que las lecturas anteriores de 26 bytes sí completaban.
+- El mismo journal acredita que PTN3222 aplica sus cuatro overrides antes de
+  DWC3. El soft reset continúa en `-ETIMEDOUT`, lo que descarta el repetidor
+  como barrera restante. Al operar sin SSPHY faltaba seleccionar UTMI como
+  reloj PIPE, ruta implementada explícitamente por `dwc3-qcom`.
+- La fuente r10/v0.15 prelee un único contacto Goodix: 18 bytes en el formato
+  upstream o 26 en Samsung. Para multitáctil, la segunda lectura empieza tras
+  contacto 0 más los dos bytes ya recibidos y completa contactos/checksum. El
+  DTS añade `qcom,select-utmi-as-pipe-clk`; el validador lo exige en el DTB.
+- Build limpia v0.15: `Image.gz` SHA-256
+  `1a8320c6fa49f75cafd3ec3871ce012f59270a3b1d8ba665b2ac3a35b15cd8d2`;
+  DTB `13c909ec802636d7be8a6318c52be0f0b53505f6f4224e457184869ed6376c25`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  Se comprobó la ruta Goodix en la fuente/imagen y la propiedad UTMI-PIPE en
+  el DTB compilado.
+- ZIP v0.15 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.15-goodix-usb-pipe-sm-x910-twrp.zip`,
+  22.012.201 bytes, SHA-256
+  `e4f7432ed114227d238d161514796b6cc997a74029abe7ce9b079ef4216ae013`.
+  Pasó Android v4, LZ4, AVB, appended-DTB y todas las aserciones. Se copió a
+  `/sdcard` y el hash remoto coincide; el asistente no flasheó particiones.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -611,6 +646,12 @@ lado del workspace.
 - No considerar completa la inicialización del PTN3222 porque el driver
   mainline controle rails y reset. En la X910 son obligatorias cuatro
   escrituras I2C de tuning acreditadas por el FDT y los logs Samsung.
+- No aumentar la primera lectura Goodix Samsung a dos contactos. v0.14 pide
+  42 bytes y bloquea el canal GPI-I2C; preleer sólo uno mantiene la transferencia
+  en 26 bytes y permite completar el resto únicamente si el contador lo exige.
+- No eliminar la PHY SuperSpeed del nodo DWC3 sin seleccionar UTMI como PIPE.
+  El core USB necesita ese reloj para liberar el soft reset incluso cuando el
+  enlace se limita deliberadamente a `high-speed`.
 - No dejar `CONFIG_INPUT_EVDEV=m` en una build directa que no instala módulos:
   el dispositivo puede registrarse como `input0` sin crear `/dev/input/event*`.
   Desde r8 EVDEV es built-in y el validador lo exige.
