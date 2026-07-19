@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=8
+pkgrel=9
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -46,6 +46,7 @@ source="
 	keep-sec-log-previous-index-current.patch
 	log-probe-entry-before-call.patch
 	support-samsung-goodix-16-byte-events.patch
+	configure-nxp-ptn3222-from-dt.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 "
@@ -93,7 +94,8 @@ sha512sums="
 ef13d786887ee3e84734775bda21ef69c39e49c453323819abd9c5cc5d2e38065a7a6661e816a284870435396ec7c1e172f2edfd1ddd4013c2ce9a6697257556  add-samsung-sec-log-console.patch
 78e3c597631cfd7f3681e0c1247dbefc1e4716c42d931d7af82861c0d70904cc7d63ea1b3810aa92f2c6d659ab184309c8f252df18aeac4177dfe6b0eaaca36c  keep-sec-log-previous-index-current.patch
 6c3fa86dda394ba8e7ee20bb000fb34d986f1dd1d3284baf5b440c5612f0ded20d2326c0e13592e05bea499b360c0c29b33e8b899238dd7de976b2d256b6c4ec  log-probe-entry-before-call.patch
-f1da1c0342860c613112d17e1bf82a47bde741ed837145251481b117eb1ea11eed428f680cfb719ed8712e031d53123d2ac42d00309a915698813315389f377e  support-samsung-goodix-16-byte-events.patch
+abb007e36e8f25e59c6acde2b23fd6737e2a767bd0205583071c24bd15e8ba94f4d1c9a8883c1e6f756fdaefcb37d2411c25727af1088e6ac4f8b4641be15624  support-samsung-goodix-16-byte-events.patch
+ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f69fe12f3eacf01d0d901abf749249490a59167f56a836198d  configure-nxp-ptn3222-from-dt.patch
 b0242126aa4ce79830ebf62811ccdfd2a9606dc6744628a782a752d36a47752f9812eb732f72eb2f451d6ff8033761aa872fd7a2c3773d2da707db999935101c  config-gts9uwifi.fragment
-9aeb7af83913baf817650d8e3eaff9d6d4acd894d1f517fe67a0e8d0ce691035a82c697953fb5234666ac6873ac1442c833a3d03a5dc7b96b7b3dd817c84114b  sm8550-samsung-gts9uwifi.dts
+2353af535fb8f7cfcbbd1407f10cd6f0131f7733c008bb91abdeaa6ea5529e6370ccb8b204521a59eb482dda09ed946783f5df9aec40c33d3092759e30b52182  sm8550-samsung-gts9uwifi.dts
 "

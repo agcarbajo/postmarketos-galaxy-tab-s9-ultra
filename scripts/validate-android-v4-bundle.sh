@@ -34,6 +34,9 @@ fi
 gzip -dc "$tmp/package-Image.gz" > "$tmp/package-Image"
 grep -aFq 'unsupported event layout: header %u point %u' \
 	"$tmp/package-Image"
+grep -aFq 'forcing 16-byte Samsung events for firmware PID 6936' \
+	"$tmp/package-Image"
+grep -aFq 'applied %d register overrides' "$tmp/package-Image"
 
 for symbol in \
 	CONFIG_DRM_SIMPLEDRM \
@@ -176,6 +179,8 @@ case "$reset_spec" in
 esac
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater_reset" power-source)" = '1'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater_reset" qcom,drive-strength)" = '2'
+test "$(fdtget -t x "$tmp/vendor_boot/dtb" "$repeater" qcom,param-override-seq)" = \
+	'20 6 21 7 63 8 1 a'
 for property in input-enable output-enable drive-push-pull bias-disable; do
 	fdtget "$tmp/vendor_boot/dtb" "$repeater_reset" "$property" >/dev/null
 done

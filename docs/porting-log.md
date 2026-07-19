@@ -796,3 +796,66 @@ física.
 - No se introducen nuevas correcciones a ciegas. El próximo paso es volver a
   TWRP y extraer en sólo lectura el journal v0.13 para comprobar el layout
   Goodix registrado, checksum, EVDEV/libinput y la cadena PTN3222/DWC3.
+
+## 2026-07-19 — sesión 19: journal v0.13 y bundle v0.14
+
+- En TWRP se montó `/dev/block/mmcblk1p2` como `ro,norecovery`, se extrajeron
+  ambos journals persistentes, Xorg, boot y LightDM a
+  `work/v013-rootfs-logs-20260719/`, y se desmontó la raíz. El journal actual
+  tiene SHA-256
+  `e4d2d9a437b122c83360653cfe926e20c29c9e8f5e9e8d7eb9a3343d7bd2c51a`;
+  la operación no escribió en la microSD.
+- El boot v0.13 (`f9385ea3b0d042f09f326ed2761c12b8`) registra Goodix a
+  1,623 s y muestra `Goodix Berlin 6936 ... event layout 8/8`. A continuación
+  todos los eventos reales fallan checksum. Los dumps de un contacto tienen
+  10 bytes y los de dos contactos 18 porque el parser toma los bytes 8–9 o
+  16–17 como checksum, aunque son todavía datos del registro Samsung; esto
+  explica exactamente por qué el parche dinámico v0.13 no se activó.
+- El driver Samsung no usa el `point_struct_len` leído de IC_INFO para eventos:
+  fija `BYTES_PER_POINT=16`, checksum sobre `event_num * 16 + 2` y el layout
+  de coordenadas ya portado. Se corrigió la hipótesis anterior: este firmware
+  6936 anuncia ocho de forma incorrecta. El parche r9 fuerza 16 únicamente
+  cuando el PID es `6936`, conservando ocho para firmware upstream normal.
+- EVDEV está built-in y `input0` se registra; no hay evidencia de que Xorg o
+  libinput sean la barrera primaria mientras todos los IRQ se descarten antes
+  de reportar eventos. Los avisos de systemd intentando cargar `uinput` y
+  `uhid` como módulos son secundarios porque se compilaron built-in.
+- Para USB, desapareció por completo el fallo de pinctrl y ya no hay deferred
+  probe del PTN3222. DWC3 alcanza el sondeo a 2,098 s, pero su soft reset no
+  termina y acaba en `-ETIMEDOUT/-110`. El arreglo de GPIO de v0.13 fue por
+  tanto correcto pero insuficiente.
+- La comparación del driver mainline `phy-nxp-ptn3222.c` con el FDT/log vivo
+  Samsung encontró la diferencia restante: mainline sólo habilita rails y
+  quita reset. Samsung espera unos 4 ms, lee la versión `0xa2` y escribe cuatro
+  overrides: valor `20` en registro `06`, `21` en `07`, `63` en `08` y `01`
+  en `0a`. El FDT los publica como
+  `qcom,param-override-seq=<20 06 21 07 63 08 01 0a>`.
+- Se añadió `configure-nxp-ptn3222-from-dt.patch`: crea regmap I2C, valida una
+  secuencia par acotada, espera 4–5 ms tras reset, escribe pares valor/registro
+  y revierte rails/reset si falla. El DTS r9 reproduce la secuencia stock. El
+  validador exige tanto la cadena compilada como los ocho valores del DTB.
+- Los dos parches aplicaron limpiamente sobre un worktree 7.2-rc3 nuevo. La
+  primera invocación de build fue cortada por el límite del runner a 124 s sin
+  error de compilación; la segunda reutilizó los objetos parciales y terminó
+  el enlace limpio en 439 s. No se aceptaron outputs hasta que terminó.
+- Build directa v0.14: `Image.gz` SHA-256
+  `c02c47ffca3e4d6eb5d9f7cae2a1cb5f1c3994dc5dc25b2c0ec54908979b5952`;
+  DTB `454a804c38c6a3e5ea0406419f65c0adcc1c8d477dea50fb2b79e51d1f430d07`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  El Image contiene los mensajes de Goodix forzado y overrides PTN3222; el
+  DTB devuelve exactamente `20 6 21 7 63 8 1 a` mediante `fdtget`.
+- ZIP v0.14:
+  `postmarketos-edge-xfce-mainline-v0.14-goodix-force-ptn-tune-sm-x910-twrp.zip`,
+  22.014.000 bytes, SHA-256
+  `23cb7f066c6fecbd50d995db315906f262545ac3024af3068b3a468f947a5cfe`.
+  Hashes internos: boot
+  `9499d1836e2b9c7665891b46d0c13c34eea8ff2e4f7d72e8bc4a64d294a4fc4b`,
+  vendor_boot
+  `19c1f767c6a924a9bee4cdb0c7f70d067950327b55269f202cbb7f2c5989d904`.
+  Dos generaciones fueron idénticas, pasaron Android v4/LZ4/AVB y todas las
+  aserciones de hardware. Se copió a `/sdcard` y el hash remoto coincide. El
+  asistente no flasheó ninguna partición.
+- Reto inmediato: prueba física v0.14. El journal esperado debe mostrar layout
+  Goodix 8/16 sin checksum errors y cuatro overrides PTN antes de DWC3. Si USB
+  enumera, conectar por SSH; si el táctil responde, validar orientación y
+  escala en LightDM antes de avanzar a DRM nativo.

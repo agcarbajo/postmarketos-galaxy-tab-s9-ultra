@@ -1,17 +1,17 @@
 From: SM-X910 postmarketOS port <gts9uwifi@example.com>
 Subject: [PATCH] input: goodix: support 16-byte Samsung Berlin events
 
-Samsung's GT6936 firmware reports the point structure length as 16 bytes in
-IC_INFO.  The upstream Berlin driver parses that field but then assumes the
-8-byte reference format unconditionally.  This makes it mistake bytes 8 and
-9 of each Samsung event for the checksum and discard every touch.
+Samsung's GT6936 firmware emits 16-byte point records even though this X910
+firmware incorrectly reports the reference 8-byte length in IC_INFO.  The
+upstream Berlin driver trusts that field and consequently mistakes bytes 8
+and 9 of each Samsung event for the checksum, discarding every touch.
 
 Use the runtime header/point lengths from IC_INFO, retain the existing 8-byte
 format, and decode the 16-byte coordinate layout used by the Samsung driver.
 
 ---
- drivers/input/touchscreen/goodix_berlin_core.c | 91 +++++++++++++++++++++-----
- 1 file changed, 76 insertions(+), 15 deletions(-)
+ drivers/input/touchscreen/goodix_berlin_core.c | 103 ++++++++++++++++++++-----
+ 1 file changed, 88 insertions(+), 15 deletions(-)
 
 diff --git a/drivers/input/touchscreen/goodix_berlin_core.c b/drivers/input/touchscreen/goodix_berlin_core.c
 index 9aa4bf80d7b8..e8e43e4d405b 100644
@@ -56,7 +56,7 @@ index 9aa4bf80d7b8..e8e43e4d405b 100644
  
  	const struct goodix_berlin_ic_data *ic_data;
  
-@@ -348,7 +357,18 @@ static int goodix_berlin_parse_ic_info(struct goodix_berlin_core *cd,
+@@ -348,7 +357,30 @@ static int goodix_berlin_parse_ic_info(struct goodix_berlin_core *cd,
  #undef ADVANCE_LE16_PARAMS
  
  	misc = (struct goodix_berlin_ic_info_misc *)&data[offset];
@@ -66,6 +66,18 @@ index 9aa4bf80d7b8..e8e43e4d405b 100644
  	cd->touch_data_addr = le32_to_cpu(misc->touch_data_addr);
 +	cd->touch_data_head_len = le16_to_cpu(misc->touch_data_head_len);
 +	cd->point_struct_len = le16_to_cpu(misc->point_struct_len);
++	/*
++	 * Samsung's 6936 firmware reports the reference 8-byte point size in
++	 * IC_INFO while emitting the vendor 16-byte coordinate records.  The
++	 * latter is also the only layout consumed by Samsung's downstream
++	 * driver, so identify this broken metadata by the firmware PID.
++	 */
++	if (cd->point_struct_len == GOODIX_BERLIN_TOUCH_SIZE &&
++	    !memcmp(cd->fw_version.patch_pid, "6936", 4)) {
++		dev_info(cd->dev,
++			 "forcing 16-byte Samsung events for firmware PID 6936\n");
++		cd->point_struct_len = GOODIX_BERLIN_MAX_POINT_SIZE;
++	}
 +	if (cd->touch_data_head_len != GOODIX_BERLIN_HEADER_SIZE ||
 +	    (cd->point_struct_len != GOODIX_BERLIN_TOUCH_SIZE &&
 +	     cd->point_struct_len != GOODIX_BERLIN_MAX_POINT_SIZE))

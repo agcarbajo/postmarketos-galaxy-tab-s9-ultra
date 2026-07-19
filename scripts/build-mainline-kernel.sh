@@ -47,6 +47,11 @@ if ! grep -q 'GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/support-samsung-goodix-16-byte-events.patch"
 fi
+if ! grep -q 'PTN3222_MAX_INIT_CELLS' \
+	"$kernel_tree/drivers/phy/phy-nxp-ptn3222.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/configure-nxp-ptn3222-from-dt.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

@@ -52,21 +52,21 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3 y llega al sistema completo; v0.13 integra GPI DMA, PTN3222, EVDEV y el formato Goodix Samsung de 16 bytes |
-| DTS `gts9uwifi` | 🟡 v0.13 corrige tamaño táctil y pinctrl del reset PTN3222; framebuffer, SD, UART, GT9916 y cadena eUSB2 están descritos |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.14 fuerza el layout Goodix 6936 real y programa el PTN3222 por I2C |
+| DTS `gts9uwifi` | 🟡 v0.14 incluye tamaño táctil, reset y tuning PTN3222 exactos; framebuffer, SD, UART y GT9916 descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r8 reproducen GPI DMA, PTN3222, EVDEV y el parche Goodix Samsung; build directa validada |
+| Paquetes pmaports | ✅ Fuentes r9 reproducen GPI DMA, EVDEV, Goodix Samsung y tuning I2C PTN3222; build limpia validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🔴 v0.13 sigue sin enumerar NCM/RNDIS ni ofrecer SSH por USB o LAN; pendiente journal v0.13 |
-| Táctil | 🔴 v0.13 llega a LightDM pero aún no produce entrada utilizable; pendiente journal del parser 16-byte/EVDEV |
-| Bundle Android v4 | ✅ v0.13 LZ4 legacy, imágenes, AVB, parche Goodix, DT USB/táctil y reproducción validados |
+| SSH | 🟡 v0.13 llega a DWC3 pero falla soft reset; programación PTN3222 v0.14 pendiente de prueba física |
+| Táctil | 🟡 v0.13 confirma metadata 8 falsa y eventos 16; override PID 6936 v0.14 pendiente de prueba |
+| Bundle Android v4 | ✅ v0.14 LZ4 legacy, imágenes, AVB, Goodix forzado, tuning PTN y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.13 arrancan hasta login; táctil y USB/SSH siguen bloqueados |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.14 copiado a `/sdcard`; pendiente táctil y USB/SSH |
 
 ## Reto en curso
 
-Extraer y analizar el journal v0.13 para obtener el primer acceso interactivo:
+Validar físicamente v0.14 para obtener el primer acceso interactivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -74,10 +74,10 @@ Extraer y analizar el journal v0.13 para obtener el primer acceso interactivo:
 - el journal v0.12 extraído en sólo lectura demuestra que `gpi_dma1` ya permite
   sondear I2C4: Goodix registra `Goodix Berlin Capacitive TouchScreen` como
   `input0`. Cada paquete se rechaza después con `touch data checksum error`;
-- el GT6936/GT9916 Samsung declara `point_struct_len = 16` en `IC_INFO`, pero
-  el driver Berlin upstream ignoraba el campo y asumía ocho bytes. v0.13 añade
-  un parser dinámico 8/16 bytes basado en el driver Samsung, dimensiones
-  activas 1848×2960 y `CONFIG_INPUT_EVDEV=y`;
+- el journal v0.13 corrige la hipótesis anterior: el firmware PID `6936`
+  anuncia `event layout 8/8`, pero los dumps muestran que el checksum está
+  después de 16 bytes y el driver Samsung usa incondicionalmente ese tamaño.
+  v0.14 fuerza 16 sólo para PID 6936 y conserva el formato upstream normal;
 - el journal v0.12 fija la cadena USB diferida en PTN3222 y registra
   `pin_config_group_set op failed for group 3`. El reset PM8550VS-D GPIO4
   copiaba `drive-strength`, no aceptado por `qcom-spmi-gpio`; v0.13 reproduce
@@ -87,10 +87,13 @@ Extraer y analizar el journal v0.13 para obtener el primer acceso interactivo:
   Windows no enumera ADB, ACM ni NCM/RNDIS y conserva dos errores de descriptor;
   tampoco responde `172.16.42.1:22` ni apareció otro SSH en la LAN, excluyendo
   expresamente `.138` y `.150`, que son otros dispositivos conocidos;
-- volver a TWRP, montar la raíz pmOS en sólo lectura y extraer el journal v0.13.
-  Hay que comprobar el layout Goodix anunciado, si desapareció el checksum,
-  creación de `event*`/libinput y el nuevo punto exacto de deferred probe de
-  PTN3222/DWC3 antes de modificar otra vez el kernel;
+- el journal v0.13 demuestra que el pinctrl ya funciona y el PTN3222 deja de
+  estar diferido, pero DWC3 falla el soft reset. El driver mainline sólo saca
+  el repetidor de reset; Samsung además escribe `06=20`, `07=21`, `08=63` y
+  `0a=01`. v0.14 aplica esa secuencia I2C exacta tras esperar 4–5 ms;
+- flashear manualmente v0.14 y probar táctil/USB. El kernel debe registrar
+  `event layout 8/16`, dejar de emitir checksum errors y anunciar cuatro
+  overrides PTN3222 antes de que DWC3 sondee;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -473,6 +476,32 @@ lado del workspace.
   dimensiones táctiles y todo el estado pinctrl del reset. Dos generaciones
   finales fueron idénticas; el ZIP se copió a `/sdcard` y su hash remoto
   coincide. El asistente no lo flasheó.
+- Desde TWRP se extrajeron en sólo lectura los journals v0.13 a
+  `work/v013-rootfs-logs-20260719/` y se desmontó la raíz. El journal actual
+  tiene SHA-256
+  `e4d2d9a437b122c83360653cfe926e20c29c9e8f5e9e8d7eb9a3343d7bd2c51a`.
+  Goodix registra `event layout 8/8`, pero cada toque vuelve a fallar checksum;
+  los dumps de 10/18 bytes prueban que el supuesto checksum es todavía parte
+  del evento Samsung de 16 bytes.
+- La corrección r9 identifica la metadata defectuosa por el PID de firmware
+  `6936` y fuerza el layout 8/16. Para USB, el pinctrl ya no falla ni queda una
+  cadena de deferred probe: DWC3 alcanza directamente el soft reset y termina
+  en `-ETIMEDOUT`. Se comparó entonces el driver mainline con el log y FDT
+  Samsung, que programan los registros PTN3222 `06=20`, `07=21`, `08=63` y
+  `0a=01`; mainline no escribía ninguno.
+- `configure-nxp-ptn3222-from-dt.patch` añade regmap y aplica la propiedad
+  stock `qcom,param-override-seq` tras 4–5 ms de salida de reset. Ambos parches
+  aplican limpiamente a Linux 7.2-rc3. Build limpia v0.14: `Image.gz` SHA-256
+  `c02c47ffca3e4d6eb5d9f7cae2a1cb5f1c3994dc5dc25b2c0ec54908979b5952`;
+  DTB `454a804c38c6a3e5ea0406419f65c0adcc1c8d477dea50fb2b79e51d1f430d07`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+- ZIP v0.14 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.14-goodix-force-ptn-tune-sm-x910-twrp.zip`,
+  22.014.000 bytes, SHA-256
+  `23cb7f066c6fecbd50d995db315906f262545ac3024af3068b3a468f947a5cfe`.
+  Dos generaciones fueron idénticas, el validador confirmó las cadenas del
+  kernel, la secuencia DT, Android v4 y AVB, y el hash copiado a `/sdcard`
+  coincide. El asistente no lo flasheó.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -573,9 +602,12 @@ lado del workspace.
 - No usar la propiedad genérica `drive-strength` en un GPIO del controlador
   `qcom-spmi-gpio`: el probe falla con `pin_config_group_set`. Para este reset
   hay que reproducir `qcom,drive-strength` y el resto del estado PMIC stock.
-- No asumir que todos los Goodix Berlin usan puntos upstream de ocho bytes.
-  El GT9916 Samsung anuncia 16 en `point_struct_len`; ignorarlo produce
-  checksums inválidos aunque I2C, firmware y registro del input funcionen.
+- No asumir que `point_struct_len` del IC_INFO sea fiable en firmware Samsung.
+  El GT9916/PID 6936 anuncia ocho pero emite 16; confiar en esa metadata hace
+  que bytes del propio evento se interpreten como checksum.
+- No considerar completa la inicialización del PTN3222 porque el driver
+  mainline controle rails y reset. En la X910 son obligatorias cuatro
+  escrituras I2C de tuning acreditadas por el FDT y los logs Samsung.
 - No dejar `CONFIG_INPUT_EVDEV=m` en una build directa que no instala módulos:
   el dispositivo puede registrarse como `input0` sin crear `/dev/input/event*`.
   Desde r8 EVDEV es built-in y el validador lo exige.
