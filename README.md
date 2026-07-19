@@ -52,21 +52,22 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; v0.16 iguala POR/CPBIAS de la PHY eUSB2 Samsung |
-| DTS `gts9uwifi` | 🟡 v0.16 añade inversión Y del táctil; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; el ajuste POR/CPBIAS v0.16 no resolvió la enumeración eUSB2 |
+| DTS `gts9uwifi` | 🟡 r12 corrige la orientación con inversión X física antes del intercambio X/Y; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r11 reproducen Goodix/orientación y la secuencia Samsung de la PHY eUSB2; build limpia validada |
+| Paquetes pmaports | 🟡 Fuentes r12 corrigen el eje Goodix; pendiente integrar diagnóstico USB y compilar el siguiente bundle |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.16 preparada con POR/CPBIAS Samsung; v0.15 ya crea gadget, `usb0`, DHCP y `sshd`, pero el host no lee descriptores |
-| Táctil | 🧪 v0.16 añade `touchscreen-inverted-y`; v0.15 ya produce entrada estable pero verticalmente invertida |
-| Bundle Android v4 | ✅ v0.16 LZ4 legacy, imágenes, AVB, orientación y PHY Samsung reproducidos y validados |
+| SSH | 🧪 v0.16 sigue sin enumerar: internamente v0.15 ya crea gadget, `usb0`, DHCP y `sshd`, pero el host no lee descriptores |
+| Táctil | 🟡 v0.16 invierte ambos ejes visibles; r12 ya usa la combinación correcta `inverted-x` + `swapped-x-y`, pendiente prueba física |
+| Bundle Android v4 | ✅ v0.16 LZ4 legacy, imágenes y AVB; orientación v0.16 descartada y siguiente bundle pendiente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.16 listos; pendiente validar orientación y enumeración USB |
+| Imagen/paquete de prueba | 🟡 SD v0.6 + ZIP v0.16 arrancan; v0.16 queda descartado por orientación y USB, siguiente ZIP pendiente |
 
 ## Reto en curso
 
-Validar físicamente v0.16 para obtener el primer acceso interactivo:
+Obtener el journal v0.16 y preparar el siguiente bundle con orientación táctil
+correcta y diagnóstico USB:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -115,9 +116,15 @@ Validar físicamente v0.16 para obtener el primer acceso interactivo:
   inicialización relevante: espera 10 µs tras afirmar `POR` y programa
   `PHY_CFG_PLL_CPBIAS_CNTRL=1`; mainline no espera y escribe cero. v0.16 porta
   ambos y añade `touchscreen-inverted-y`;
-- flashear manualmente v0.16, comprobar que el toque coincide y observar si
-  Windows crea NCM/RNDIS. Si enumera, conectar a `172.16.42.1:22`; si no,
-  extraer el journal y añadir lectura diagnóstica de registros PHY/repetidor;
+- la prueba física v0.16 no crea NCM/RNDIS, conserva los dos errores de
+  descriptor de Windows y no expone SSH en USB ni en la LAN. La espera POR y
+  CPBIAS=1 no bastan para arreglar la señal eUSB2;
+- v0.16 añadió `touchscreen-inverted-y`, pero el helper del kernel aplica las
+  inversiones antes de `touchscreen-swapped-x-y`: esto invirtió el X visible y
+  dejó invertido el Y visible. La corrección exacta en r12 es
+  `touchscreen-inverted-x` + `touchscreen-swapped-x-y`, sin `inverted-y`;
+- volver a TWRP, extraer el journal v0.16 y añadir lecturas diagnósticas de los
+  registros PHY/PTN3222 antes de compilar el siguiente ZIP;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -127,6 +134,12 @@ simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
 No se flasheará la tablet automáticamente. Todo artefacto debe validarse
 estáticamente y acompañarse de instrucciones de restauración antes de pedir una
 prueba física.
+
+Para las builds ordinarias siguientes se evita repetir baterías de hashes y
+dos empaquetados reproducibles: tras compilar y empaquetar una vez, se copia el
+ZIP a `/sdcard/` y se hace una única comparación SHA-256 entre el archivo local
+y el ya copiado. Las comprobaciones adicionales se reservan para cambios de
+boot chain, formato o particiones con riesgo especial.
 
 ## Hechos de hardware y firmware confirmados
 
@@ -582,6 +595,15 @@ lado del workspace.
   `c0d768a2eb179cab95bc2776840828e36c8a50a2df598f7bbb1df6835c457ef9`.
   Pasó Android v4/LZ4/AVB/appended-DTB, se copió a `/sdcard` y el hash remoto
   coincide. El asistente no flasheó ninguna partición.
+- La prueba física v0.16 vuelve a LightDM, pero no resuelve USB: Windows
+  mantiene los dos fallos de solicitud de descriptor, no crea NCM/RNDIS y no
+  hay SSH atribuible a la tablet en USB ni en la LAN (`.138` y `.150` siguen
+  excluidos por ser otros dispositivos).
+- El táctil de v0.16 queda invertido en ambos ejes visibles. La inspección de
+  `touchscreen_apply_prop_to_x_y()` demuestra que el kernel invierte antes de
+  intercambiar ejes. Con el `swap` necesario para este panel, invertir el Y
+  visible requiere `touchscreen-inverted-x`; r12 elimina `inverted-y` y añade
+  `inverted-x`.
 
 ## Lo que no ha funcionado / no repetir
 

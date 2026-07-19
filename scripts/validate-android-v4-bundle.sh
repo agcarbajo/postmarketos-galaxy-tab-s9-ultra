@@ -168,7 +168,7 @@ test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c4" clock-frequency)" = '400000'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c6" clock-frequency)" = '400000'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-size-x)" = '1848'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-size-y)" = '2960'
-fdtget "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-inverted-y >/dev/null
+fdtget "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-inverted-x >/dev/null
 fdtget "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-swapped-x-y >/dev/null
 test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$repeater" compatible)" = \
 	'nxp,ptn3222'

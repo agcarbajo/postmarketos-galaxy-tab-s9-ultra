@@ -310,7 +310,7 @@
 		vddio-supply = <&vreg_l12b_1p8>;
 		touchscreen-size-x = <1848>;
 		touchscreen-size-y = <2960>;
-		touchscreen-inverted-y;
+		touchscreen-inverted-x;
 		touchscreen-swapped-x-y;
 	};
 };

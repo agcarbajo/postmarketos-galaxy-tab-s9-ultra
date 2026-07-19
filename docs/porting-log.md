@@ -991,3 +991,29 @@ física.
   enumeración NCM/RNDIS. Si aparece la interfaz, conectar por SSH a
   `172.16.42.1`; si no, capturar el journal y añadir lecturas diagnósticas de
   los registros PHY/PTN3222 antes de otro cambio.
+
+## 2026-07-19 — sesión 24: resultado físico v0.16 y eje correcto
+
+- v0.16 alcanza de nuevo LightDM, pero el ajuste de PHY no cambia el resultado
+  externo: Windows conserva dos errores de solicitud de descriptor, no aparece
+  NCM/RNDIS y no responde SSH en `172.16.42.1`, `172.16.42.2`, `.151` ni en un
+  host nuevo de la LAN. `.138` y `.150` se excluyen por indicación de la
+  usuaria porque pertenecen a otros dispositivos.
+- La espera de 10 µs tras POR y CPBIAS=1 quedan por tanto descartados como
+  arreglo suficiente para la enumeración. Se conserva el parche porque iguala
+  la secuencia Samsung, pero el siguiente journal debe guiar instrumentación
+  de registros PHY/PTN3222.
+- La prueba táctil v0.16 deja ambos ejes visibles invertidos. La causa exacta es
+  el orden de `touchscreen_apply_prop_to_x_y()`: aplica `inverted-x`, después
+  `inverted-y` y finalmente `swapped-x-y`. Como el intercambio ya era
+  necesario, `inverted-y` actuó sobre el X visible y no corrigió el Y visible.
+- La fuente r12 sustituye `touchscreen-inverted-y` por
+  `touchscreen-inverted-x` y conserva `touchscreen-swapped-x-y`. El validador
+  se actualiza para exigir la propiedad correcta.
+- Por petición de la usuaria, el flujo normal de futuras builds queda reducido
+  a un empaquetado y una única comparación SHA-256 después de copiar el ZIP a
+  `/sdcard`. Las validaciones repetidas se reservan para cambios de formato o
+  boot chain que realmente eleven el riesgo.
+- Reto inmediato: volver a TWRP, extraer el journal v0.16 en sólo lectura,
+  integrar instrumentación USB y compilar un único siguiente bundle que pruebe
+  tanto la orientación corregida como el siguiente paso de eUSB2.
