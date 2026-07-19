@@ -45,8 +45,11 @@ dtb="${KERNEL_DTB:-$rootfs_chroot/boot/sm8550-samsung-gts9uwifi.dtb}"
 cmdline_file="$project/configs/vendor_boot/cmdline.txt"
 bootconfig="$project/configs/vendor_boot/bootconfig.txt"
 dtbo_configs="$project/configs/dtbo"
-append_dtb="${APPEND_DTB_TO_KERNEL:-0}"
-disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-0}"
+# Samsung X910 ABL cannot apply our mainline base DTB through its downstream
+# ufdt path.  The physically validated route since v0.4 is an appended DTB and
+# a deliberately non-DT-table dtbo image, which makes ABL use that fallback.
+append_dtb="${APPEND_DTB_TO_KERNEL:-1}"
+disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-1}"
 generic_ramdisk_format="${GENERIC_RAMDISK_FORMAT:-lz4-legacy}"
 
 for file in "$mkbootimg" "$mkdtimg" "$avbtool" "$dtb" "$package_zboot" \

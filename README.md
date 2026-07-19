@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.19 empaquetado con LZ4 legacy/AVB y overlay versionado para actualizar módulos/firmware en la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.19 rechazado antes de escribir por `ID` entrecomillado; v0.19.1 corregido, copiado y verificado en TWRP |
+| Imagen/paquete de prueba | 🧪 v0.19.1 lanzó Odin por DTBO runtime; v0.19.2 appended-DTB copiado/verificado en TWRP |
 
 ## Reto en curso
 
@@ -725,6 +725,23 @@ lado del workspace.
   `3a3431c1ea994536feadc6eb18712b1de38664babadb6b45e40da467dd66f89f`.
   Copiado a `/sdcard`; el único hash posterior coincide. Pendiente de flash
   manual.
+- La instalación v0.19.1 terminó, pero el reboot no llegó a Linux. El
+  `last_kmsg` restaurado por TWRP registra `ApplyOverlay: ufdt apply overlay
+  failed`, `Invalid device tree header` y `Launching odin`. La metadata reveló
+  `append_dtb_to_kernel=0` y `disable_runtime_dtbo=0`: al invocar directamente
+  el empaquetador se omitieron los flags que todas las builds arrancables usan
+  desde v0.4. No es un fallo del nuevo DTB Wi-Fi.
+- `build-android-v4-bundle.sh` usa ahora por defecto la ruta físicamente
+  validada de la X910: DTB anexado al kernel y DTBO runtime deshabilitado. La
+  siguiente v0.19.2 sólo regenera las imágenes Android; kernel, initramfs,
+  rootfs, módulos y firmware permanecen idénticos.
+- ZIP v0.19.2:
+  `postmarketos-edge-xfce-mainline-v0.19.2-appended-dtb-rndis-wifi-sm-x910-twrp.zip`,
+  80.852.094 bytes, SHA-256
+  `a8a6f28ab58c594478dda11a738ba0deb90c09d2865824b2aff845c655c0b8a6`.
+  Metadata comprobada `append_dtb_to_kernel=1` y
+  `disable_runtime_dtbo=1`; copiado a `/sdcard` y el único hash posterior
+  coincide. Pendiente de flash manual.
 - Imagen SD limpia v0.19 comprimida:
   `postmarketos-edge-xfce-mainline-v0.19-rndis-wifi-pcie-sm-x910-sd.img.zst`,
   513.383.398 bytes, SHA-256
@@ -745,6 +762,10 @@ lado del workspace.
 - No asumir que `ID` en `/etc/os-release` carece de comillas. El rootfs físico
   usa `ID="postmarketos"`; el validador TWRP debe aceptar las dos
   representaciones exactas antes de rechazar la microSD.
+- No invocar el bundle X910 con `APPEND_DTB_TO_KERNEL=0` o
+  `DISABLE_RUNTIME_DTBO=0`: ABL vuelve a su fork ufdt, rechaza el DTB base y
+  entra en Odin antes de Linux. Desde v0.19.2 ambos valores seguros son los
+  defaults del script y cualquier experimento debe quedar explícito.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó

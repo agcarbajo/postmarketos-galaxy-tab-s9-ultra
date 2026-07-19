@@ -1190,3 +1190,35 @@ física.
   `3a3431c1ea994536feadc6eb18712b1de38664babadb6b45e40da467dd66f89f`.
   Copiado a `/sdcard`; el único hash posterior coincide. El asistente no lo
   flasheó.
+
+## 2026-07-19 — sesión 31: fallo ABL v0.19.1 y restauración del appended-DTB
+
+- Tras instalar v0.19.1, el reboot mostró la pantalla Odin/Download y no llegó
+  a Linux. La usuaria volvió manualmente a TWRP; no hubo brick.
+- `/proc/last_kmsg` contiene el boot fallido restaurado por `sec_log_buf`. ABL
+  descomprime el kernel, pero registra `ApplyOverlay: ufdt apply overlay
+  failed`, `Root Node is not found at BoardDtb`, `Invalid device tree header`
+  y `Launching odin -927639495`. No existe panic ni journal nuevo porque Linux
+  nunca recibió el control.
+- La comparación de `BUILD-METADATA.txt` fija la regresión: v0.18 arrancable
+  tenía `append_dtb_to_kernel=1` y `disable_runtime_dtbo=1`; v0.19 se generó
+  accidentalmente con `0/0` al llamar al script sin las variables que antes
+  aportaba el flujo de build. Esto reactivó exactamente la ruta ufdt descartada
+  en v0.2/v0.3.
+- El script device-specific usa ahora por defecto `1/1`. v0.19.2 reutiliza el
+  mismo kernel r14, DTB WCN7850, initramfs, rootfs y overlay; sólo corrige el
+  empaquetado Android para recuperar el fallback appended-DTB validado desde
+  v0.4.
+- Imágenes v0.19.2: boot appended-DTB
+  `082a3bcb51c4b53a52b98c1d226621d57f6ce2ab6e88874e6ddc0fcd597e7e8c`;
+  dtbo fallback
+  `c17418be08365c03a5ce3a220af734b14ec2e6b03c0cbc1ed9721be6f21d3ef3`.
+  `init_boot`, `vendor_boot` y `vbmeta` conservan respectivamente
+  `ba29d262...`, `392b8a3b...` y `b95e5ef9...`. La metadata confirma ambos
+  flags en uno y los primeros ocho bytes del DTBO fallback son cero.
+- ZIP v0.19.2:
+  `postmarketos-edge-xfce-mainline-v0.19.2-appended-dtb-rndis-wifi-sm-x910-twrp.zip`,
+  80.852.094 bytes, SHA-256
+  `a8a6f28ab58c594478dda11a738ba0deb90c09d2865824b2aff845c655c0b8a6`.
+  Copiado a `/sdcard`; el único hash posterior coincide. El asistente no lo
+  flasheó.
