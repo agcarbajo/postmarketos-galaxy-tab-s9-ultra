@@ -1265,3 +1265,40 @@ física.
   primero SSH en `172.16.42.1`; después comprobar login visible, `lspci -nn`,
   `ip link`, `nmcli` y `dmesg` de `qcom-pcie`/`ath12k`. `.138` y `.150` siguen
   excluidos por ser otros dispositivos.
+
+## 2026-07-19 — sesión 33: bloqueo v0.20 y diagnóstico WCN v0.21
+
+- La prueba física v0.20 queda visualmente en los pingüinos porque retiró
+  `console=tty0`, pero no se detiene allí. Desde TWRP se extrajeron en sólo
+  lectura `/proc/last_kmsg`, journals y logs X/LightDM a
+  `work/v020-rootfs-logs-20260719/`.
+- El boot v0.20 `56c2f5b944d14e2e8bc81741e54c8ef1` confirma kernel
+  `#16-samsung-gts9uwifi-mainline`/paquete r15, montaje de ambas particiones,
+  systemd, gadget RNDIS y socket OpenSSH. El journal se corta exactamente a
+  18,987144 s tras imprimir los rangos del host `qcom-pcie 1c00000.pcie`; no
+  existe panic ni oops y fue necesario un reinicio manual.
+- El DT v0.20 añade además el aviso temprano `Fixed dependency cycle(s)` entre
+  `/soc@0/rsc@17a00000/regulators-5` y `smps4`. Es una regresión respecto a
+  v0.19.2 y coincide con el nuevo PM8550VS-G LDO3 alimentado por S4G. Se
+  descarta repetir esa asignación sin antes demostrar la topología correcta.
+- v0.21 revierte LDO3, `vdd-l3-supply` y `vddio1p2-supply`; el driver vuelve a
+  su dummy rail conocido. GPIO80 conserva `drive-strength = <16>` y
+  `bias-pull-up`, pero ya no tiene `output-high`: el secuenciador debe elevarlo
+  en el orden previsto. Se restaura `console=tty0` para recuperar el verbose.
+- `diagnose-wcn7850-power-sequence.patch` registra valor inicial, resultado de
+  dirección y transición de WLAN_EN, además del registro del secuenciador. Se
+  integra tanto en el APKBUILD como en la build directa. El módulo final fue
+  inspeccionado y contiene las cadenas `SM-X910 WCN diag`.
+- Build limpia verificada: device r6, kernel `7.2_rc3-r16`, firmware r1. El
+  DTB decompilado no contiene el rail experimental y sí contiene GPIO80
+  pull-up/16 mA y `wlan-enable-gpios`.
+- ZIP TWRP generado una vez:
+  `postmarketos-edge-xfce-mainline-v0.21-wcn-diagnostics-verbose-sm-x910-twrp.zip`,
+  80.851.485 bytes, SHA-256
+  `c46b30538b486ee1b93c938464c8f339d93b3127450d3a34f39c4861bc3f9032`.
+  Usa appended-DTB, DTBO runtime deshabilitado y overlay completo. Se copió a
+  `/sdcard`; el único hash posterior coincide. El asistente no flasheó.
+- Próxima prueba: flash manual v0.21, dejarla al menos 45 segundos y observar
+  el verbose. Si no aparece RNDIS/SSH, volver a TWRP para extraer el journal y
+  localizar la última traza `SM-X910 WCN diag`; no hace falta vídeo mientras
+  la persistencia de la microSD continúe funcionando.

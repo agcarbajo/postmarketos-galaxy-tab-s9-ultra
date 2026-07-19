@@ -67,6 +67,11 @@ if ! grep -q 'SM-X910 diag pullup request' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/diagnose-dwc3-ep0-enumeration.patch"
 fi
+if ! grep -q 'SM-X910 WCN diag: power sequencer registered' \
+	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/diagnose-wcn7850-power-sequence.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

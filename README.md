@@ -52,22 +52,22 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.20 compila Linux 7.2-rc3 r15 con RNDIS, PCIe0, secuenciador WCN7850 y ath12k |
-| DTS `gts9uwifi` | 🧪 v0.20 conserva táctil/pantalla/SD/USB y corrige GPIO80 + VDD_IO_1P2 del WCN7850 desde el DT stock |
+| Kernel mainline SM8550 | ✅ v0.21 compila Linux 7.2-rc3 r16 con RNDIS, PCIe0, ath12k y trazas del secuenciador WCN7850 |
+| DTS `gts9uwifi` | 🧪 v0.21 conserva táctil/pantalla/SD/USB, revierte el rail WCN que bloqueó v0.20 y prueba GPIO80 pull-up/16 mA sin `output-high` |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.20 reproducible: device r5, kernel r15 y firmware WCN7850 r1 extraído del firmware X910 |
-| Rootfs postmarketOS | ✅ v0.20 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.19.2 arranca X/LightDM/greeter en VT7, pero físicamente queda visible fbcon; v0.20 retira `console=tty0` |
-| Wi-Fi | 🧪 v0.19.2 levanta PCIe0 pero no enumera `17cb:1107`; v0.20 corrige alimentación/enable y espera prueba física |
+| Paquetes pmaports | ✅ v0.21 reproducible: device r6, kernel r16 y firmware WCN7850 r1 extraído del firmware X910 |
+| Rootfs postmarketOS | ✅ v0.21 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
+| Escritorio | ✅ v0.19.2 demuestra X/LightDM/greeter en VT7; v0.21 restaura `console=tty0` para que el diagnóstico siga visible durante el bring-up |
+| Wi-Fi | 🧪 v0.19.2 levanta PCIe0 sin enumerar `17cb:1107`; v0.21 instrumenta PMU/WLAN_EN tras descartar el rail real ensayado en v0.20 |
 | SSH | 🧪 v0.19.2 crea RNDIS, `usb0=172.16.42.1` y OpenSSH internamente; pendiente comprobar el enlace desde Windows |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.20 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
+| Bundle Android v4 | ✅ v0.21 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.20 y SD limpia generados; ZIP copiado y verificado en TWRP, pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 ZIP v0.21 copiado y verificado en TWRP; pendiente flash manual y extracción de trazas WCN |
 
 ## Reto en curso
 
-Validar físicamente v0.20 por RNDIS USB y WCN7850 Wi-Fi:
+Validar físicamente v0.21 y localizar el bloqueo/enumeración del WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -162,17 +162,28 @@ Validar físicamente v0.20 por RNDIS USB y WCN7850 Wi-Fi:
 - v0.19.2 sí completa el arranque: tres journals persistentes no contienen
   panic y dos boots llegan a systemd, RNDIS, NetworkManager, OpenSSH, Xorg,
   LightDM y slick-greeter. X configura simpledrm a 2960x1848 y activa VT7;
-- la consola visible de las fotos no es un bloqueo de systemd. Para evitar que
-  fbcon compita con X, v0.20 elimina sólo `console=tty0`; conserva UART,
-  journal, `sec_log_buf`, `last_kmsg` y los logs persistentes de la microSD;
+- la consola visible de las fotos de v0.19.2 no era un bloqueo de systemd.
+  v0.20 retiró `console=tty0` para separar fbcon de X, pero v0.21 la restaura
+  temporalmente porque el diagnóstico visual es prioritario durante el
+  bring-up del Wi-Fi;
 - PCIe0 v0.19.2 crea el root port `17cb:0113`, pero termina `Device not found`:
   el DT omitía el séptimo rail exigido por `pwrseq-qcom-wcn` y dejaba WLAN_EN
-  en pull-down. v0.20 añade PM8550VS-G LDO3 a 1,2 V como `vddio1p2-supply` y
-  reproduce GPIO80 stock como salida alta, pull-up y 16 mA;
-- después del flash manual, esperar al menos 45 segundos y comprobar primero
-  RNDIS/SSH en `172.16.42.1`; si
-  no aparece, comprobar `lspci -nn`, `ip link`, `nmcli`, `dmesg` de
-  `qcom-pcie`/`ath12k` y la nueva IP Wi-Fi, excluyendo siempre `.138` y `.150`;
+  en pull-down. v0.20 ensayó PM8550VS-G LDO3 como `vddio1p2-supply` y forzó
+  GPIO80 alto;
+- el journal v0.20 demuestra que el kernel r15 sí monta rootfs, arranca systemd,
+  RNDIS y OpenSSH, pero deja de escribir exactamente a los 18,987144 s tras
+  los rangos del host PCIe0. No hay panic ni oops. El DTB registra antes un
+  ciclo de dependencias entre `regulators-5` y `smps4`, evidencia que acota la
+  regresión al rail real/orden de alimentación nuevo;
+- v0.21 revierte PM8550VS-G LDO3 y `vddio1p2-supply`, deja que el driver use el
+  dummy regulator conocido de v0.19.2 y conserva sólo la parte eléctrica
+  justificada de GPIO80 (`bias-pull-up`, 16 mA). Elimina `output-high` para que
+  `pwrseq-qcom-wcn` eleve WLAN_EN en su secuencia normal;
+- el parche diagnóstico r16 registra la adquisición/activación de los rails y
+  el valor inicial, dirección y transición de WLAN_EN. Tras el flash manual,
+  esperar al menos 45 segundos. Si no aparece SSH por RNDIS en
+  `172.16.42.1`, volver directamente a TWRP y extraer journal/`last_kmsg`; no
+  hace falta grabar vídeo mientras esos logs persistan;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -790,6 +801,27 @@ lado del workspace.
   `postmarketos-edge-xfce-mainline-v0.20-wcn-power-rndis-no-fbcon-sm-x910-sd.img.zst`,
   478.250.065 bytes. Procede del mismo rootfs r5/r15/r1 y sirve para una
   instalación desde cero.
+- Los logs v0.20 se extrajeron de la microSD en sólo lectura a
+  `work/v020-rootfs-logs-20260719/`. El boot
+  `56c2f5b944d14e2e8bc81741e54c8ef1` usa kernel r15, monta rootfs y boot,
+  inicializa el gadget RNDIS y el socket OpenSSH, pero el journal termina
+  bruscamente a 18,987144 s durante los rangos de `qcom-pcie 1c00000.pcie`.
+  No contiene panic ni oops; la usuaria tuvo que reiniciar manualmente.
+- La regresión v0.20 coincide con un nuevo aviso temprano de ciclo fijo entre
+  `/soc@0/rsc@17a00000/regulators-5` y `smps4`. v0.21 retira completamente el
+  LDO3/`vddio1p2-supply` experimental, restaura `console=tty0` y mantiene
+  GPIO80 como pull-up/16 mA sin `output-high`.
+- `diagnose-wcn7850-power-sequence.patch` añade trazas pasivas al módulo
+  `pwrseq-qcom-wcn`: valor inicial/dirección/transición de WLAN_EN y registro
+  del secuenciador. El módulo empaquetado contiene esas cadenas y el DTB final
+  fue decompilado para comprobar que ya no conserva el rail experimental.
+- Build limpia v0.21: device r6, kernel `7.2_rc3-r16` y firmware r1. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.21-wcn-diagnostics-verbose-sm-x910-twrp.zip`,
+  80.851.485 bytes, SHA-256
+  `c46b30538b486ee1b93c938464c8f339d93b3127450d3a34f39c4861bc3f9032`.
+  Incluye overlay completo, appended-DTB y DTBO runtime deshabilitado. Se
+  copió a `/sdcard` y la única comprobación posterior coincide; el asistente
+  no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -808,10 +840,11 @@ lado del workspace.
   `DISABLE_RUNTIME_DTBO=0`: ABL vuelve a su fork ufdt, rechaza el DTB base y
   entra en Odin antes de Linux. Desde v0.19.2 ambos valores seguros son los
   defaults del script y cualquier experimento debe quedar explícito.
-- No copiar literalmente el bloque WCN7850 incompleto del `sm8550-qrd.dts`
-  antiguo: el driver actual incluye `vddio1p2` entre sus siete entradas. En la
-  X910 corresponde a PM8550VS-G LDO3, y WLAN_EN GPIO80 debe arrancar alto como
-  en el DT stock; pull-down deja el endpoint PCIe apagado.
+- No volver a declarar PM8550VS-G LDO3 como `vddio1p2-supply` del WCN7850 ni
+  forzar GPIO80 con `output-high` en esta topología: v0.20 introduce un ciclo
+  de reguladores y un bloqueo reproducible a los 18,987144 s. El dummy rail de
+  v0.19.2 permite completar el arranque; v0.21 aísla primero la transición de
+  WLAN_EN con trazas antes de asignar otro rail real.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó
