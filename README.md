@@ -63,15 +63,15 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.27 copiado y verificado en TWRP; pendiente flash manual y validación física del refresco KMS |
+| Imagen/paquete de prueba | 🧪 v0.27 flasheada: el panel sigue en los pingüinos y USB da Code 43; pendiente extraer el resultado de `xrandr` desde TWRP |
 
 ## Reto en curso
 
-Validar físicamente la ruta `modesetting` con sombra software y refresco KMS
-completo de v0.27. La captura v0.26 ya demuestra que el escritorio está bien
-renderizado en memoria y que el defecto restante es exclusivamente la
-propagación/scanout al panel; conservar SSH RNDIS y después reintroducir
-WCN7850:
+Extraer desde TWRP el journal de v0.27 y confirmar la respuesta de `xrandr`.
+La prueba física sigue mostrando los pingüinos y Windows vuelve a registrar
+Code 43, sin ADB ni SSH. Si el servicio ejecutó el refresco solicitado, el
+siguiente cambio debe hacerse en la ruta dirty/scanout de simpledrm del kernel,
+no en X, LightDM o las VT; conservar SSH RNDIS y después reintroducir WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -996,6 +996,11 @@ lado del workspace.
   `e665a73e8efa51198f87a3fba2dc5bed8a8839406af00a05309d04b47bd58bc8`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. El
   asistente no flasheó ninguna partición.
+- La prueba física v0.27 sigue mostrando los ocho pingüinos. Con la tablet
+  arrancada, Windows sólo enumera `Dispositivo USB desconocido (Error de
+  solicitud de descriptor de dispositivo)`, Code 43; no hay ADB ni respuesta
+  SSH en `172.16.42.1:22`. Falta extraer desde TWRP el journal persistente para
+  verificar el resultado exacto del `xrandr` antes de modificar simpledrm.
 
 ## Lo que no ha funcionado / no repetir
 

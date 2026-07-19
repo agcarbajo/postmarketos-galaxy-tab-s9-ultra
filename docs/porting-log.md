@@ -1545,3 +1545,17 @@ física.
   `e665a73e8efa51198f87a3fba2dc5bed8a8839406af00a05309d04b47bd58bc8`.
   Se copió a `/sdcard` y la única comparación local/remota coincide. Pendiente
   flash manual y validación física; el asistente no flasheó la tablet.
+
+## 2026-07-20 — sesión 40: resultado físico v0.27
+
+- La usuaria flasheó manualmente v0.27 y dejó la tablet arrancada y conectada.
+  El panel continúa mostrando únicamente los ocho pingüinos del framebuffer de
+  arranque; el refresco solicitado no produjo un cambio visible.
+- El host no detecta ADB. Windows vuelve a enumerar el enlace como dispositivo
+  USB desconocido con error de solicitud de descriptor (Code 43), y
+  `172.16.42.1:22` no responde. Por tanto no es posible consultar en vivo el
+  journal ni el resultado de `xrandr`.
+- Próximo paso: regresar manualmente a TWRP y extraer en sólo lectura el journal
+  de v0.27. Si el servicio confirma que `xrandr` desactivó/reactivó `None-1`,
+  se abandona la capa X para este defecto y se instrumenta/corrige la ruta de
+  actualización dirty/scanout de simpledrm en el kernel.
