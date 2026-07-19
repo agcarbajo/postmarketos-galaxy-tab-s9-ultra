@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-18.
+> Última actualización: 2026-07-19.
 
 ## Objetivo
 
@@ -52,40 +52,38 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3, ejecuta initramfs y llega al sistema completo en microSD |
-| DTS `gts9uwifi` | 🟡 v0.8 traslada la reserva segura TLMM GPIO36–39; framebuffer, SD, UART, log Samsung, USB2 y GT9916 descritos |
+| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3 y llega al sistema completo; v0.12 integra GPI DMA, PTN3222, uinput y uhid |
+| DTS `gts9uwifi` | 🟡 v0.12 describe reserva TLMM, framebuffer, SD, UART, log Samsung, GT9916 y la cadena eUSB2/PTN3222 real |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Baseline APK r4; fuentes r6 incluyen reserva TLMM, traza pre-probe y log persistente tras reinicio manual |
+| Paquetes pmaports | ✅ Fuentes r7 reproducen reserva TLMM, trazas, log persistente, GPI DMA y PTN3222; build directa validada |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🟡 OpenSSH instalado, pero DWC3 falla con `-ETIMEDOUT`; no hay NCM/RNDIS ni IP accesible |
-| Bundle Android v4 | ✅ v0.11 empaqueta initramfs LZ4 legacy como stock; imágenes, AVB, contenido y reproducción validados |
+| SSH | 🟡 OpenSSH instalado; v0.12 corrige la causa física probable del timeout DWC3 y espera prueba en hardware |
+| Táctil | 🟡 Goodix GT9916 descrito; v0.12 integra y habilita el GPI DMA que bloqueaba I2C4; espera prueba física |
+| Bundle Android v4 | ✅ v0.12 LZ4 legacy, imágenes, AVB, contenido, DT de USB/táctil y reproducción validados |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ SD v0.6 + ZIP v0.11 arrancan hasta login gráfico; siguiente ZIP corregirá acceso USB |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.12 copiado a `/sdcard`; pendiente de flasheo manual y prueba de USB/táctil |
 
 ## Reto en curso
 
-Conseguir un canal remoto desde el primer rootfs y después activar el táctil:
+Validar físicamente USB y táctil con el ZIP v0.12:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
   framebuffer del bootloader. El arreglo LZ4 era la barrera exacta;
-- la tablet queda en el login gráfico con el usuario `phablet`. Buffyboard
-  muestra teclado en pantalla, pero no hay eventos táctiles y no se puede
-  iniciar sesión localmente;
-- el host no ve ACM, NCM/RNDIS ni almacenamiento y `172.16.42.1:22` no
-  responde. Sólo aparecen dispositivos USB desconocidos por error de
-  descriptor;
-- la consola fotografiada ya anticipa la causa: DWC3 informa
-  `-ETIMEDOUT: failed to initialize core`. El DTS v0 había omitido
-  deliberadamente el repetidor NXP I2C y confiaba en su estado de ABL;
-- volver a TWRP y extraer de la microSD el journal persistente, dmesg o logs
-  disponibles para fijar la secuencia exacta de USB y auditar también el
-  Goodix GT9916;
-- portar al framework PHY mainline el soporte mínimo del repetidor físico NXP
-  `0x4f`, con sus rails, reset PM8550VS GPIO4 y overrides exactos del FDT X910;
-  enlazarlo como `usb2-repeater` en `usb_1`, conservar modo peripheral/HS y
-  generar una nueva prueba reproducible;
+- el journal persistente de v0.11 confirma para USB
+  `DWC3 controller soft reset failed` y `-ETIMEDOUT: failed to initialize
+  core`. Para el táctil confirma que `a90000.i2c` queda en deferred probe por
+  `Failed to get tx DMA ch`; no son ya inferencias de la consola fotografiada;
+- Linux 7.2-rc3 ya incluye el driver upstream exacto `phy-nxp-ptn3222`, por lo
+  que no hizo falta portar el driver Samsung. v0.12 habilita el repetidor de
+  I2C6 `0x4f`, sus rails PM8550B LDO5/LDO15, reset PM8550VS-D GPIO4 y lo
+  encadena como PHY física de `usb_1_hsphy`;
+- v0.12 integra `QCOM_GPI_DMA`, habilita `gpi_dma1` y fija I2C4/I2C6 a
+  400 kHz. Esto permite que GENI I2C pueda alcanzar tanto Goodix como PTN3222
+  antes de disponer de módulos en userspace;
+- el ZIP v0.12 está validado, reproducido y copiado a `/sdcard`; la siguiente
+  evidencia debe ser si enumera USB/NCM y si aparecen eventos del GT9916;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -415,6 +413,33 @@ lado del workspace.
   `172.16.42.1`. Windows conserva dos errores de descriptor y la consola de
   Linux muestra que DWC3 no inicializa el core por timeout. Pantalla y SD son
   independientes de este fallo.
+- Desde TWRP se montó `/dev/block/mmcblk1p2` exclusivamente en lectura y se
+  extrajo el journal persistente v0.11 a
+  `work/v011-rootfs-logs-20260719/`. USB falla exactamente durante el soft
+  reset de DWC3 (`a600000.usb`, `-ETIMEDOUT`) y `a90000.i2c` queda diferido al
+  no obtener su canal TX DMA. No se modificó el rootfs de la tarjeta.
+- La auditoría de Linux 7.2-rc3 encontró el soporte upstream exacto
+  `drivers/phy/phy-nxp-ptn3222.c` y su binding. El DTS v0.12 reproduce del FDT
+  X910 el PTN3222 en I2C6 `0x4f`, LDO5B a 3.104 V, LDO15B a 1.8 V y reset
+  PM8550VS-D GPIO4 activo-bajo; la PHY HS lo referencia mediante `phys`.
+- El primer intento de compilación v0.12 usó por error la etiqueta inexistente
+  `gpi_dma0` y falló al compilar el DT. SM8550 agrupa I2C4 e I2C6 bajo
+  `gpi_dma1`; se corrigió a ese único controlador y no se conservará la
+  referencia `gpi_dma0`.
+- La configuración r7 integra `CONFIG_QCOM_GPI_DMA`,
+  `CONFIG_PHY_NXP_PTN3222`, `CONFIG_INPUT_UINPUT` y `CONFIG_UHID`. La build
+  directa resultante tiene `Image.gz` SHA-256
+  `195608d3dcb49c896e48f57510bf65327190be4939c8e1995d119375b803443c`
+  y DTB SHA-256
+  `6f5fb0944a3438a48c09a8deaec2540c862b4fa11970595c806fb5b1337467ea`.
+- ZIP v0.12 reproducido byte a byte:
+  `postmarketos-edge-xfce-mainline-v0.12-usb-touch-sm-x910-twrp.zip`,
+  22.009.191 bytes, SHA-256
+  `bf8067a1eb652b0154b8c8614ce254720a94cce96b428f465371890eb01fa5f2`.
+  El validador comprueba además GPI DMA, ambos I2C a 400 kHz, compatible,
+  supplies/reset/phandle del PTN3222 y USB peripheral/HS. Dos generaciones
+  fueron idénticas y el hash remoto en `/sdcard` coincide; el asistente no lo
+  flasheó.
 
 ## Lo que no ha funcionado / no repetir
 

@@ -173,6 +173,17 @@
 		compatible = "qcom,pm8550-rpmh-regulators";
 		qcom,pmic-id = "b";
 
+		/* NXP PTN3222 eUSB2 3.1 V rail, exact X910 stock voltage. */
+		vreg_l5b_3p104: ldo5 {
+			regulator-name = "vreg_l5b_3p104";
+			regulator-min-microvolt = <3104000>;
+			regulator-max-microvolt = <3104000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
+		};
+
 		vreg_l8b_1p8: ldo8 {
 			regulator-name = "vreg_l8b_1p8";
 			regulator-min-microvolt = <1800000>;
@@ -199,6 +210,17 @@
 			regulator-min-microvolt = <3200000>;
 			regulator-max-microvolt = <3200000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* NXP PTN3222 eUSB2 1.8 V rail. */
+		vreg_l15b_1p8: ldo15 {
+			regulator-name = "vreg_l15b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-allow-set-load;
+			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
+						   RPMH_REGULATOR_MODE_HPM>;
 		};
 	};
 
@@ -238,6 +260,21 @@
 	};
 };
 
+/* Stock X910 connects the NXP repeater reset to PM8550VS-D GPIO4. */
+&pm8550vs_d {
+	status = "okay";
+};
+
+&pm8550vs_d_gpios {
+	eusb2_reset_default: eusb2-reset-state {
+		pins = "gpio4";
+		function = "normal";
+		power-source = <1>;
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
 &tlmm {
 	/*
 	 * The Samsung board overlay marks GPIO36..39 as secure/reserved.  Use
@@ -251,7 +288,13 @@
 	status = "okay";
 };
 
+/* I2C4 (touch) and I2C6 (PTN3222) are GPI-only on SM8550. */
+&gpi_dma1 {
+	status = "okay";
+};
+
 &i2c4 {
+	clock-frequency = <400000>;
 	status = "okay";
 
 	touchscreen@5d {
@@ -264,6 +307,24 @@
 		touchscreen-size-x = <1080>;
 		touchscreen-size-y = <2400>;
 		touchscreen-swapped-x-y;
+	};
+};
+
+&i2c6 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	eusb2_repeater: redriver@4f {
+		compatible = "nxp,ptn3222";
+		reg = <0x4f>;
+		#phy-cells = <0>;
+
+		vdd3v3-supply = <&vreg_l5b_3p104>;
+		vdd1v8-supply = <&vreg_l15b_1p8>;
+		reset-gpios = <&pm8550vs_d_gpios 4 GPIO_ACTIVE_LOW>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&eusb2_reset_default>;
 	};
 };
 
@@ -288,14 +349,11 @@
 	clock-frequency = <32764>;
 };
 
-/*
- * X910 uses an NXP eUSB2 repeater and SM5714 Type-C controller, neither of
- * which has an upstream driver yet.  Force HS peripheral mode and rely on
- * bootloader-initialised repeater state for the first diagnostic attempt.
- */
+/* X910 uses a PTN3222-compatible NXP eUSB2 repeater on I2C6. */
 &usb_1_hsphy {
 	vdd-supply = <&vreg_l1e_0p88>;
 	vdda12-supply = <&vreg_l3e_1p2>;
+	phys = <&eusb2_repeater>;
 	status = "okay";
 };
 

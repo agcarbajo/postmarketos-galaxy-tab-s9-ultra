@@ -41,7 +41,11 @@ for symbol in \
 	CONFIG_USB_CONFIGFS \
 	CONFIG_USB_CONFIGFS_NCM \
 	CONFIG_SERIAL_QCOM_GENI \
+	CONFIG_QCOM_GPI_DMA \
+	CONFIG_PHY_NXP_PTN3222 \
 	CONFIG_TOUCHSCREEN_GOODIX_BERLIN_CORE \
+	CONFIG_INPUT_UINPUT \
+	CONFIG_UHID \
 	CONFIG_SAMSUNG_GTS9UWIFI_SEC_LOG \
 	CONFIG_PSTORE \
 	CONFIG_PSTORE_RAM; do
@@ -136,6 +140,34 @@ test "$(fdtget -t s "$tmp/vendor_boot/dtb" \
 	/soc@0/interconnect@7e40000 status 2>/dev/null || \
 	fdtget -t s "$tmp/vendor_boot/dtb" /soc/interconnect@7e40000 status)" = \
 	'disabled'
+
+# The first graphical boot proved that the X910 touch and USB buses must not
+# depend on late modules. Both relevant GENI I2C controllers use GPI DMA, and
+# the eUSB2 HS PHY is physically chained through an NXP PTN3222 on I2C6.
+gpi_dma='/soc@0/dma-controller@a00000'
+i2c4='/soc@0/geniqup@ac0000/i2c@a90000'
+i2c6='/soc@0/geniqup@ac0000/i2c@a98000'
+repeater="$i2c6/redriver@4f"
+hsphy='/soc@0/phy@88e3000'
+usb='/soc@0/usb@a600000'
+
+for node in "$gpi_dma" "$i2c4" "$i2c6" "$hsphy" "$usb"; do
+	test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$node" status)" = 'okay'
+done
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c4" clock-frequency)" = '400000'
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c6" clock-frequency)" = '400000'
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$repeater" compatible)" = \
+	'nxp,ptn3222'
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater" '#phy-cells')" = '0'
+reset_spec=" $(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater" reset-gpios) "
+case "$reset_spec" in
+	*' 4 1 ') ;;
+	*) echo "PTN3222 reset must be PM8550VS-D GPIO4 active-low" >&2; exit 1 ;;
+esac
+test "$(fdtget -t x "$tmp/vendor_boot/dtb" "$hsphy" phys)" = \
+	"$(fdtget -t x "$tmp/vendor_boot/dtb" "$repeater" phandle)"
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$usb" dr_mode)" = 'peripheral'
+test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$usb" maximum-speed)" = 'high-speed'
 
 grep -q '^page size: 0x00001000$' "$tmp/vendor_boot.info"
 grep -q '^kernel load address: 0x80008000$' "$tmp/vendor_boot.info"

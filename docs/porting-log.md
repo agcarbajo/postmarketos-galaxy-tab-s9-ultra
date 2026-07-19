@@ -641,11 +641,60 @@ física.
   rails `vdd18`/`vdd3`, reset PM8550VS GPIO4 y overrides
   `<0x20 0x06 0x21 0x07 0x63 0x08 0x01 0x0a>`. La PHY eUSB2 stock lo referencia
   como `usb-repeater`.
-- Linux 7.2-rc3 tiene el framework PHY y soporte para repetidores Qualcomm
-  SPMI, pero no para el NXP I2C. El kernel Samsung de referencia contiene
-  `drivers/usb/repeater/repeater-i2c-eusb2.c`; usa un framework downstream no
-  presente en mainline, así que se portará sólo la secuencia NXP necesaria al
-  framework genérico `struct phy`, no el subsistema Samsung completo.
-- Próximo paso: volver a TWRP, recoger logs persistentes de la rootfs y crear
-  el driver/DTS mínimo del repetidor. Después se prioriza SSH y a continuación
-  el Goodix GT9916.
+- En esta primera revisión se creyó que Linux 7.2-rc3 no tenía soporte para el
+  NXP I2C y se planteó portar la secuencia Samsung. La auditoría completa de la
+  sesión siguiente encontró el driver upstream exacto `phy-nxp-ptn3222`, por
+  lo que esta hipótesis queda corregida y no se creará un driver local.
+- Al cierre de esa sesión quedaban pendientes los logs persistentes y el
+  soporte del repetidor; ambos se investigan y corrigen en la sesión siguiente.
+
+## 2026-07-19 — sesión 15: journal v0.11 y bundle USB/táctil v0.12
+
+- Con la tablet de nuevo en TWRP se montó `/dev/block/mmcblk1p2` como ext4
+  `ro,norecovery` en `/tmp/pmos-root`. Se extrajo sin modificar la tarjeta el
+  journal persistente de systemd, de 8 MiB, a
+  `work/v011-rootfs-logs-20260719/` y se convirtió a texto.
+- El journal fija el fallo USB: `dwc3-qcom a600000.usb: DWC3 controller soft
+  reset failed`, seguido de `error -ETIMEDOUT: failed to initialize core` y
+  fallo de probe `-110`. DWC3 nunca registra el gadget, lo que explica los
+  descriptores fallidos del host y la ausencia de NCM/SSH.
+- El mismo journal fija el bloqueo del táctil: `a90000.i2c` termina en deferred
+  probe con `geni_i2c: Failed to get tx DMA ch`. `CONFIG_QCOM_GPI_DMA` era
+  módulo; I2C4 e I2C6 dependen ambos de `gpi_dma1`, así que no podían alcanzar
+  Goodix ni el repetidor durante el arranque. Tampoco existía `/dev/input`.
+- La revisión completa de Linux 7.2-rc3 encontró
+  `drivers/phy/phy-nxp-ptn3222.c` y el binding
+  `Documentation/devicetree/bindings/phy/nxp,ptn3222.yaml`. Es exactamente un
+  proveedor PHY con `vdd3v3`, `vdd1v8` y reset GPIO, y upstream lo encadena al
+  HS PHY mediante `phys`; no hace falta portar el framework Samsung.
+- Del FDT stock X910 se trasladaron sólo datos contrastados: PTN3222 en I2C6
+  `0x4f`, PM8550B LDO5 a 3.104 V, PM8550B LDO15 a 1.8 V y reset
+  PM8550VS-D GPIO4 activo-bajo. `usb_1_hsphy` referencia el repetidor; DWC3
+  continúa deliberadamente en peripheral/high-speed.
+- El primer DTS de prueba referenció `gpi_dma0`, etiqueta inexistente en el
+  `sm8550.dtsi`, y la compilación falló. La inspección de las DMA de I2C4/I2C6
+  confirmó que ambas pertenecen a `gpi_dma1`; se eliminó la referencia errónea
+  y la siguiente build terminó correctamente.
+- El fragmento r7 integra `CONFIG_QCOM_GPI_DMA=y`,
+  `CONFIG_PHY_NXP_PTN3222=y`, `CONFIG_INPUT_UINPUT=y` y `CONFIG_UHID=y`.
+  `Image.gz` resultante: SHA-256
+  `195608d3dcb49c896e48f57510bf65327190be4939c8e1995d119375b803443c`;
+  DTB: `6f5fb0944a3438a48c09a8deaec2540c862b4fa11970595c806fb5b1337467ea`;
+  config: `e29bca4b34e4137d4341036a7d161ee644a5dcc4f83f8a804b4e1d72242a41d0`.
+- El validador Android v4 exige ahora los cuatro built-ins, GPI DMA activo,
+  I2C4/I2C6 activos a 400 kHz, PTN3222 con `#phy-cells = 0`, GPIO4
+  activo-bajo, phandle enlazado desde la HS PHY y DWC3 peripheral/HS. La
+  primera ejecución del validador usó la ruta equivocada `usb@a6f8800` y
+  falló de forma segura; el nodo SM8550 real es `usb@a600000` y se corrigió.
+- ZIP v0.12:
+  `postmarketos-edge-xfce-mainline-v0.12-usb-touch-sm-x910-twrp.zip`,
+  22.009.191 bytes, SHA-256
+  `bf8067a1eb652b0154b8c8614ce254720a94cce96b428f465371890eb01fa5f2`.
+  Dos ejecuciones produjeron exactamente el mismo ZIP. Pasó headers Android
+  v4, LZ4 legacy, hashes internos, appended-DTB, AVB y las nuevas aserciones
+  de hardware. Se copió a `/sdcard` y `sha256sum` allí coincide. El asistente
+  no flasheó ninguna partición.
+- Reto inmediato: prueba física v0.12. Si USB enumera, entrar por NCM/SSH y
+  comprobar `dmesg`, `ip`, el gadget y `libinput`; en paralelo verificar si el
+  GT9916 crea `/dev/input/event*`. Si falla, el journal de la SD permitirá
+  separar init del PTN3222, DWC3 y firmware Goodix sin depender de vídeo.
