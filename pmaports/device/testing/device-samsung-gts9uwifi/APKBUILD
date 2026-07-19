@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=8
+pkgrel=9
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -18,6 +18,7 @@ depends="
 "
 makedepends="devicepkg-dev"
 source="
+	20-gts9uwifi-fbdev.conf
 	deviceinfo
 	gts9uwifi-display-handoff
 	gts9uwifi-display-handoff.service
@@ -31,6 +32,8 @@ build() {
 package() {
 	devicepkg_package "$startdir" "$pkgname"
 
+	install -Dm644 "$srcdir/20-gts9uwifi-fbdev.conf" \
+		"$pkgdir/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 	install -Dm755 "$srcdir/gts9uwifi-display-handoff" \
 		"$pkgdir/usr/libexec/gts9uwifi-display-handoff"
 	install -Dm644 "$srcdir/gts9uwifi-display-handoff.service" \
@@ -41,6 +44,7 @@ package() {
 }
 
 sha512sums="
+70469307f0322800672cb817ff7a5bd3f75ced3e0268b7cbaafda09bf61168aa92a8f261bc524675f2167a0e76c3fbd749d1364b260fd3acbbb8756711fcb64d  20-gts9uwifi-fbdev.conf
 75b642beea4cf983a553e9f7de6987880f6debe91c1a4f3a5b9d77dd41f4d99f5ced2e4852db5055446cc194ca3d3f6653db37f77fc423b4247cd1a229410f87  deviceinfo
 71a8fd1d192caf778a077837c753490d6d51787613aca3703d3229eb71660c65fae9573909e9b52a54ee5638cd43367e4d8eb793861bf69ab7a3b684abea8ee6  gts9uwifi-display-handoff
 b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e2d219667f79172827dbda2f7440d1dc6367cb8a9a3597987  gts9uwifi-display-handoff.service

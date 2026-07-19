@@ -91,7 +91,8 @@ def main() -> None:
         if not overlay_files:
             raise SystemExit("rootfs overlay contains no regular files")
         overlay_manifest = "".join(
-            f"{digest(path)}  {path.relative_to(args.rootfs_overlay).as_posix()}\n"
+            f"{digest(path)} {stat.S_IMODE(path.stat().st_mode):04o} "
+            f"{path.relative_to(args.rootfs_overlay).as_posix()}\n"
             for path in overlay_files
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)

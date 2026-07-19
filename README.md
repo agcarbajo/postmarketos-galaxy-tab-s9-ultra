@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-19.
+> Última actualización: 2026-07-20.
 
 ## Objetivo
 
@@ -52,23 +52,23 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.24 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.23 demuestra un boot completo y estable |
-| DTS `gts9uwifi` | 🧪 v0.24 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
+| Kernel mainline SM8550 | ✅ v0.25 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.24 demuestra otro boot completo y estable |
+| DTS `gts9uwifi` | 🧪 v0.25 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.24 reproducible: device r8, kernel r17 y firmware WCN7850 r1; añade handoff VT después de LightDM |
-| Rootfs postmarketOS | ✅ v0.24 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.23 inicia Xorg/LightDM/slick-greeter en VT7, pero el panel conserva el framebuffer de VT1; v0.24 fuerza VT1→VT7 |
+| Paquetes pmaports | ✅ v0.25 reproducible: device r9, kernel r17 y firmware WCN7850 r1; fbdev directo y handoff VT corregido |
+| Rootfs postmarketOS | ✅ v0.25 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.24 inicia Xorg/LightDM/slick-greeter, pero su unidad no se habilitó; v0.25 fuerza X por `/dev/fb0` y arregla el handoff |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.24 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
+| Bundle Android v4 | ✅ v0.25 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.24 copiado y verificado en TWRP; pendiente flash manual y validación física del handoff/SSH |
+| Imagen/paquete de prueba | 🧪 ZIP v0.25 copiado y verificado en TWRP; pendiente flash manual y validación física fbdev/handoff/SSH |
 
 ## Reto en curso
 
-Validar físicamente el handoff de pantalla de v0.24 sobre la base estable
-v0.23, conservar SSH RNDIS y después reintroducir WCN7850 desde el sistema vivo:
+Validar físicamente la salida fbdev y el handoff corregido de v0.25 sobre la
+base estable v0.23/v0.24, conservar SSH RNDIS y después reintroducir WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -207,15 +207,24 @@ v0.23, conservar SSH RNDIS y después reintroducir WCN7850 desde el sistema vivo
   `Plymouth is running on VT 1`, lanza X con `-novtswitch` y declara
   `Activating VT 7`. Los logs de v0.11, que sí mostró el greeter, son
   esencialmente iguales; el defecto queda acotado al handoff/repintado de VT;
-- v0.24 añade una unidad oneshot después de LightDM: espera el socket X0,
-  registra la VT activa y fuerza VT1→VT7 para provocar `LeaveVT`/`EnterVT` y
-  un redraw de simpledrm. Conserva sin cambios kernel r17 y el aislamiento
-  WCN/PCIe0; el resultado físico está pendiente;
-- tras el flash manual v0.24, mantenerla encendida aunque siga mostrando los
-  pingüinos y conectada por USB. Probar inmediatamente SSH en
-  `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos. Con
-  SSH se leerá el journal de `gts9uwifi-display-handoff.service` y, si hace
-  falta, se podrá repetir el cambio de VT en vivo.
+- el boot v0.24 `96a5a5ecfc28401a8010ad616a9a5afc` vuelve a completar
+  userspace: OpenSSH escucha desde 21,493 s, LightDM arranca a 21,791 s,
+  `graphical.target` a 21,797 s y slick-greeter está activo. El fallo no es un
+  cuelgue del kernel ni de pmOS;
+- el handoff v0.24 no llegó a ejecutarse: el instalador TWRP imponía `0644` a
+  todos los ficheros del overlay y la entrada regular copiada en
+  `graphical.target.wants` fue ignorada por systemd por no ser un enlace. El
+  journal lo registra explícitamente a 10,892 s;
+- v0.25 cambia el manifiesto incremental a `hash modo ruta`, restaura `0755`
+  al script y crea un symlink systemd real durante la instalación. Además
+  fuerza temporalmente el DDX `fbdev` con `ShadowFB` sobre `/dev/fb0`: así X
+  escribe directamente en el framebuffer que ya muestra los pingüinos y no
+  depende del cambio de scanout del DDX modesetting/simpledrm;
+- tras el flash manual v0.25, mantenerla encendida y conectada por USB aunque
+  la imagen no cambie. Probar SSH en `172.16.42.1`; `.138` y `.150` siguen
+  excluidos. El journal debe mostrar el driver fbdev y la ejecución de
+  `gts9uwifi-display-handoff.service`, lo que separará cualquier fallo restante
+  de X, VT y acceso directo al framebuffer.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -902,14 +911,37 @@ lado del workspace.
   device r8. Después de que LightDM cree `/tmp/.X11-unix/X0`, registra
   `fgconsole` y fuerza VT1→VT7 para provocar el repintado. El overlay TWRP
   incluye explícitamente script, unidad y activación para actualizar también
-  la microSD existente; `make-twrp-zip.py` preserva ahora el modo ejecutable de
-  los ficheros del overlay.
+  la microSD existente. El ZIP conservaba el modo ejecutable, pero la prueba
+  posterior demostró que el instalador lo reemplazaba por `0644` al extraerlo.
 - Build v0.24 verificada: device r8, kernel `7.2_rc3-r17`, firmware r1 y
   `kbd-2.8.0-r0`; script ejecutable, unidad habilitada, cmdline sin
   `console=tty0` y los tres nodos WCN/PCIe0 aún deshabilitados. ZIP TWRP:
   `postmarketos-edge-xfce-mainline-v0.24-vt-handoff-rndis-sm-x910-twrp.zip`,
   80.853.551 bytes, SHA-256
   `b7c1a8bc2e3cc6bb0b68c89a5eea8882d85ef664291e80e54e275cfa8ef37b6e`.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
+- Los logs v0.24 se extrajeron en sólo lectura a
+  `work/v024-rootfs-logs-20260720/`. El boot
+  `96a5a5ecfc28401a8010ad616a9a5afc` llega de nuevo a RNDIS/NetworkManager,
+  OpenSSH, LightDM, Xorg y slick-greeter; `graphical.target` se alcanza a
+  21,797 s y el journal continúa más allá de 51 s. No hay panic ni hang.
+- La causa exacta del no-op v0.24 está registrada por systemd:
+  `graphical.target.wants/gts9uwifi-display-handoff.service is not a symlink,
+  ignoring`. La inspección offline confirma además modo `0644` en el script.
+  El instalador TWRP extraía todos los miembros con ese modo fijo aunque el ZIP
+  declarase `0755`; por tanto el rebote VT nunca fue probado físicamente.
+- v0.25 usa un manifiesto `SHA-256 modo ruta`; el instalador valida `0644` o
+  `0755`, aplica el modo declarado y sustituye la entrada wants por un enlace
+  real a la unidad. Como segundo cambio independiente y justificado, añade
+  `20-gts9uwifi-fbdev.conf`: X usará `fbdev` + `ShadowFB` sobre `/dev/fb0` en
+  lugar de depender del page-flip modesetting/simpledrm que deja visible VT1.
+- Build v0.25 verificada: device r9, kernel `7.2_rc3-r17`, firmware r1 y kbd;
+  `fbdev_drv.so`, configuración fbdev, script ejecutable y enlace systemd
+  presentes; cmdline sin `console=tty0` y WCN/PCIe0 aún aislado. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.25-fbdev-vt-rndis-sm-x910-twrp.zip`,
+  80.853.846 bytes, SHA-256
+  `8834678cceb50b7fc6d85b35daabcad8c57ff8ac0c34af3e8c7eaebcee74f054`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. El
   asistente no flasheó ninguna partición.
 
@@ -923,6 +955,11 @@ lado del workspace.
   abuild empareja ambas listas por posición. La primera construcción rootfs
   r14 detectó el orden incorrecto de cuatro parches aunque la build directa
   los aplicaba; se corrigió antes de aceptar el paquete.
+- No confiar sólo en los bits POSIX almacenados por ZIP para un overlay TWRP:
+  `unzip -p > destino` no los aplica y el instalador v0.24 imponía después
+  `0644`. Tampoco copiar un fichero normal dentro de un directorio `.wants`:
+  systemd exige un enlace y lo ignora explícitamente. Desde v0.25 el manifiesto
+  transporta el modo y el instalador crea el symlink de activación.
 - No asumir que `ID` en `/etc/os-release` carece de comillas. El rootfs físico
   usa `ID="postmarketos"`; el validador TWRP debe aceptar las dos
   representaciones exactas antes de rechazar la microSD.

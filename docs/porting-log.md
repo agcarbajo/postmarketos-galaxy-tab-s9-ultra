@@ -1413,3 +1413,54 @@ física.
   `172.16.42.1` y leer el journal de
   `gts9uwifi-display-handoff.service`; si el rebote automático no repinta, se
   podrá repetir en vivo y observar DRM/VT sin otro ciclo ciego.
+
+## 2026-07-20 — sesión 37: no-op del overlay v0.24 y fallback fbdev v0.25
+
+- La prueba física v0.24 siguió mostrando únicamente los ocho pingüinos y el
+  cursor. La usuaria volvió manualmente a TWRP. Se montó `mmcblk1p2` como
+  ext4 `ro,noload` y se extrajeron journals y logs gráficos a
+  `work/v024-rootfs-logs-20260720/`.
+- El boot nuevo `96a5a5ecfc28401a8010ad616a9a5afc` no está colgado. RNDIS
+  obtiene carrier y `usb0=172.16.42.1`; NetworkManager arranca a 21,400 s,
+  OpenSSH a 21,403 s y escucha desde 21,493 s, LightDM arranca a 21,791 s,
+  `graphical.target` se alcanza a 21,797 s y slick-greeter continúa activo. El
+  journal llega al menos a 51,296 s sin panic, oops ni stall.
+- El servicio v0.24 nunca se ejecutó. A 10,892 s systemd registra literalmente
+  que `graphical.target.wants/gts9uwifi-display-handoff.service` no es un
+  symlink y lo ignora. La inspección del rootfs confirma que tanto la unidad
+  wants como el script son ficheros regulares `0644`.
+- La causa está en el instalador incremental: `make-twrp-zip.py` sí guardaba el
+  script como `0755`, pero `mainline-update-binary` extraía cada miembro con
+  `unzip -p` y aplicaba `chmod 0644` incondicional. La activación se había
+  empaquetado como copia regular porque el overlay no preservaba symlinks. El
+  rebote VT propuesto en v0.24, por tanto, no llegó a someterse a prueba.
+- v0.25 amplía `ROOTFS-OVERLAY-SHA256SUMS` a `hash modo ruta`. El instalador
+  acepta únicamente `0644`/`0755`, aplica el modo por miembro y, cuando existe
+  la unidad de handoff, elimina la entrada anterior y crea el enlace real
+  `graphical.target.wants/... -> ../gts9uwifi-display-handoff.service`.
+- La comparación completa de Xorg/LightDM v0.11 frente a v0.24 no muestra una
+  diferencia funcional aparte del kernel/cmdline/táctil: ambas usan Xorg
+  1.21.1.23, VT7, 2960x1848, modesetting sobre simpledrm, glamor rechazado por
+  llvmpipe, `ShadowFB` deshabilitado y el mismo `-novtswitch`. Sin embargo sólo
+  v0.11 repintó físicamente el panel.
+- Para no depender otra vez exclusivamente de ese page-flip, device r9 añade
+  temporalmente `20-gts9uwifi-fbdev.conf`: fuerza el DDX fbdev y `ShadowFB`
+  sobre `/dev/fb0`, que el kernel registra como `simpledrmdrmfb` y cuyo
+  contenido de consola ya es visible. El handoff VT corregido se conserva como
+  segunda vía de repintado.
+- La build limpia v0.25 conserva kernel `7.2_rc3-r17`, firmware r1 y el
+  aislamiento PMU WCN/PCIe0/PHY. Se verificaron device r9, `fbdev_drv.so`, la
+  configuración X, script ejecutable, unidad/enlace, kbd y cmdline sin
+  `console=tty0`.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.25-fbdev-vt-rndis-sm-x910-twrp.zip`,
+  80.853.846 bytes, SHA-256
+  `8834678cceb50b7fc6d85b35daabcad8c57ff8ac0c34af3e8c7eaebcee74f054`.
+  El manifiesto dentro del ZIP marca el script `0755`, el instalador incluido
+  contiene la creación del symlink y la configuración fbdev está presente.
+  Se copió a `/sdcard` y la única comparación local/remota coincide; el
+  asistente no flasheó ninguna partición.
+- Próxima prueba: flash manual v0.25 y dejar el sistema vivo/conectado por USB
+  aunque la imagen no cambie. Probar SSH en `172.16.42.1` antes de volver a
+  TWRP; si aún falla la presentación, el journal distinguirá de forma directa
+  carga del DDX fbdev, resultado del handoff y estado de `/dev/fb0`.

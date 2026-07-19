@@ -135,8 +135,12 @@ fi
 if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
     ui_print "Installing the versioned microSD rootfs overlay..."
     unzip -p "$ZIPFILE" ROOTFS-OVERLAY-SHA256SUMS | \
-    while read expected relative; do
+    while read expected mode relative; do
         [ -n "$expected" ] || continue
+        case "$mode" in
+            0644|0755) ;;
+            *) abort "unsafe rootfs overlay mode: $mode" ;;
+        esac
         case "$relative" in
             /*|../*|*/../*) abort "unsafe rootfs overlay path: $relative" ;;
         esac
@@ -144,11 +148,21 @@ if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
         mkdir -p "${target%/*}" || abort "cannot create directory for $relative"
         unzip -p "$ZIPFILE" "rootfs-overlay/$relative" > "$target" || \
             abort "cannot extract rootfs overlay file $relative"
-        chmod 0644 "$target" || abort "cannot set mode on $relative"
+        chmod "$mode" "$target" || abort "cannot set mode on $relative"
         actual="$(sha256sum "$target" | cut -d' ' -f1)"
         [ "$actual" = "$expected" ] || abort "rootfs overlay hash mismatch: $relative"
     done
     [ "$?" -eq 0 ] || abort "rootfs overlay installation failed"
+    HANDOFF_UNIT="$ROOTFS_MOUNT/usr/lib/systemd/system/gts9uwifi-display-handoff.service"
+    HANDOFF_WANTS="$ROOTFS_MOUNT/usr/lib/systemd/system/graphical.target.wants"
+    if [ -f "$HANDOFF_UNIT" ]; then
+        mkdir -p "$HANDOFF_WANTS" || abort "cannot create graphical.target wants directory"
+        rm -f "$HANDOFF_WANTS/gts9uwifi-display-handoff.service" || \
+            abort "cannot replace display handoff activation"
+        ln -s ../gts9uwifi-display-handoff.service \
+            "$HANDOFF_WANTS/gts9uwifi-display-handoff.service" || \
+            abort "cannot enable display handoff service"
+    fi
     sync
     umount "$ROOTFS_MOUNT" || abort "cannot unmount postmarketOS microSD rootfs"
     ROOTFS_MOUNTED=0
