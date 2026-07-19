@@ -42,6 +42,11 @@ fi
 if ! grep -q 'probing %s with driver %s' "$kernel_tree/drivers/base/dd.c"; then
 	patch -d "$kernel_tree" -p1 < "$package/log-probe-entry-before-call.patch"
 fi
+if ! grep -q 'GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK' \
+	"$kernel_tree/drivers/input/touchscreen/goodix_berlin_core.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/support-samsung-goodix-16-byte-events.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

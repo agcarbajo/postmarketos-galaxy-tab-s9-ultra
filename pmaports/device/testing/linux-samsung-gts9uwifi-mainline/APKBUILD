@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=7
+pkgrel=8
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -45,6 +45,7 @@ source="
 	add-samsung-sec-log-console.patch
 	keep-sec-log-previous-index-current.patch
 	log-probe-entry-before-call.patch
+	support-samsung-goodix-16-byte-events.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 "
@@ -92,6 +93,7 @@ sha512sums="
 ef13d786887ee3e84734775bda21ef69c39e49c453323819abd9c5cc5d2e38065a7a6661e816a284870435396ec7c1e172f2edfd1ddd4013c2ce9a6697257556  add-samsung-sec-log-console.patch
 78e3c597631cfd7f3681e0c1247dbefc1e4716c42d931d7af82861c0d70904cc7d63ea1b3810aa92f2c6d659ab184309c8f252df18aeac4177dfe6b0eaaca36c  keep-sec-log-previous-index-current.patch
 6c3fa86dda394ba8e7ee20bb000fb34d986f1dd1d3284baf5b440c5612f0ded20d2326c0e13592e05bea499b360c0c29b33e8b899238dd7de976b2d256b6c4ec  log-probe-entry-before-call.patch
-fd2d0a25c834a907f7e7103e835d3920fc55adae3c093c7318316cbc050f918e070c82d1f5fa458adfbdff913ac9594009c41119f27ec9eca085bea3eaec1c06  config-gts9uwifi.fragment
-58553c67b26c45cd2cea0f9a077e179828213e43c26255045f4256cfd0794aa03e22a403e2caf4357ae11e0f54d117bf275a8f24f24239ba6d82e91b38fd6dde  sm8550-samsung-gts9uwifi.dts
+f1da1c0342860c613112d17e1bf82a47bde741ed837145251481b117eb1ea11eed428f680cfb719ed8712e031d53123d2ac42d00309a915698813315389f377e  support-samsung-goodix-16-byte-events.patch
+b0242126aa4ce79830ebf62811ccdfd2a9606dc6744628a782a752d36a47752f9812eb732f72eb2f451d6ff8033761aa872fd7a2c3773d2da707db999935101c  config-gts9uwifi.fragment
+9aeb7af83913baf817650d8e3eaff9d6d4acd894d1f517fe67a0e8d0ce691035a82c697953fb5234666ac6873ac1442c833a3d03a5dc7b96b7b3dd817c84114b  sm8550-samsung-gts9uwifi.dts
 "

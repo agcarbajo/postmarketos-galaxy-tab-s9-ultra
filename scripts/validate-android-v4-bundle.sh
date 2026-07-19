@@ -31,6 +31,10 @@ else
 		"$package_zboot" "$tmp/package-Image.gz"
 fi
 
+gzip -dc "$tmp/package-Image.gz" > "$tmp/package-Image"
+grep -aFq 'unsupported event layout: header %u point %u' \
+	"$tmp/package-Image"
+
 for symbol in \
 	CONFIG_DRM_SIMPLEDRM \
 	CONFIG_MMC \
@@ -44,6 +48,7 @@ for symbol in \
 	CONFIG_QCOM_GPI_DMA \
 	CONFIG_PHY_NXP_PTN3222 \
 	CONFIG_TOUCHSCREEN_GOODIX_BERLIN_CORE \
+	CONFIG_INPUT_EVDEV \
 	CONFIG_INPUT_UINPUT \
 	CONFIG_UHID \
 	CONFIG_SAMSUNG_GTS9UWIFI_SEC_LOG \
@@ -150,12 +155,17 @@ i2c6='/soc@0/geniqup@ac0000/i2c@a98000'
 repeater="$i2c6/redriver@4f"
 hsphy='/soc@0/phy@88e3000'
 usb='/soc@0/usb@a600000'
+touchscreen="$i2c4/touchscreen@5d"
+repeater_reset='/soc@0/spmi@c400000/pmic@3/gpio@8800/eusb2-reset-state'
 
 for node in "$gpi_dma" "$i2c4" "$i2c6" "$hsphy" "$usb"; do
 	test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$node" status)" = 'okay'
 done
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c4" clock-frequency)" = '400000'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$i2c6" clock-frequency)" = '400000'
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-size-x)" = '1848'
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-size-y)" = '2960'
+fdtget "$tmp/vendor_boot/dtb" "$touchscreen" touchscreen-swapped-x-y >/dev/null
 test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$repeater" compatible)" = \
 	'nxp,ptn3222'
 test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater" '#phy-cells')" = '0'
@@ -164,6 +174,11 @@ case "$reset_spec" in
 	*' 4 1 ') ;;
 	*) echo "PTN3222 reset must be PM8550VS-D GPIO4 active-low" >&2; exit 1 ;;
 esac
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater_reset" power-source)" = '1'
+test "$(fdtget -t i "$tmp/vendor_boot/dtb" "$repeater_reset" qcom,drive-strength)" = '2'
+for property in input-enable output-enable drive-push-pull bias-disable; do
+	fdtget "$tmp/vendor_boot/dtb" "$repeater_reset" "$property" >/dev/null
+done
 test "$(fdtget -t x "$tmp/vendor_boot/dtb" "$hsphy" phys)" = \
 	"$(fdtget -t x "$tmp/vendor_boot/dtb" "$repeater" phandle)"
 test "$(fdtget -t s "$tmp/vendor_boot/dtb" "$usb" dr_mode)" = 'peripheral'

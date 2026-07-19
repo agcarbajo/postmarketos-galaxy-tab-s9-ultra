@@ -710,11 +710,74 @@ física.
   responde. El soporte inicial upstream del PTN3222 no ha resuelto por sí solo
   el enlace físico.
 - Un barrido concurrente de `<LAN_SUBNET>` encontró SSH en `.138` y `.150`.
-  `.150` anuncia OpenSSH Debian y es otro equipo. `.138` anuncia OpenSSH 10.3,
-  pero rechaza `phablet`/`<DEV_PASSWORD>`; esa contraseña se verificó contra el hash
-  SHA-512 de la rootfs y es correcta, así que no existe evidencia suficiente
-  para atribuir ese host a la tablet. No se obtuvo canal remoto.
+  La usuaria confirmó posteriormente que `.138` es otro dispositivo pmOS de
+  la red y debe ignorarse; `.150` también es otro equipo. No se obtuvo canal
+  remoto atribuible a la tablet.
 - Próximo paso obligatorio: volver a TWRP, montar `mmcblk1p2` en sólo lectura
   y extraer el journal de este arranque. Se compararán registro/deferred probe
   de `gpi_dma1`, I2C4/I2C6, PTN3222, DWC3, firmware Goodix y `/dev/input` antes
   de preparar v0.13.
+
+## 2026-07-19 — sesión 17: journal v0.12 y correcciones Goodix/PTN3222 v0.13
+
+- Con la tablet en TWRP se montó `/dev/block/mmcblk1p2` exclusivamente como
+  `ro,norecovery` en `/tmp/pmos-root`. Se extrajeron el journal persistente,
+  Xorg y los logs de boot/LightDM a `work/v012-rootfs-logs-20260719/`; el
+  journal original tiene SHA-256
+  `be7e7a159b56d06874a7360310c73d6a42578749a76aaa33cd0aafb53d595794`.
+  La partición se desmontó después sin modificar el rootfs.
+- El boot v0.12 demuestra que el arreglo GPI DMA funcionó. A 1,628 s aparece
+  `Goodix Berlin Capacitive TouchScreen` en
+  `a90000.i2c/i2c-4/4-005d/input/input0`. Inmediatamente, cada evento real se
+  rechaza con `touch data checksum error`; el fallo ya no es I2C, DMA, probe
+  ni firmware.
+- `goodix_berlin_core.c` obtiene `point_struct_len` desde `IC_INFO`, pero el
+  parser upstream usaba ocho bytes constantes. El driver Samsung GT6936 de
+  referencia usa cabecera de ocho, puntos de 16 y checksum sobre
+  `event_num * 16 + 2`; también codifica ID/acción y coordenadas en un layout
+  distinto. Se creó el parche trazable
+  `support-samsung-goodix-16-byte-events.patch`, que selecciona el formato de
+  8/16 bytes dinámicamente y mantiene compatibilidad con el upstream normal.
+- El primer parche unificado escrito manualmente tenía conteos de hunk
+  incorrectos. `git apply --check` lo detectó antes de compilar; se corrigió y
+  la versión final aplica limpiamente sobre Linux mainline sin modificar.
+- El DT activo stock publica `sec,max_coords = <1848 2960>`, no 1080×2400.
+  El DTS r8 usa esas dimensiones y conserva `touchscreen-swapped-x-y`.
+  Además se encontró `CONFIG_INPUT_EVDEV=m`: en la build directa sin módulos
+  explicaba que no hubiera `/dev/input/event*` aunque existiera `input0`.
+  Desde v0.13 `CONFIG_INPUT_EVDEV=y`.
+- Para USB, el journal v0.12 muestra la cadena exacta de deferred probe:
+  `a600000.usb` espera a `88e3000.phy`, que espera al PTN3222 `1-004f`.
+  Antes aparece `qcom-spmi-gpio ... gpio@8800: pin_config_group_set op failed
+  for group 3`. El DTS usaba `drive-strength = <2>`, propiedad no aceptada por
+  el pinctrl SPMI Qualcomm. Se reprodujo el FDT stock del reset PM8550VS-D
+  GPIO4: función normal, entrada y salida habilitadas, push-pull, bias
+  deshabilitado, `power-source = <1>` y `qcom,drive-strength` medio.
+- Una primera generación etiquetada v0.13 se completó antes de descubrir que
+  EVDEV seguía como módulo. Su SHA empezaba por `501cc`; se descartó, no se
+  copió a la tablet y no debe probarse. Después se recompiló kernel, DTB y
+  bundle con EVDEV built-in. Una ejecución de build agotó el tiempo del runner
+  cuando los outputs ya estaban completos; los hashes y las dos ejecuciones
+  finales del empaquetado validaron esos outputs.
+- Build directa final: `Image.gz` SHA-256
+  `7cd3f980dab521874823d2a066b616cbfe39f13e6309c39ed0aa06a2b88f5c8b`;
+  DTB `f38a0cfd5f5ed3430f210b2c8533f836871038992ee7b318f28577e1ca74a60f`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+  La compilación incluye `goodix_berlin_core.o` y `drivers/input/evdev.o`.
+- El validador exige ahora `CONFIG_INPUT_EVDEV=y`, descomprime el Image
+  empaquetado y localiza la cadena diagnóstica del parche, valida 1848×2960 y
+  el intercambio de ejes, y comprueba todas las propiedades del reset PTN3222
+  además de la cadena USB ya existente.
+- ZIP final v0.13:
+  `postmarketos-edge-xfce-mainline-v0.13-goodix-ptn-reset-sm-x910-twrp.zip`,
+  22.018.623 bytes, SHA-256
+  `c69e7b53db8e176eca2396fea4137e26c1ccdf6e8dce8fab1f166ca8e74a0b98`.
+  Hashes internos: boot
+  `b0c717000339e410f31a897bee511be162276345d8e4fbc294a8a95a3c4e27ca`,
+  vendor_boot
+  `10063d103778eb260a4558dac952862988e6e5b6edc45f5502e17ffc40b6aeba`.
+  Dos generaciones finales fueron idénticas y el hash del ZIP copiado a
+  `/sdcard` coincide. El asistente no flasheó ninguna partición.
+- Reto inmediato: flashear manualmente v0.13, probar táctil en LightDM y
+  observar la enumeración USB. Si NCM/RNDIS aparece, conectar por SSH y
+  verificar en vivo eventos Goodix, PTN3222/DWC3 y estado de red.

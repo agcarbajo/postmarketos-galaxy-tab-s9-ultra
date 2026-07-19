@@ -12,6 +12,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include "sm8550.dtsi"
 #include "pm8550.dtsi"
@@ -270,7 +271,10 @@
 		pins = "gpio4";
 		function = "normal";
 		power-source = <1>;
-		drive-strength = <2>;
+		input-enable;
+		output-enable;
+		drive-push-pull;
+		qcom,drive-strength = <PMIC_GPIO_STRENGTH_MED>;
 		bias-disable;
 	};
 };
@@ -304,8 +308,8 @@
 		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
 		avdd-supply = <&vreg_l14b_3p2>;
 		vddio-supply = <&vreg_l12b_1p8>;
-		touchscreen-size-x = <1080>;
-		touchscreen-size-y = <2400>;
+		touchscreen-size-x = <1848>;
+		touchscreen-size-y = <2960>;
 		touchscreen-swapped-x-y;
 	};
 };
