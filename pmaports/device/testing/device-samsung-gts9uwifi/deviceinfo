@@ -29,5 +29,10 @@ deviceinfo_flash_pagesize="4096"
 deviceinfo_initfs_compression="gzip:default"
 deviceinfo_create_initfs_extra="true"
 
+# Windows reaches SET_CONFIGURATION with the default CDC-NCM gadget but does
+# not bind a network interface.  RNDIS is kept as an explicit compatibility
+# transport for the bring-up SSH channel.
+deviceinfo_usb_network_function="rndis.usb0"
+
 # Deliberately no rootfs_image_sector_size: a physical microSD uses 512-byte
 # logical sectors, unlike the 4096-byte UFS examples in several Android ports.

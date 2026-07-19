@@ -10,6 +10,7 @@ test -d "$project/pmaports/device/testing"
 
 for package in \
 	device-samsung-gts9uwifi \
+	firmware-samsung-gts9uwifi \
 	linux-samsung-gts9uwifi-mainline; do
 	mkdir -p "$target/device/testing/$package"
 	cp -a "$project/pmaports/device/testing/$package/." \
@@ -18,4 +19,5 @@ done
 
 git -C "$target" status --short -- \
 	device/testing/device-samsung-gts9uwifi \
+	device/testing/firmware-samsung-gts9uwifi \
 	device/testing/linux-samsung-gts9uwifi-mainline

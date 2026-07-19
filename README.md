@@ -52,21 +52,22 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.18 compila Linux 7.2-rc3 con orientación corregida y diagnóstico DWC3/EP0 |
-| DTS `gts9uwifi` | 🧪 v0.17 usa inversión X física antes del intercambio X/Y; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
+| Kernel mainline SM8550 | ✅ v0.19 compila Linux 7.2-rc3 r14 con RNDIS, PCIe0, secuenciador WCN7850 y ath12k |
+| DTS `gts9uwifi` | 🧪 v0.19 conserva táctil/pantalla/SD/USB y añade PCIe0 + PMU/reguladores/GPIO exactos del WCN7850 |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Fuentes r13 reproducen v0.18: Goodix correcto y trazas PHY/PTN3222/DWC3/EP0 |
-| Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
+| Paquetes pmaports | ✅ v0.19 reproducible: device r4, kernel r14 y firmware WCN7850 r1 extraído del firmware X910 |
+| Rootfs postmarketOS | ✅ v0.19 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; la SD física sigue en v0.6 hasta instalar el ZIP |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| SSH | 🧪 v0.18 tampoco enumera; pendiente extraer trazas de pull-up, IRQ y EP0 |
+| Wi-Fi | 🧪 Soporte WCN7850/PCIe/ath12k y blobs stock integrado en v0.19; pendiente primera prueba física |
+| SSH | 🧪 v0.19 ofrece dos rutas: RNDIS USB y Wi-Fi; ambas pendientes de primera prueba física |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.18 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
+| Bundle Android v4 | ✅ v0.19 empaquetado con LZ4 legacy/AVB y overlay versionado para actualizar módulos/firmware en la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.18 arrancan; táctil bien, USB/SSH aún no |
+| Imagen/paquete de prueba | 🧪 ZIP incremental y SD limpia v0.19 generados; ZIP copiado/verificado en TWRP, pendiente flash manual |
 
 ## Reto en curso
 
-Validar v0.18 y localizar el fallo de enumeración en DWC3/EP0:
+Validar físicamente v0.19 por RNDIS USB y WCN7850 Wi-Fi:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -144,8 +145,23 @@ Validar v0.18 y localizar el fallo de enumeración en DWC3/EP0:
 - la prueba física v0.18 vuelve a LightDM pero no enumera: Windows conserva dos
   errores de descriptor, no hay NCM/RNDIS ni SSH en `172.16.42.1/.2`, y la LAN
   sólo expone los equipos excluidos `.138`/`.150`;
-- volver a TWRP y extraer el journal v0.18 para clasificar si falta RUN/STOP,
-  IRQ reset/connect, SETUP o la respuesta de EP0;
+- el journal v0.18 demuestra que DWC3 ejecuta pull-up/RUN y recibe por EP0
+  `GET_DESCRIPTOR` de dispositivo/configuración/string, `SET_ADDRESS`,
+  `GET_STATUS`, `SET_CONFIGURATION(1)` y `SET_INTERFACE(0)`. Hardware,
+  PTN3222, PHY, IRQ, EP0 y entrega de descriptores quedan demostrados; no se
+  debe volver a retocar esa cadena para el síntoma actual;
+- Windows no enlaza la función CDC-NCM aunque completa la configuración. v0.19
+  cambia explícitamente el gadget a `rndis.usb0`, manteniendo
+  `172.16.42.1`/DHCP/OpenSSH como transporte de compatibilidad;
+- en paralelo, v0.19 describe el WCN7850 (`PCI 17cb:1107`) en PCIe0 con PMU,
+  reguladores, sleep clock, WLAN_EN GPIO80, BT_EN GPIO81, PERST GPIO94 y wake
+  GPIO96. Incluye `ath12k`, `pwrseq-qcom-wcn` y los cuatro blobs Kiwi v2 stock;
+- el ZIP v0.19 actualiza además el árbol completo de módulos 7.2.0-rc3,
+  `deviceinfo` y firmware en `mmcblk1p2`, tras verificar que es un rootfs pmOS.
+  La misma configuración está integrada en la imagen SD limpia;
+- después del flash manual, comprobar primero RNDIS/SSH en `172.16.42.1`; si
+  no aparece, comprobar `lspci -nn`, `ip link`, `nmcli`, `dmesg` de
+  `qcom-pcie`/`ath12k` y la nueva IP Wi-Fi, excluyendo siempre `.138` y `.150`;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -673,6 +689,37 @@ lado del workspace.
   de descriptor, sin NCM/RNDIS y sin SSH USB. El barrido LAN sólo encuentra
   `.138` y `.150`, que pertenecen a otros dispositivos. Se requiere su journal
   para explotar las nuevas trazas DWC3/EP0.
+- El journal v0.18 (`47ee7c89dc374bd1baf30310b98cbef7`, SHA-256
+  `ffcbcd4ebce12d857a91094c9712d442422001ab7533178a03db64c69d614edc`)
+  prueba una enumeración EP0 completa hasta `SET_CONFIGURATION(1)` y
+  `SET_INTERFACE(0)`. El problema externo restante es compatible con el
+  binding CDC-NCM de Windows, no con un fallo de PHY, repetidor o DWC3.
+- El FDT stock identifica Kiwi v2/WCN7850 con PCI ID `17cb:1107`; confirma
+  WLAN_EN GPIO80, BT_EN GPIO81, PERST GPIO94 y wake GPIO96. Linux 7.2-rc3 ya
+  contiene soporte ath12k WCN7850 y la infraestructura PMU/PCIe de SM8550.
+- Se añadió `firmware-samsung-gts9uwifi` r1. El script
+  `stage-stock-wifi-firmware.sh` extrae del `vendor.img` oficial y verifica
+  `amss20.bin`, `phy_ucode20.elf`, `bdwlan.elf` y `regdb.bin`; no se versionan
+  los blobs propietarios. Se instalan como los nombres upstream bajo
+  `/usr/lib/firmware/ath12k/WCN7850/hw2.0`.
+- Rootfs v0.19 verificado: device r4, kernel `7.2_rc3-r14`, firmware r1,
+  `CONFIG_USB_CONFIGFS_RNDIS=y`, `CONFIG_ATH12K=m` y
+  `CONFIG_POWER_SEQUENCING_QCOM_WCN=m`. El initramfs contiene
+  `deviceinfo_usb_network_function="rndis.usb0"` y el DTB final contiene el
+  PMU/reguladores y `wifi@0` compatible `pci17cb,1107`.
+- ZIP único v0.19:
+  `postmarketos-edge-xfce-mainline-v0.19-rndis-wifi-pcie-sm-x910-twrp.zip`,
+  80.821.386 bytes, SHA-256
+  `3ca3e44fb2a8e26bec76515381d40f565ecc6b5215b52d8b855f7513297a686e`.
+  Incluye 2.011 archivos de overlay (69 MiB sin comprimir): árbol completo de
+  módulos, firmware WCN7850 y deviceinfo. Se copió a `/sdcard` y el único hash
+  posterior coincide; el asistente no lo flasheó.
+- Imagen SD limpia v0.19 comprimida:
+  `postmarketos-edge-xfce-mainline-v0.19-rndis-wifi-pcie-sm-x910-sd.img.zst`,
+  513.383.398 bytes, SHA-256
+  `ed7a92c2645eb3ea2118a77be28afba16fee7a30bbbfb4b614026df492fd6f10`.
+  Es la salida del mismo rootfs verificado y permite validar una instalación
+  desde cero sin depender del overlay incremental.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -680,6 +727,10 @@ lado del workspace.
   `WSL_E_DISTRO_NOT_FOUND` aunque las distros sí existen para la usuaria.
 - Pasar una línea compleja con paréntesis, `$()` y comillas mediante
   `wsl ... bash -lc`: PowerShell/WSL altera el quoting. Usar scripts.
+- No ordenar los `sha512sums` de un APKBUILD de forma distinta a `source=`:
+  abuild empareja ambas listas por posición. La primera construcción rootfs
+  r14 detectó el orden incorrecto de cuatro parches aunque la build directa
+  los aplicaba; se corrigió antes de aceptar el paquete.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó
@@ -788,6 +839,10 @@ lado del workspace.
 - No seguir tratando v0.15 como un fallo de DWC3 o userspace de red: el journal
   demuestra core, gadget, `usb0`, DHCP y SSH activos. El fallo externo de
   descriptor queda acotado a PHY/repetidor/señal física.
+- No volver a atribuir el síntoma USB de v0.18 a PHY, PTN3222, DWC3, IRQ o EP0:
+  el host completa todos los requests de control hasta configurar la función.
+  La siguiente variable justificada es el tipo de función de red; v0.19 prueba
+  RNDIS explícito por compatibilidad con Windows.
 - No dejar `CONFIG_INPUT_EVDEV=m` en una build directa que no instala módulos:
   el dispositivo puede registrarse como `input0` sin crear `/dev/input/event*`.
   Desde r8 EVDEV es built-in y el validador lo exige.

@@ -54,6 +54,11 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument(
+        "--rootfs-overlay",
+        type=Path,
+        help="optional directory whose regular files are installed into the pmOS microSD rootfs",
+    )
+    parser.add_argument(
         "--label",
         default="postmarketOS mainline v0.6 for SM-X910 (LPASS AG isolation)",
     )
@@ -75,6 +80,20 @@ def main() -> None:
     manifest = "".join(
         f"{digest(args.bundle / name)}  {name}\n" for name in IMAGES
     )
+    overlay_files: list[Path] = []
+    overlay_manifest = ""
+    if args.rootfs_overlay is not None:
+        if not args.rootfs_overlay.is_dir():
+            raise SystemExit(f"rootfs overlay is not a directory: {args.rootfs_overlay}")
+        overlay_files = sorted(
+            path for path in args.rootfs_overlay.rglob("*") if path.is_file()
+        )
+        if not overlay_files:
+            raise SystemExit("rootfs overlay contains no regular files")
+        overlay_manifest = "".join(
+            f"{digest(path)}  {path.relative_to(args.rootfs_overlay).as_posix()}\n"
+            for path in overlay_files
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(
         args.output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
@@ -97,6 +116,13 @@ def main() -> None:
             args.label + "\n",
         )
         zf.writestr(zip_info("SHA256SUMS"), manifest)
+        if overlay_files:
+            for path in overlay_files:
+                relative = path.relative_to(args.rootfs_overlay).as_posix()
+                add_file(zf, path, f"rootfs-overlay/{relative}")
+            zf.writestr(
+                zip_info("ROOTFS-OVERLAY-SHA256SUMS"), overlay_manifest
+            )
 
     print(f"{digest(args.output)}  {args.output.name}")
 

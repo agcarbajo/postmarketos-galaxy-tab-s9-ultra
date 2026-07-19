@@ -1114,3 +1114,61 @@ física.
 - Reto inmediato: volver a TWRP, extraer el journal v0.18 en sólo lectura y
   determinar con las trazas nuevas el primer punto ausente entre pull-up,
   RUN/STOP, IRQ reset/connect, paquete SETUP y respuesta EP0.
+
+## 2026-07-19 — sesión 29: EP0 validado y bundle RNDIS/WCN7850 v0.19
+
+- Se extrajo y leyó el journal v0.18 desde la microSD. Boot ID
+  `47ee7c89dc374bd1baf30310b98cbef7`; SHA-256 de `system.journal`
+  `ffcbcd4ebce12d857a91094c9712d442422001ab7533178a03db64c69d614edc`.
+- Las trazas pasivas muestran pull-up/RUN efectivo, IRQ y una conversación
+  EP0 completa: el host solicita descriptores device/config/string, asigna
+  dirección, pide estado, ejecuta `SET_CONFIGURATION(1)` y
+  `SET_INTERFACE(0)`. PTN3222, PHY, DWC3 y la entrega de descriptores quedan
+  descartados como barrera. Windows no crea el adaptador CDC-NCM pese a haber
+  configurado la función; se seleccionó `rndis.usb0` como siguiente prueba
+  mínima de compatibilidad.
+- El FDT vivo/stock Kiwi v2 contiene IDs 1103 y 1107; el perfil de esta placa
+  es WCN7850 PCIe `17cb:1107` en PCIe0. Se confirmaron contra downstream
+  WLAN_EN GPIO80, BT_EN GPIO81, PCIe PERST GPIO94 y wake GPIO96.
+- El DTS r14 añade `vph_pwr`, `wcn7850-pmu`, sus diez LDO, rails PM8550VS,
+  sleep clock PMK8550, pinctrl y `pcieport0/wifi@0`. El fragmento activa
+  PCIe Qualcomm, `POWER_SEQUENCING_QCOM_WCN=m` y `ATH12K=m`; conserva todos
+  los fixes anteriores de arranque, pantalla y táctil.
+- Se extrajo `vendor.img` stock EROFS y se creó el paquete propietario
+  `firmware-samsung-gts9uwifi` r1. Blobs finales y SHA-256: `amss.bin`
+  `4529e42c...`, `m3.bin` `67396ffa...`, `board.bin` `9cade90a...` y
+  `regdb.bin` `75cc1075...`. El script de staging exige los hashes completos y
+  los binarios quedan ignorados por git.
+- La primera construcción rootfs falló correctamente porque cuatro checksums
+  del APKBUILD de kernel no seguían el orden posicional de `source=`. Se
+  reordenaron antes de reconstruir. Firmware r1 elimina además la advertencia
+  de instalar directamente en `/lib` y usa `/usr/lib` en el sistema usr-merge.
+- Verificación del rootfs final: device r4, kernel `7.2_rc3-r14`, firmware r1;
+  módulos `ath12k`, `ath12k_wifi7` y `pwrseq-qcom-wcn`; cuatro blobs exactos;
+  RNDIS presente en deviceinfo e initramfs; DTB con PMU/GPIO/rails y
+  `pci17cb,1107`.
+- Imágenes Android v4 v0.19: boot
+  `6d7493ffbf2f8373c86ec5936ba333601d998c0ba8ee7d78410cc40619972ab5`,
+  init_boot
+  `ba29d262447268a298ed192b340515417307fb5bb482bd3f2105d874dc1b59d5`,
+  vendor_boot
+  `392b8a3b27874405494d6b06da778a14ddf04bff04c9c6bc427e41141fa1f7c3`,
+  dtbo `9f2dc02eb28fd5ffaa90745a57c4f176aa708e8a0fc67635acd4e52a7fed9e65`
+  y vbmeta
+  `b95e5ef931fbe588f8574c06331db56ae906b1ac91ed73204704b35cb220b3d4`.
+- El empaquetador y el instalador TWRP admiten ahora un overlay opcional del
+  rootfs pmOS. Antes de escribir, valida `mmcblk1p2`, ext4 y `ID=postmarketos`;
+  después instala y verifica por archivo módulos, firmware y deviceinfo, sin
+  tocar userdata interna, super, recovery, bootloader ni firmware Samsung.
+- ZIP v0.19: 80.821.386 bytes, SHA-256
+  `3ca3e44fb2a8e26bec76515381d40f565ecc6b5215b52d8b855f7513297a686e`.
+  Se copió a `/sdcard` en TWRP y el único hash posterior coincide. El asistente
+  no flasheó ninguna partición.
+- Se comprimió también la imagen GPT limpia de 4.643.094.528 bytes como
+  `postmarketos-edge-xfce-mainline-v0.19-rndis-wifi-pcie-sm-x910-sd.img.zst`:
+  513.383.398 bytes, SHA-256
+  `ed7a92c2645eb3ea2118a77be28afba16fee7a30bbbfb4b614026df492fd6f10`.
+  Contiene los mismos paquetes r4/r14/r1 y sirve para la prueba desde cero.
+- Próximo paso: flash manual v0.19. Probar RNDIS/SSH en `172.16.42.1`; en
+  paralelo observar si PCIe0 enumera 17cb:1107 y si NetworkManager obtiene una
+  interfaz Wi-Fi. Si no hay red, volver a TWRP para extraer el journal v0.19.

@@ -3,11 +3,15 @@
 # It writes boot, init_boot, vendor_boot and dtbo.  It writes vbmeta only when
 # the recovery kernel exposes it read-write; otherwise it requires AVB flags 2
 # and preserves the existing vbmeta.
-# It never writes super, userdata, recovery, bootloader, PIT, EFS or firmware.
+# An optional, build-generated overlay may update the postmarketOS microSD
+# rootfs.  It never writes super, userdata, recovery, bootloader, PIT, EFS or
+# Samsung firmware partitions.
 # It never formats, wipes or reboots.
 
 OUTFD=$2
 ZIPFILE=$3
+ROOTFS_MOUNTED=0
+ROOTFS_MOUNT=/tmp/pmos-root
 
 ui_print() {
     echo "ui_print $1" >> /proc/self/fd/$OUTFD
@@ -15,6 +19,11 @@ ui_print() {
 }
 
 abort() {
+    if [ "$ROOTFS_MOUNTED" -eq 1 ]; then
+        sync
+        umount "$ROOTFS_MOUNT" >/dev/null 2>&1 || true
+        ROOTFS_MOUNTED=0
+    fi
     ui_print "ERROR: $1"
     ui_print "Installation aborted. Reboot to recovery, not system."
     exit 1
@@ -73,6 +82,20 @@ for file in boot.img init_boot.img vendor_boot.img dtbo.img vbmeta.img; do
     unzip -l "$ZIPFILE" "$file" >/dev/null 2>&1 || abort "ZIP is missing $file"
 done
 
+HAS_ROOTFS_OVERLAY=0
+if unzip -l "$ZIPFILE" ROOTFS-OVERLAY-SHA256SUMS >/dev/null 2>&1; then
+    HAS_ROOTFS_OVERLAY=1
+    [ -b /dev/block/mmcblk1p2 ] || abort "microSD root partition mmcblk1p2 is missing"
+    mkdir -p "$ROOTFS_MOUNT" || abort "cannot create microSD mount point"
+    mount -t ext4 -o rw /dev/block/mmcblk1p2 "$ROOTFS_MOUNT" || \
+        abort "cannot mount the postmarketOS microSD rootfs read-write"
+    ROOTFS_MOUNTED=1
+    [ -f "$ROOTFS_MOUNT/etc/os-release" ] || abort "microSD rootfs has no /etc/os-release"
+    grep -q '^ID=postmarketos$' "$ROOTFS_MOUNT/etc/os-release" || \
+        abort "microSD rootfs is not postmarketOS"
+    ui_print "Validated the postmarketOS microSD rootfs overlay target."
+fi
+
 VBMETA_TARGET="$(resolve_part vbmeta)"
 VBMETA_READ_ONLY="$(blockdev --getro "$VBMETA_TARGET" 2>/dev/null || echo 1)"
 SKIP_VBMETA=0
@@ -86,7 +109,12 @@ fi
 
 ui_print "Planned writes: boot, init_boot, vendor_boot and dtbo."
 [ "$SKIP_VBMETA" -eq 1 ] || ui_print "vbmeta is writable and will also be updated."
-ui_print "No filesystem or user-data partition will be touched."
+if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
+    ui_print "The packaged kernel modules, deviceinfo and Wi-Fi firmware"
+    ui_print "will be updated on the postmarketOS microSD rootfs."
+else
+    ui_print "No filesystem or user-data partition will be touched."
+fi
 
 for part in boot init_boot vendor_boot dtbo; do
     target="$(resolve_part "$part")" || abort "partition disappeared: $part"
@@ -101,6 +129,29 @@ if [ "$SKIP_VBMETA" -eq 0 ]; then
         dd of="$VBMETA_TARGET" bs=4M || abort "failed to write vbmeta"
 else
     ui_print "Keeping the existing read-only vbmeta."
+fi
+
+if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
+    ui_print "Installing the versioned microSD rootfs overlay..."
+    unzip -p "$ZIPFILE" ROOTFS-OVERLAY-SHA256SUMS | \
+    while read expected relative; do
+        [ -n "$expected" ] || continue
+        case "$relative" in
+            /*|../*|*/../*) abort "unsafe rootfs overlay path: $relative" ;;
+        esac
+        target="$ROOTFS_MOUNT/$relative"
+        mkdir -p "${target%/*}" || abort "cannot create directory for $relative"
+        unzip -p "$ZIPFILE" "rootfs-overlay/$relative" > "$target" || \
+            abort "cannot extract rootfs overlay file $relative"
+        chmod 0644 "$target" || abort "cannot set mode on $relative"
+        actual="$(sha256sum "$target" | cut -d' ' -f1)"
+        [ "$actual" = "$expected" ] || abort "rootfs overlay hash mismatch: $relative"
+    done
+    [ "$?" -eq 0 ] || abort "rootfs overlay installation failed"
+    sync
+    umount "$ROOTFS_MOUNT" || abort "cannot unmount postmarketOS microSD rootfs"
+    ROOTFS_MOUNTED=0
+    ui_print "microSD rootfs overlay installed and verified."
 fi
 
 sync

@@ -3,13 +3,14 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=3
+pkgrel=4
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
 depends="
 	android-tools
+	firmware-samsung-gts9uwifi
 	linux-samsung-gts9uwifi-mainline
 	mkbootimg
 	postmarketos-base
@@ -29,6 +30,6 @@ package() {
 }
 
 sha512sums="
-2ec54997646de1860cd440a3a3648df4966d243aa0ba778e304a098895da9f22f61eaebab47e2a730236b0417707ddebbcc1e14cf1001f571ce28c6b173ac44a  deviceinfo
+75b642beea4cf983a553e9f7de6987880f6debe91c1a4f3a5b9d77dd41f4d99f5ced2e4852db5055446cc194ca3d3f6653db37f77fc423b4247cd1a229410f87  deviceinfo
 5ed88b2407539554696fdb766965a2e60765e82efcc4898b527a56d477afb04f5aa955f88d1697f65062b7ec422d1039fcf3e14a1140ddf9d967f62102a8ac22  kernel-cmdline.conf
 "

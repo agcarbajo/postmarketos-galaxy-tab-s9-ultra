@@ -1,0 +1,30 @@
+maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
+pkgname=firmware-samsung-gts9uwifi
+pkgver=1
+pkgrel=1
+pkgdesc="Stock Qualcomm Kiwi v2 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+url="https://www.samsung.com/"
+arch="aarch64"
+license="proprietary"
+options="!check !strip !archcheck !tracedeps"
+source="
+	amss20.bin
+	phy_ucode20.elf
+	bdwlan.elf
+	regdb.bin
+"
+
+package() {
+	local fw="$pkgdir/usr/lib/firmware/ath12k/WCN7850/hw2.0"
+	install -Dm644 "$srcdir/amss20.bin" "$fw/amss.bin"
+	install -Dm644 "$srcdir/phy_ucode20.elf" "$fw/m3.bin"
+	install -Dm644 "$srcdir/bdwlan.elf" "$fw/board.bin"
+	install -Dm644 "$srcdir/regdb.bin" "$fw/regdb.bin"
+}
+
+sha512sums="
+1edbc8b3cc67ef2c759ac5d77fdb6c037c2953fe921d8d819b1f35317269face49f5d4e2d073353e73de1e06bb9463783976cee2c97eb16bb077fab441477957  amss20.bin
+2ce6fa7e3ab752249e17a17f624b4c12fa6791612de08852fc63ea9c3322110603b8fdd0d6be91599b2f1db2dccb69e6f6378350df315a22e74df832acc1a9ef  phy_ucode20.elf
+bf3193303b30ed053daa7f67ab20483be0284640fd7c7a24926568513eefd0345eb78b9e7f766e715b0ba62f4d51723b9e6d9c6b2ef715af6bc56abdceb3e87e  bdwlan.elf
+52cf26f9893f42907e3971d890e2ae885b47f74dda3b6599a4293b1d4ae09e3f466a8364a446161a2ace7dc56e52c2ddf4fd3ef92bd47277d103dd104cc40188  regdb.bin
+"
