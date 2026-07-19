@@ -52,22 +52,22 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.19 compila Linux 7.2-rc3 r14 con RNDIS, PCIe0, secuenciador WCN7850 y ath12k |
-| DTS `gts9uwifi` | 🧪 v0.19 conserva táctil/pantalla/SD/USB y añade PCIe0 + PMU/reguladores/GPIO exactos del WCN7850 |
+| Kernel mainline SM8550 | ✅ v0.20 compila Linux 7.2-rc3 r15 con RNDIS, PCIe0, secuenciador WCN7850 y ath12k |
+| DTS `gts9uwifi` | 🧪 v0.20 conserva táctil/pantalla/SD/USB y corrige GPIO80 + VDD_IO_1P2 del WCN7850 desde el DT stock |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.19 reproducible: device r4, kernel r14 y firmware WCN7850 r1 extraído del firmware X910 |
-| Rootfs postmarketOS | ✅ v0.19 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; la SD física sigue en v0.6 hasta instalar el ZIP |
-| Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
-| Wi-Fi | 🧪 Soporte WCN7850/PCIe/ath12k y blobs stock integrado en v0.19; pendiente primera prueba física |
-| SSH | 🧪 v0.19 ofrece dos rutas: RNDIS USB y Wi-Fi; ambas pendientes de primera prueba física |
+| Paquetes pmaports | ✅ v0.20 reproducible: device r5, kernel r15 y firmware WCN7850 r1 extraído del firmware X910 |
+| Rootfs postmarketOS | ✅ v0.20 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.19.2 arranca X/LightDM/greeter en VT7, pero físicamente queda visible fbcon; v0.20 retira `console=tty0` |
+| Wi-Fi | 🧪 v0.19.2 levanta PCIe0 pero no enumera `17cb:1107`; v0.20 corrige alimentación/enable y espera prueba física |
+| SSH | 🧪 v0.19.2 crea RNDIS, `usb0=172.16.42.1` y OpenSSH internamente; pendiente comprobar el enlace desde Windows |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.19 empaquetado con LZ4 legacy/AVB y overlay versionado para actualizar módulos/firmware en la microSD existente |
+| Bundle Android v4 | ✅ v0.20 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.19.1 lanzó Odin por DTBO runtime; v0.19.2 appended-DTB copiado/verificado en TWRP |
+| Imagen/paquete de prueba | 🧪 ZIP v0.20 y SD limpia generados; ZIP copiado y verificado en TWRP, pendiente flash manual |
 
 ## Reto en curso
 
-Validar físicamente v0.19 por RNDIS USB y WCN7850 Wi-Fi:
+Validar físicamente v0.20 por RNDIS USB y WCN7850 Wi-Fi:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -159,7 +159,18 @@ Validar físicamente v0.19 por RNDIS USB y WCN7850 Wi-Fi:
 - el ZIP v0.19 actualiza además el árbol completo de módulos 7.2.0-rc3,
   `deviceinfo` y firmware en `mmcblk1p2`, tras verificar que es un rootfs pmOS.
   La misma configuración está integrada en la imagen SD limpia;
-- después del flash manual, comprobar primero RNDIS/SSH en `172.16.42.1`; si
+- v0.19.2 sí completa el arranque: tres journals persistentes no contienen
+  panic y dos boots llegan a systemd, RNDIS, NetworkManager, OpenSSH, Xorg,
+  LightDM y slick-greeter. X configura simpledrm a 2960x1848 y activa VT7;
+- la consola visible de las fotos no es un bloqueo de systemd. Para evitar que
+  fbcon compita con X, v0.20 elimina sólo `console=tty0`; conserva UART,
+  journal, `sec_log_buf`, `last_kmsg` y los logs persistentes de la microSD;
+- PCIe0 v0.19.2 crea el root port `17cb:0113`, pero termina `Device not found`:
+  el DT omitía el séptimo rail exigido por `pwrseq-qcom-wcn` y dejaba WLAN_EN
+  en pull-down. v0.20 añade PM8550VS-G LDO3 a 1,2 V como `vddio1p2-supply` y
+  reproduce GPIO80 stock como salida alta, pull-up y 16 mA;
+- después del flash manual, esperar al menos 45 segundos y comprobar primero
+  RNDIS/SSH en `172.16.42.1`; si
   no aparece, comprobar `lspci -nn`, `ip link`, `nmcli`, `dmesg` de
   `qcom-pcie`/`ath12k` y la nueva IP Wi-Fi, excluyendo siempre `.138` y `.150`;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
@@ -748,6 +759,37 @@ lado del workspace.
   `ed7a92c2645eb3ea2118a77be28afba16fee7a30bbbfb4b614026df492fd6f10`.
   Es la salida del mismo rootfs verificado y permite validar una instalación
   desde cero sin depender del overlay incremental.
+- La prueba física v0.19.2 alcanza userspace completo. Los boots
+  `214544eee54741ab86c8d276cdcefe87` y
+  `e159c2334b9f4a87afb08ee8bf67301e` continúan más de 51 segundos; LightDM
+  activa VT7 y slick-greeter muestra su ventana. Xorg usa simpledrm a
+  2960x1848 sin errores fatales. La consola que permanece visible no implica
+  un cuelgue del kernel ni de systemd.
+- En esos boots `usb0` tiene `172.16.42.1`, RNDIS queda configurado,
+  NetworkManager detecta carrier y OpenSSH escucha en IPv4/IPv6. Falta probar
+  desde Windows antes de afirmar que RNDIS ya es utilizable externamente.
+- Wi-Fi v0.19.2 no enumera: PCIe0 crea el root port Qualcomm `17cb:0113`, pero
+  no aparece el endpoint `17cb:1107` y registra `Device not found`. El driver
+  WCN7850 avisaba además `supply vddio1p2 not found`.
+- La fuente r15 corrige dos diferencias demostrables con el DT stock X910:
+  añade PM8550VS-G LDO3 a 1,2 V como `vddio1p2-supply` y configura WLAN_EN
+  GPIO80 como salida alta, pull-up y 16 mA. El DTB instalado en el rootfs fue
+  inspeccionado y contiene ambas propiedades efectivas.
+- Build limpia v0.20: device r5, kernel `7.2_rc3-r15` y firmware r1. Se retiró
+  `console=tty0` tanto del bundle Android como del paquete device para que X
+  sea el único consumidor visual del framebuffer; la consola serie y todos
+  los mecanismos de log permanecen disponibles.
+- ZIP v0.20:
+  `postmarketos-edge-xfce-mainline-v0.20-wcn-power-rndis-no-fbcon-sm-x910-twrp.zip`,
+  80.853.798 bytes, SHA-256
+  `9a73808d30e6aa9b317a7550a36a5c6a271245d8fcdff17808ecba5e17f76998`.
+  Incluye el overlay completo de módulos/firmware/deviceinfo, usa appended-DTB
+  y DTBO runtime deshabilitado. Copiado a `/sdcard`; el único hash posterior
+  coincide. El asistente no flasheó particiones.
+- Imagen SD limpia v0.20:
+  `postmarketos-edge-xfce-mainline-v0.20-wcn-power-rndis-no-fbcon-sm-x910-sd.img.zst`,
+  478.250.065 bytes. Procede del mismo rootfs r5/r15/r1 y sirve para una
+  instalación desde cero.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -766,6 +808,10 @@ lado del workspace.
   `DISABLE_RUNTIME_DTBO=0`: ABL vuelve a su fork ufdt, rechaza el DTB base y
   entra en Odin antes de Linux. Desde v0.19.2 ambos valores seguros son los
   defaults del script y cualquier experimento debe quedar explícito.
+- No copiar literalmente el bloque WCN7850 incompleto del `sm8550-qrd.dts`
+  antiguo: el driver actual incluye `vddio1p2` entre sus siete entradas. En la
+  X910 corresponde a PM8550VS-G LDO3, y WLAN_EN GPIO80 debe arrancar alto como
+  en el DT stock; pull-down deja el endpoint PCIe apagado.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó

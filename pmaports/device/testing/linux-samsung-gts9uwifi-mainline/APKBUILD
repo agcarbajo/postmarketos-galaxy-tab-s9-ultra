@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=14
+pkgrel=15
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -103,5 +103,5 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 86a0949d648f392ccb0d4c0b35f2b185fec0814c23a051bc2ba151f9204a48ad612763e276f4494ac473d8f9b984da30897a6cd26e599e6115c6f97166c0104c  diagnose-sm8550-eusb2-link.patch
 3fe40500a8d19a1c86ce575644ed22797c1cfb66267b9844dc897d0c5ccff9697d8234e364f114e8fe5b11f17491a5b5f7f1d746a80e613b07b2bdd6e22c8c4d  diagnose-dwc3-ep0-enumeration.patch
 2e30e327401a23aca5cc86bb3d142683dc9c42ed64b716e5fe914b9e38eab2a9baae19fa732fe55c909d82a62067ccbb117101d61ad0a5eec70732638cc31851  config-gts9uwifi.fragment
-b524f75aa7b1368374bc422e30d5dbaa62ea0105f97b3c82f33f483f0d008a18895bae66f0fd7435769950e7552bbd14c1be8ae7db2b0bf0effc7a5fe467e481  sm8550-samsung-gts9uwifi.dts
+99e29d1e3a029204b514207edcdf83d05b3fc6028e47ff720e22a5d7b226b54e7e70b9b5d85e0fd09de850d8156c6aabdfbd7586f4e7d95400d6bde2edcc123e  sm8550-samsung-gts9uwifi.dts
 "

@@ -1222,3 +1222,46 @@ física.
   `a8a6f28ab58c594478dda11a738ba0deb90c09d2865824b2aff845c655c0b8a6`.
   Copiado a `/sdcard`; el único hash posterior coincide. El asistente no lo
   flasheó.
+
+## 2026-07-19 — sesión 32: userspace v0.19.2, diagnóstico WCN y bundle v0.20
+
+- v0.19.2 abandona la regresión Odin y arranca mainline desde la microSD. Las
+  tres fotos corresponden a boots de systemd, no a kernel panic. Se extrajeron
+  en sólo lectura los journals con IDs `214544eee54741ab86c8d276cdcefe87`,
+  `e159c2334b9f4a87afb08ee8bf67301e` y
+  `8773907e091e43f2b60962f4560177e1`.
+- Dos boots completos superan 51 segundos. systemd alcanza graphical target;
+  RNDIS crea `usb0=172.16.42.1`, NetworkManager ve carrier y OpenSSH escucha
+  en todas las direcciones. Xorg abre simpledrm a 2960x1848, LightDM activa
+  VT7 y slick-greeter entra en su bucle principal. No hay panic ni fallo fatal
+  de X, por lo que la pantalla de consola persistente es un problema de
+  presentación/VT, no de arranque.
+- v0.20 retira `console=tty0` del cmdline Android y del paquete device. Se
+  mantienen `ttyMSM0`, earlycon, journal persistente, `sec_log_buf` y
+  `/proc/last_kmsg`, de modo que fbcon deja de competir con X sin perder la
+  capacidad de diagnóstico desde TWRP o por red.
+- PCIe0 v0.19.2 inicializa el controlador y enumera su root port
+  `17cb:0113`, pero tras aproximadamente un segundo termina `Device not
+  found`; no existe endpoint ni interfaz ath12k. `pwrseq-qcom_wcn` informa
+  además que falta `vddio1p2`.
+- El driver Linux 7.2-rc3 de WCN7850 pide siete rails, incluido `vddio1p2`.
+  El DTS antiguo de SM8550 QRD usado como base declara sólo seis, mientras DTs
+  WCN7850 posteriores conectan ese rail a un LDO de 1,2 V. El perfil stock X910
+  mapea explícitamente `l3g` a RF y su pinctrl activa WLAN_EN GPIO80 como
+  salida alta, pull-up y 16 mA; la versión v0.19 lo dejaba en pull-down.
+- r15 añade PM8550VS-G LDO3, su alimentación desde S4G y
+  `vddio1p2-supply`; GPIO80 reproduce el estado activo stock. El DTB empaquetado
+  fue decompilado y confirma esas propiedades. Paquetes finales: device r5,
+  kernel `7.2_rc3-r15`, firmware r1.
+- Artefacto TWRP:
+  `postmarketos-edge-xfce-mainline-v0.20-wcn-power-rndis-no-fbcon-sm-x910-twrp.zip`,
+  80.853.798 bytes, SHA-256
+  `9a73808d30e6aa9b317a7550a36a5c6a271245d8fcdff17808ecba5e17f76998`.
+  Copiado a `/sdcard`; el único hash posterior coincide. No se flasheó.
+- Imagen SD limpia del mismo rootfs:
+  `postmarketos-edge-xfce-mainline-v0.20-wcn-power-rndis-no-fbcon-sm-x910-sd.img.zst`,
+  478.250.065 bytes.
+- Próxima prueba: flash manual del ZIP, esperar al menos 45 segundos y probar
+  primero SSH en `172.16.42.1`; después comprobar login visible, `lspci -nn`,
+  `ip link`, `nmcli` y `dmesg` de `qcom-pcie`/`ath12k`. `.138` y `.150` siguen
+  excluidos por ser otros dispositivos.
