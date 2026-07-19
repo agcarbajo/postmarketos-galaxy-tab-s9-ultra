@@ -52,23 +52,23 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.22 reutiliza Linux 7.2-rc3 r16 validado: RNDIS, PCIe0, ath12k y trazas del secuenciador WCN7850 |
-| DTS `gts9uwifi` | 🧪 v0.21 conserva táctil/pantalla/SD/USB, revierte el rail WCN que bloqueó v0.20 y prueba GPIO80 pull-up/16 mA sin `output-high` |
+| Kernel mainline SM8550 | ✅ v0.23 compila Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado para estabilizar userspace |
+| DTS `gts9uwifi` | 🧪 v0.23 conserva táctil/pantalla/SD/USB y deshabilita juntos PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.22 reproducible: device r7, kernel r16 y firmware WCN7850 r1 extraído del firmware X910 |
-| Rootfs postmarketOS | ✅ v0.22 limpio generado con XFCE4/OpenSSH, módulos ath12k y firmware; el ZIP actualiza la SD física existente |
-| Escritorio | ✅ v0.21 inicia LightDM/greeter y alcanza `graphical.target`; fbcon lo tapa por `console=tty0`, retirada de nuevo en v0.22 |
-| Wi-Fi | 🧪 v0.21 ejecuta sin error los siete rails y WLAN_EN, pero el endpoint `17cb:1107` aún responde `Device not found` |
-| SSH | 🧪 v0.21 levanta RNDIS, carrier, `usb0=172.16.42.1` y OpenSSH; v0.22 espera validación desde Windows |
+| Paquetes pmaports | ✅ v0.23 reproducible: device r7, kernel r17 y firmware WCN7850 r1 conservado para reactivarlo después |
+| Rootfs postmarketOS | ✅ v0.23 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.21 inicia LightDM/greeter; v0.22 no llega de forma estable por la carrera PCIe/WCN y v0.23 espera prueba aislada |
+| Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
+| SSH | 🧪 v0.21 levanta RNDIS, carrier, `usb0=172.16.42.1` y OpenSSH; v0.23 prioriza validarlo sin WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.22 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
+| Bundle Android v4 | ✅ v0.23 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay versionado para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.22 copiado y verificado en TWRP; pendiente flash manual, greeter visible y SSH RNDIS |
+| Imagen/paquete de prueba | 🧪 ZIP v0.23 copiado y verificado en TWRP; pendiente flash manual, greeter y SSH RNDIS estables |
 
 ## Reto en curso
 
-Validar físicamente v0.22 con greeter visible y SSH RNDIS; después continuar
-la enumeración del WCN7850 en vivo:
+Validar físicamente v0.23 sin WCN/PCIe0, con greeter visible y SSH RNDIS
+estable; después reintroducir la enumeración WCN7850 desde el sistema vivo:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -189,9 +189,19 @@ la enumeración del WCN7850 en vivo:
   `console=tty0`. v0.22 reutiliza exactamente kernel r16/DTB/firmware, sube el
   device a r7 y retira únicamente esa consola de framebuffer tanto del bundle
   Android como del paquete reproducible;
-- tras el flash manual v0.22, esperar al menos 45 segundos y comprobar el
-  greeter. Mantenerla encendida y conectada por USB para probar inmediatamente
-  SSH en `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos;
+- v0.22 retira correctamente `console=tty0`, pero dos boots nuevos
+  (`d34857ab68a9422a9dda48d6b2467373` y
+  `cbab67c1ce7241e18c49ca1523ca0d7e`) dejan de progresar a 21,727 y 19,040 s
+  durante sondeos repetidos PCIe/WCN, antes de LightDM; los cuatro ficheros
+  X/LightDM quedan vacíos. Comparado con el boot v0.21 que sí completa la misma
+  secuencia, el fallo es intermitente y está acotado a esa carrera de probe;
+- v0.23 deshabilita como unidad `wcn7850-pmu`, `pcie0` y `pcie0_phy`. El DTB
+  instalado confirma los tres `status = "disabled"`; firmware, módulos y
+  fuentes se conservan para reactivarlos después. No se modifica pantalla,
+  táctil, SD, DWC3, RNDIS ni OpenSSH;
+- tras el flash manual v0.23, esperar al menos 45 segundos, mantenerla
+  encendida y conectada por USB y probar inmediatamente SSH en
+  `172.16.42.1`; `.138` y `.150` siguen excluidos por ser otros equipos;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -846,6 +856,25 @@ lado del workspace.
   `85c70c79f1b0e0bb3c7facd47ac7b817807dd6159a15a4dd8d6f42f5e204f9c6`.
   Copiado a `/sdcard`; la única comparación posterior local/remota coincide.
   El asistente no flasheó ninguna partición.
+- Los logs v0.22 se extrajeron en sólo lectura a
+  `work/v022-rootfs-logs-20260719/`. Sus dos boots nuevos terminan antes de
+  LightDM durante los sondeos repetidos de PCIe0/WCN; `Xorg.0.log`, su `.old`
+  y ambos logs LightDM tienen cero bytes. No hay panic ni oops, pero tampoco
+  progreso de systemd tras 21,727/19,040 s. El boot completo v0.21 demuestra
+  que la misma ruta puede terminar, por lo que se trata como carrera
+  intermitente y no como fallo del framebuffer.
+- v0.23 aísla temporalmente el subsistema que aún no funciona: marca
+  `wcn7850-pmu`, `pcie0` y `pcie0_phy` como deshabilitados. Build limpia
+  verificada: device r7, kernel `7.2_rc3-r17`, firmware r1; el DTB instalado
+  devuelve `status=disabled` para los tres nodos y mantiene fuera
+  `console=tty0`.
+- ZIP TWRP v0.23:
+  `postmarketos-edge-xfce-mainline-v0.23-stable-rndis-no-wcn-sm-x910-twrp.zip`,
+  80.851.833 bytes, SHA-256
+  `a050c7d88ec223619c231f102593c5ae03d0b81dccaadda6256abd2d30b43fcd`.
+  Incluye overlay completo, appended-DTB y DTBO runtime deshabilitado. Copiado
+  a `/sdcard`; la única comprobación local/remota coincide. El asistente no
+  flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -869,6 +898,11 @@ lado del workspace.
   de reguladores y un bloqueo reproducible a los 18,987144 s. El dummy rail de
   v0.19.2 permite completar el arranque; v0.21 aísla primero la transición de
   WLAN_EN con trazas antes de asignar otro rail real.
+- No mantener PCIe0/WCN habilitado mientras se valida el primer hito estable:
+  v0.21 completa una vez la secuencia, pero boots posteriores v0.21/v0.22 se
+  detienen intermitentemente antes de LightDM durante los probes repetidos.
+  Primero validar v0.23 con esos tres nodos aislados; después reactivarlos como
+  un bloque desde una base con SSH.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó

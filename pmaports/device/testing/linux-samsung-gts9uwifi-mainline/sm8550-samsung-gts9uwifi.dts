@@ -162,8 +162,9 @@
 		regulator-boot-on;
 	};
 
-	wcn7850-pmu {
+	wcn7850_pmu: wcn7850-pmu {
 		compatible = "qcom,wcn7850-pmu";
+		status = "disabled";
 		pinctrl-names = "default";
 		pinctrl-0 = <&wlan_en>, <&bt_default>, <&pmk8550_sleep_clk>;
 
@@ -497,13 +498,18 @@
 	status = "okay";
 };
 
-/* X910 downstream uses PCIe0 and GPIO94/96 for the Kiwi v2 WLAN endpoint. */
+/*
+ * X910 downstream uses PCIe0 and GPIO94/96 for the Kiwi v2 WLAN endpoint.
+ * Keep this isolated for the stable display/RNDIS milestone: WCN probing is
+ * currently intermittent and can stop userspace before LightDM.  Re-enable
+ * PCIe0, its PHY and wcn7850_pmu together when debugging through live SSH.
+ */
 &pcie0 {
 	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
 	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
 	pinctrl-0 = <&pcie0_default_state>;
 	pinctrl-names = "default";
-	status = "okay";
+	status = "disabled";
 };
 
 &pcieport0 {
@@ -525,7 +531,7 @@
 &pcie0_phy {
 	vdda-phy-supply = <&vreg_l1e_0p88>;
 	vdda-pll-supply = <&vreg_l3e_1p2>;
-	status = "okay";
+	status = "disabled";
 };
 
 &sleep_clk {

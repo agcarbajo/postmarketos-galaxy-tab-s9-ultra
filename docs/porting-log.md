@@ -1333,3 +1333,37 @@ física.
 - Próxima prueba: flash manual v0.22, esperar 45 s, dejar el sistema vivo y
   conectado por USB. Debe aparecer el greeter; se probará inmediatamente SSH
   en `172.16.42.1` para continuar la enumeración WCN desde el sistema vivo.
+
+## 2026-07-19 — sesión 35: carrera PCIe/WCN v0.22 y aislamiento v0.23
+
+- La prueba v0.22 permaneció físicamente en los pingüinos pese a no contener
+  `console=tty0`. Se volvió manualmente a TWRP y se extrajeron en sólo lectura
+  journals, `last_kmsg` y logs gráficos a
+  `work/v022-rootfs-logs-20260719/`.
+- Los boots `d34857ab68a9422a9dda48d6b2467373` y
+  `cbab67c1ce7241e18c49ca1523ca0d7e` usan kernel r16. Ambos montan rootfs,
+  activan el gadget USB y llegan a los probes PCIe/WCN, pero el journal deja
+  de progresar respectivamente a 21,727 y 19,040 s, antes de NetworkManager,
+  OpenSSH y LightDM. Los cuatro ficheros X/LightDM están vacíos.
+- No hay panic ni oops. El boot v0.21 `f1d854...` había completado exactamente
+  la activación de siete rails, WLAN_EN, PCIe y userspace; otros boots r16 se
+  detienen antes o durante esa ruta. La evidencia apunta a una carrera
+  intermitente de probe/deferred-probe entre PCIe0, pci-pwrctrl y el proveedor
+  WCN, no a un fallo determinista de X ni a `console=tty0`.
+- El endpoint Wi-Fi sigue sin enumerar incluso en el boot completo, así que no
+  aporta ninguna función al primer hito. v0.23 lo aísla como bloque: añade una
+  etiqueta al `wcn7850-pmu` y marca `disabled` ese PMU, `pcie0` y `pcie0_phy`.
+  Pantalla/simpledrm, Goodix, SDHC2, DWC3, RNDIS y OpenSSH no cambian.
+- Build limpia verificada: device r7, kernel `7.2_rc3-r17`, firmware r1. La
+  consulta directa del DTB instalado devuelve `status=disabled` para
+  `/wcn7850-pmu`, `/soc@0/pcie@1c00000` y `/soc@0/phy@1c06000`; el cmdline no
+  contiene `console=tty0`.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.23-stable-rndis-no-wcn-sm-x910-twrp.zip`,
+  80.851.833 bytes, SHA-256
+  `a050c7d88ec223619c231f102593c5ae03d0b81dccaadda6256abd2d30b43fcd`.
+  Usa appended-DTB, DTBO runtime deshabilitado y overlay completo. Se copió a
+  `/sdcard`; el único hash posterior coincide. El asistente no flasheó.
+- Próxima prueba: flash manual v0.23 y mantenerla viva/conectada al menos 45 s.
+  Validar greeter y SSH RNDIS en `172.16.42.1`; sólo entonces reintroducir
+  PCIe/WCN con acceso remoto y trazas más finas.
