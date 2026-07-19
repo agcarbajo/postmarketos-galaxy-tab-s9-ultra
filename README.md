@@ -52,22 +52,21 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.11 arranca Linux 7.2-rc3; el ajuste POR/CPBIAS v0.16 no resolvió la enumeración eUSB2 |
-| DTS `gts9uwifi` | 🟡 r12 corrige la orientación con inversión X física antes del intercambio X/Y; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
+| Kernel mainline SM8550 | ✅ v0.17 compila Linux 7.2-rc3 con orientación corregida y diagnóstico eUSB2 diferido |
+| DTS `gts9uwifi` | 🧪 v0.17 usa inversión X física antes del intercambio X/Y; framebuffer, SD, UART, GT9916, PTN3222 y USB HS descritos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🟡 Fuentes r12 corrigen el eje Goodix; pendiente integrar diagnóstico USB y compilar el siguiente bundle |
+| Paquetes pmaports | ✅ Fuentes r12 reproducen v0.17: eje Goodix correcto y registros efectivos PHY/PTN3222 en el journal |
 | Rootfs postmarketOS | ✅ v0.11 monta físicamente la imagen GPT v0.6 desde microSD y arranca systemd |
 | Escritorio | ✅ LightDM/XFCE4 muestran la pantalla de login `phablet` mediante simpledrm |
 | SSH | 🧪 v0.16 sigue sin enumerar: internamente v0.15 ya crea gadget, `usb0`, DHCP y `sshd`, pero el host no lee descriptores |
-| Táctil | 🟡 v0.16 invierte ambos ejes visibles; r12 ya usa la combinación correcta `inverted-x` + `swapped-x-y`, pendiente prueba física |
-| Bundle Android v4 | ✅ v0.16 LZ4 legacy, imágenes y AVB; orientación v0.16 descartada y siguiente bundle pendiente |
+| Táctil | 🧪 v0.17 usa la combinación correcta `inverted-x` + `swapped-x-y`; pendiente prueba física |
+| Bundle Android v4 | ✅ v0.17 empaquetado una vez con LZ4 legacy, Android v4 y AVB |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 SD v0.6 + ZIP v0.16 arrancan; v0.16 queda descartado por orientación y USB, siguiente ZIP pendiente |
+| Imagen/paquete de prueba | 🧪 SD v0.6 + ZIP v0.17 copiado y verificado en `/sdcard`; pendiente flash manual |
 
 ## Reto en curso
 
-Obtener el journal v0.16 y preparar el siguiente bundle con orientación táctil
-correcta y diagnóstico USB:
+Validar físicamente v0.17 y comparar el enlace eUSB2 con la referencia Samsung:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -123,8 +122,17 @@ correcta y diagnóstico USB:
   inversiones antes de `touchscreen-swapped-x-y`: esto invirtió el X visible y
   dejó invertido el Y visible. La corrección exacta en r12 es
   `touchscreen-inverted-x` + `touchscreen-swapped-x-y`, sin `inverted-y`;
-- volver a TWRP, extraer el journal v0.16 y añadir lecturas diagnósticas de los
-  registros PHY/PTN3222 antes de compilar el siguiente ZIP;
+- el journal v0.16 extraído en sólo lectura confirma de nuevo que PTN3222,
+  DWC3, configfs, `usb0`, DHCP y `sshd` arrancan sin error interno nuevo;
+- TWRP ofrece una referencia funcional del mismo hardware: PTN3222 revisión
+  `A2`, overrides efectivos `06=20`, `07=21`, `08=63`, `0a=01`, y con ADB
+  enumerado registra `DEVICE_STATUS=09` y `LINK_STATUS=05`;
+- v0.17 registra el reloj y los controles efectivos de la PHY al inicializar,
+  y ocho segundos después lee `00..16` del PTN3222. La comparación de
+  `0f/10` distinguirá el lado eUSB2/repetidor del gadget/EP0;
+- flashear manualmente v0.17, validar la orientación del toque y comprobar
+  NCM/RNDIS/SSH. Si USB sigue sin enumerar, volver a TWRP y extraer el journal
+  para comparar sus estados con `09/05`;
 - una vez exista SSH, depurar en vivo Goodix, DRM nativo y el resto del
   hardware sin depender de ciclos TWRP.
 
@@ -604,6 +612,27 @@ lado del workspace.
   intercambiar ejes. Con el `swap` necesario para este panel, invertir el Y
   visible requiere `touchscreen-inverted-x`; r12 elimina `inverted-y` y añade
   `inverted-x`.
+- El journal v0.16 se extrajo como `ro,norecovery`; `system.journal` tiene
+  SHA-256 `6dd5ee4399bbae29e56b10dbedc9d6178f7a7decca51728ec7c97c1215376f53`
+  y el boot actual es `225ccfc4e1ac473f9c413502d1bbe026`. Confirma el mismo
+  estado USB interno de v0.15 y no muestra fallos Goodix nuevos.
+- En TWRP, el regmap del PTN3222 funcional identifica revisión `0xA2` y deja
+  `06=20`, `07=21`, `08=63`, `0a=01`, `0f=09`, `10=05`. Según la
+  [hoja de datos oficial de NXP](https://www.nxp.com/docs/en/data-sheet/PTN3222_CUK.pdf),
+  `0x0f` es `DEVICE_STATUS` y `0x10` es `LINK_STATUS`.
+- `diagnose-sm8550-eusb2-link.patch` imprime los controles efectivos de la PHY
+  y lee `00..16` del PTN3222 ocho segundos después de iniciar el enlace, sin
+  cambiar ningún registro. La fuente r12 lo integra en todas las builds.
+- Build limpia v0.17: `Image.gz` SHA-256
+  `48e91dfb2f42a665599d204a63e8633a8606011dc9dc4f18a4c1791975d12aa1`;
+  DTB `8d600347ad1a826e0c0ef33fbf0fb68125d18d5a64939307ac4b93599c12bddf`;
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+- ZIP v0.17 generado una vez:
+  `postmarketos-edge-xfce-mainline-v0.17-touch-usb-diagnostics-sm-x910-twrp.zip`,
+  22.016.542 bytes, SHA-256
+  `d86e978618bf00d182f705aa4b0704111b42b8f2f8dd8547e40255f205e30439`.
+  Se copió a `/sdcard` y una única comprobación posterior dio el mismo hash;
+  el asistente no lo flasheó.
 
 ## Lo que no ha funcionado / no repetir
 

@@ -1017,3 +1017,40 @@ física.
 - Reto inmediato: volver a TWRP, extraer el journal v0.16 en sólo lectura,
   integrar instrumentación USB y compilar un único siguiente bundle que pruebe
   tanto la orientación corregida como el siguiente paso de eUSB2.
+
+## 2026-07-19 — sesión 25: referencia eUSB2 Samsung y bundle v0.17
+
+- En TWRP se montó `/dev/block/mmcblk1p2` como ext4 `ro,norecovery`, se
+  extrajeron journal, Xorg y LightDM a `work/v016-rootfs-logs-20260719/` y se
+  desmontó la tarjeta. El `system.journal` actual tiene SHA-256
+  `6dd5ee4399bbae29e56b10dbedc9d6178f7a7decca51728ec7c97c1215376f53`;
+  boot ID `225ccfc4e1ac473f9c413502d1bbe026`.
+- v0.16 confirma `event layout 8/16`, sin checksum/GPI/DMA; PTN3222 aplica los
+  cuatro overrides, DWC3 arranca y configfs crea gadget/`usb0`/DHCP. No aparece
+  un error interno nuevo que explique el fallo de descriptor del host.
+- Se usó el kernel Samsung 5.15 de TWRP como referencia funcional y se montó
+  debugfs temporalmente. El regmap PTN3222 `43-004f` contiene revisión `A2`,
+  `06=20`, `07=21`, `08=63`, `0a=01`, `DEVICE_STATUS(0f)=09` y
+  `LINK_STATUS(10)=05` mientras ADB enumera correctamente.
+- La hoja de datos oficial NXP confirma que `0x0f` y `0x10` son los dos
+  registros de estado. Esto permite una comparación directa y evita seguir
+  cambiando tuning sin saber en qué lado del repetidor se rompe el enlace.
+- Se añadió `diagnose-sm8550-eusb2-link.patch`: imprime la frecuencia de
+  referencia y los controles MMIO efectivos de la PHY, y lee `00..16` del
+  PTN3222 ocho segundos después de iniciar. Es diagnóstico de sólo lectura.
+- El DTS r12 conserva `touchscreen-swapped-x-y` y sustituye la inversión
+  errónea por `touchscreen-inverted-x`. El script de build aplica también el
+  nuevo parche y el APKBUILD incluye fuente y checksum reproducibles.
+- Build limpia v0.17 terminada en 541 s: kernel
+  `48e91dfb2f42a665599d204a63e8633a8606011dc9dc4f18a4c1791975d12aa1`,
+  DTB `8d600347ad1a826e0c0ef33fbf0fb68125d18d5a64939307ac4b93599c12bddf`,
+  config `c2060ed1d41547e469cbeb07c87f39be1f810ccf6e55ecc0c53f6df7546d3b86`.
+- Se empaquetó una sola vez, siguiendo el flujo acordado. ZIP:
+  `postmarketos-edge-xfce-mainline-v0.17-touch-usb-diagnostics-sm-x910-twrp.zip`,
+  22.016.542 bytes, SHA-256
+  `d86e978618bf00d182f705aa4b0704111b42b8f2f8dd8547e40255f205e30439`.
+  Se copió a `/sdcard` y el único hash posterior coincide. El asistente no
+  flasheó particiones.
+- Reto inmediato: flash manual v0.17, validar ambos ejes táctiles y observar
+  USB/SSH. Si no enumera, volver a TWRP y comparar `0f/10` mainline con la
+  referencia Samsung `09/05` antes de aplicar el siguiente arreglo.

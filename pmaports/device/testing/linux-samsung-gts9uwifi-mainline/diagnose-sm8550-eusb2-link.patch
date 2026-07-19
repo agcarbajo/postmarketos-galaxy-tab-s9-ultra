@@ -1,0 +1,131 @@
+From: SM-X910 postmarketOS port <gts9uwifi@example.com>
+Subject: [PATCH] phy: dump SM-X910 eUSB2 link state after gadget start
+
+The X910 reaches DWC3 gadget mode but the USB host cannot read its device
+descriptor.  Log the effective Synopsys configuration at PHY init and read
+the PTN3222 registers after configfs has had time to pull up the gadget.
+
+The delayed repeater dump makes DEVICE_STATUS (0x0f) and LINK_STATUS (0x10)
+directly comparable with the working Samsung kernel without changing link
+configuration.
+
+---
+ drivers/phy/phy-nxp-ptn3222.c | 32 ++++++++++++++++++++++++++++++++
+ drivers/phy/phy-snps-eusb2.c  | 24 ++++++++++++++++++++++++
+ 2 files changed, 56 insertions(+)
+
+diff --git a/drivers/phy/phy-nxp-ptn3222.c b/drivers/phy/phy-nxp-ptn3222.c
+index 9fc82f0d1..d9f508400 100644
+--- a/drivers/phy/phy-nxp-ptn3222.c
++++ b/drivers/phy/phy-nxp-ptn3222.c
+@@ -11,6 +11,7 @@
+ #include <linux/phy/phy.h>
+ #include <linux/regmap.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/workqueue.h>
+ 
+ #define NUM_SUPPLIES 2
+ #define PTN3222_MAX_INIT_CELLS 16
+@@ -23,6 +24,7 @@ struct ptn3222 {
+ 	struct regulator_bulk_data *supplies;
+ 	u32 init_seq[PTN3222_MAX_INIT_CELLS];
+ 	int init_seq_count;
++	struct delayed_work status_work;
+ };
+ 
+ static const struct regmap_config ptn3222_regmap_config = {
+@@ -31,6 +33,29 @@ static const struct regmap_config ptn3222_regmap_config = {
+ 	.max_register = 0xff,
+ };
+ 
++static void ptn3222_status_work(struct work_struct *work)
++{
++	struct ptn3222 *ptn3222 = container_of(to_delayed_work(work),
++						struct ptn3222, status_work);
++	unsigned int value;
++	int reg, ret;
++
++	dev_info(&ptn3222->client->dev,
++		 "delayed link state: reset logical=%d raw=%d\n",
++		 gpiod_get_value_cansleep(ptn3222->reset_gpio),
++		 gpiod_get_raw_value_cansleep(ptn3222->reset_gpio));
++
++	for (reg = 0; reg <= 0x16; reg++) {
++		ret = regmap_read(ptn3222->regmap, reg, &value);
++		if (ret)
++			dev_err(&ptn3222->client->dev,
++				"delayed read reg 0x%02x failed: %d\n", reg, ret);
++		else
++			dev_info(&ptn3222->client->dev,
++				 "delayed reg 0x%02x = 0x%02x\n", reg, value);
++	}
++}
++
+ static int ptn3222_init(struct phy *phy)
+ {
+ 	struct ptn3222 *ptn3222 = phy_get_drvdata(phy);
+@@ -43,6 +67,9 @@ static int ptn3222_init(struct phy *phy)
+ 
+ 	gpiod_set_value_cansleep(ptn3222->reset_gpio, 0);
+ 
++	mod_delayed_work(system_wq, &ptn3222->status_work,
++			 msecs_to_jiffies(8000));
++
+ 	if (!ptn3222->init_seq_count)
+ 		return 0;
+ 
+@@ -78,6 +105,8 @@ static int ptn3222_exit(struct phy *phy)
+ {
+ 	struct ptn3222 *ptn3222 = phy_get_drvdata(phy);
+ 
++	cancel_delayed_work_sync(&ptn3222->status_work);
++
+ 	gpiod_set_value_cansleep(ptn3222->reset_gpio, 1);
+ 
+ 	return regulator_bulk_disable(NUM_SUPPLIES, ptn3222->supplies);
+@@ -105,6 +134,8 @@ static int ptn3222_probe(struct i2c_client *client)
+ 		return -ENOMEM;
+ 
+ 	ptn3222->client = client;
++	INIT_DELAYED_WORK(&ptn3222->status_work, ptn3222_status_work);
++
+ 	ptn3222->regmap = devm_regmap_init_i2c(client,
+ 					       &ptn3222_regmap_config);
+ 	if (IS_ERR(ptn3222->regmap))
+diff --git a/drivers/phy/phy-snps-eusb2.c b/drivers/phy/phy-snps-eusb2.c
+index f86d5181f3fb..b4d783d88ac1 100644
+--- a/drivers/phy/phy-snps-eusb2.c
++++ b/drivers/phy/phy-snps-eusb2.c
+@@ -439,6 +439,30 @@ static int qcom_snps_eusb2_hsphy_init(struct phy *p)
+ 	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_CFG0,
+ 				    CMN_CTRL_OVERRIDE_EN, 0);
+ 
++	dev_info(&p->dev,
++		 "effective state: ref=%lu cfg0=%08x common0=%08x ctrl2=%08x\n",
++		 clk_get_rate(phy->ref_clk),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG0),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_HS_PHY_CTRL_COMMON0),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_HS_PHY_CTRL2));
++	dev_info(&p->dev,
++		 "effective state: utmi0=%08x utmi5=%08x fsel=%08x apb=%08x\n",
++		 readl_relaxed(phy->base + QCOM_USB_PHY_UTMI_CTRL0),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_UTMI_CTRL5),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_FSEL_SEL),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_APB_ACCESS_CMD));
++	dev_info(&p->dev,
++		 "effective state: cfg1=%08x cfg2=%08x cfg3=%08x cfg4=%08x\n",
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_1),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_2),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_3),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_4));
++	dev_info(&p->dev, "effective state: cfg5=%08x cfg6=%08x cfg8=%08x cfg9=%08x\n",
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_5),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_6),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_8),
++		 readl_relaxed(phy->base + QCOM_USB_PHY_CFG_CTRL_9));
++
+ 	return 0;
+ }
+ 
+-- 
+2.50.1
