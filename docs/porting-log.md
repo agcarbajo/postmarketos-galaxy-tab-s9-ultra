@@ -1464,3 +1464,51 @@ física.
   aunque la imagen no cambie. Probar SSH en `172.16.42.1` antes de volver a
   TWRP; si aún falla la presentación, el journal distinguirá de forma directa
   carga del DDX fbdev, resultado del handoff y estado de `/dev/fb0`.
+
+## 2026-07-20 — sesión 38: VT7 validada, fbdev con sombra y captura v0.26
+
+- Tras v0.25 la imagen física siguió en los pingüinos. Windows mantuvo el USB
+  como `USB descriptor failure (Code 43)` incluso después de desconectar y
+  reconectar físicamente, por lo que no se creó una interfaz RNDIS accesible y
+  no fue posible usar SSH. La usuaria volvió manualmente a TWRP.
+- La inspección offline confirma que el instalador v0.25 sí corrigió el fallo
+  anterior: `20-gts9uwifi-fbdev.conf` está presente, el script es `0755` y
+  `graphical.target.wants/gts9uwifi-display-handoff.service` es un enlace real
+  hacia la unidad. Los hashes coinciden con el artefacto.
+- El journal nuevo se extrajo a `work/v025-rootfs-logs-20260720/`. El boot
+  `4803b789a4b545ff97b0829a4bac2062` monta el rootfs, crea RNDIS internamente,
+  inicia NetworkManager/OpenSSH/LightDM y llega a `graphical.target` a
+  23,453 s. Continúa registrando hasta al menos 905 s; no hay cuelgue, panic,
+  oops ni stall.
+- La unidad de handoff se ejecuta esta vez: X0 está listo, `fgconsole` devuelve
+  1 antes del rebote y 7 después. El servicio termina correctamente a
+  23,447 s. Por tanto la imagen estática no se debe ya a una activación rota ni
+  a que la VT lógica permanezca en la consola.
+- `Xorg.0.log` confirma el DDX solicitado: `fbdev_drv.so` usa `/dev/fb0`, ve
+  hardware `simpledrmdrmfb`, 21.367 KiB, 2960x1848, pitch 2960 y 32 bpp. La
+  opción `ShadowFB=true` está activa y carga `libshadow.so`. Los mensajes
+  `FBIOPUTCMAP: Invalid argument` se repiten al programar la paleta, pero son
+  no fatales: DPMS, extensiones, Goodix, sesión LightDM y slick-greeter siguen
+  inicializando.
+- Las dos rutas probadas quedan separadas: modesetting/simpledrm sin sombra
+  (v0.23/v0.24) y fbdev con sombra (v0.25) mantienen el scanout físico. v0.26
+  cubre el cuadrante restante cambiando sólo a `ShadowFB=false`, para que X
+  renderice directamente sobre el mmap de `/dev/fb0`.
+- El handoff v0.26 espera cinco segundos adicionales y lee exactamente
+  21.880.320 bytes (`2960*1848*4`) desde `/dev/fb0` a
+  `/var/log/gts9uwifi-fb0-after-x.raw`, sincroniza el archivo y registra su
+  SHA-256. Si el panel no cambia, esa captura permitirá convertir y comparar
+  el contenido real de X con los pingüinos sin depender de USB ni vídeo.
+- Build limpia verificada: device r10, kernel `7.2_rc3-r17`, firmware r1 y
+  kbd; configuración fbdev directa, captura, script ejecutable, enlace systemd
+  y aislamiento WCN/PCIe0 presentes.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.26-direct-fbdev-capture-sm-x910-twrp.zip`,
+  80.854.080 bytes, SHA-256
+  `e2713a80edebd9897ccbdf7a4143d83d055579fb896056b15156357816c9b876`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
+- Próxima prueba: flash manual v0.26 y dejarla arrancada al menos 45 s. Si el
+  panel sigue en los pingüinos y SSH no enumera, volver a TWRP sin necesidad de
+  vídeo; extraer y convertir `gts9uwifi-fb0-after-x.raw` antes de cualquier
+  cambio adicional.

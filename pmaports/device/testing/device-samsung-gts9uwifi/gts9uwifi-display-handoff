@@ -21,3 +21,16 @@ sleep 1
 
 after=$(fgconsole 2>&1 || true)
 echo "SM-X910 display handoff: active-after=$after"
+
+# Persist the X-visible fbdev contents for offline comparison with the panel.
+# 2960 * 1848 * 4 = 21880320 bytes = 42735 blocks of 512 bytes.
+sleep 5
+if [ -c /dev/fb0 ]; then
+	frame=/var/log/gts9uwifi-fb0-after-x.raw
+	if dd if=/dev/fb0 of="$frame" bs=512 count=42735 2>/dev/null; then
+		sync "$frame" 2>/dev/null || sync
+		echo "SM-X910 display handoff: framebuffer=$(sha256sum "$frame")"
+	else
+		echo "SM-X910 display handoff: framebuffer capture failed"
+	fi
+fi

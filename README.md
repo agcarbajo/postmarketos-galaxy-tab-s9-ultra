@@ -52,23 +52,24 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.25 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.24 demuestra otro boot completo y estable |
-| DTS `gts9uwifi` | 🧪 v0.25 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
+| Kernel mainline SM8550 | ✅ v0.26 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.25 permanece estable más de 15 minutos |
+| DTS `gts9uwifi` | 🧪 v0.26 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.25 reproducible: device r9, kernel r17 y firmware WCN7850 r1; fbdev directo y handoff VT corregido |
-| Rootfs postmarketOS | ✅ v0.25 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.24 inicia Xorg/LightDM/slick-greeter, pero su unidad no se habilitó; v0.25 fuerza X por `/dev/fb0` y arregla el handoff |
+| Paquetes pmaports | ✅ v0.26 reproducible: device r10, kernel r17 y firmware WCN7850 r1; fbdev directo y captura persistente |
+| Rootfs postmarketOS | ✅ v0.26 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.25 valida VT7 y fbdev con sombra, pero el panel queda estático; v0.26 elimina ShadowFB y captura `/dev/fb0` |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.25 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
+| Bundle Android v4 | ✅ v0.26 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.25 copiado y verificado en TWRP; pendiente flash manual y validación física fbdev/handoff/SSH |
+| Imagen/paquete de prueba | 🧪 ZIP v0.26 copiado y verificado en TWRP; pendiente flash manual y validación física/directa del framebuffer |
 
 ## Reto en curso
 
-Validar físicamente la salida fbdev y el handoff corregido de v0.25 sobre la
-base estable v0.23/v0.24, conservar SSH RNDIS y después reintroducir WCN7850:
+Validar físicamente fbdev sin buffer sombra en v0.26 y recuperar su captura
+persistente si el panel no cambia; conservar SSH RNDIS y después reintroducir
+WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -220,11 +221,19 @@ base estable v0.23/v0.24, conservar SSH RNDIS y después reintroducir WCN7850:
   fuerza temporalmente el DDX `fbdev` con `ShadowFB` sobre `/dev/fb0`: así X
   escribe directamente en el framebuffer que ya muestra los pingüinos y no
   depende del cambio de scanout del DDX modesetting/simpledrm;
-- tras el flash manual v0.25, mantenerla encendida y conectada por USB aunque
-  la imagen no cambie. Probar SSH en `172.16.42.1`; `.138` y `.150` siguen
-  excluidos. El journal debe mostrar el driver fbdev y la ejecución de
-  `gts9uwifi-display-handoff.service`, lo que separará cualquier fallo restante
-  de X, VT y acceso directo al framebuffer.
+- v0.25 demuestra que no queda un fallo de activación: el boot
+  `4803b789a4b545ff97b0829a4bac2062` llega a OpenSSH/LightDM/greeter, el
+  handoff se ejecuta y registra `active-before=1`, `active-after=7`. Xorg usa
+  `/dev/fb0` a 2960x1848, pero con `using shadow framebuffer`; el panel sigue
+  conservando los pingüinos pese a más de 900 s de userspace estable;
+- v0.26 cambia únicamente `ShadowFB` a `false`, de modo que X renderiza sobre
+  la memoria fbdev sin depender de la copia de daños. Cinco segundos después
+  del handoff guarda exactamente 21.880.320 bytes de `/dev/fb0` en
+  `/var/log/gts9uwifi-fb0-after-x.raw` y registra su SHA-256;
+- tras el flash manual v0.26, mantenerla encendida y conectada por USB aunque
+  la imagen no cambie. Si RNDIS vuelve a fallar en Windows, regresar a TWRP:
+  la captura raw permitirá determinar si el framebuffer contiene el greeter o
+  todavía los pingüinos, separando definitivamente renderizado y scanout.
 
 El DTS v0 no incluye DRM/DSI nativo. Mantiene el scanout del bootloader y usa
 simpledrm para separar el primer arranque del futuro driver dual-DSI del panel.
@@ -944,6 +953,27 @@ lado del workspace.
   `8834678cceb50b7fc6d85b35daabcad8c57ff8ac0c34af3e8c7eaebcee74f054`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. El
   asistente no flasheó ninguna partición.
+- Los logs v0.25 se extrajeron en sólo lectura a
+  `work/v025-rootfs-logs-20260720/`. El boot
+  `4803b789a4b545ff97b0829a4bac2062` llega a `graphical.target` a 23,453 s y
+  permanece activo al menos 905 s. El handoff corre sin error, espera X0 y
+  cambia la VT lógica de 1 a 7; los pingüinos no son ya una VT incorrecta.
+- Xorg v0.25 carga explícitamente `fbdev_drv.so`, abre `/dev/fb0`, detecta
+  `simpledrmdrmfb`, 2960x1848, 32 bpp y 21.367 KiB. La opción `ShadowFB=true`
+  queda efectiva y X informa `using shadow framebuffer`; los repetidos
+  `FBIOPUTCMAP: Invalid argument` no terminan el servidor ni el greeter.
+- v0.26 prueba la ruta fbdev restante con `ShadowFB=false`. El mismo servicio
+  guarda después de X una captura exacta de 21.880.320 bytes en
+  `/var/log/gts9uwifi-fb0-after-x.raw`, por lo que una futura extracción podrá
+  mostrar qué dibujó X aunque falle USB o el scanout físico.
+- Build v0.26 verificada: device r10, kernel `7.2_rc3-r17`, firmware r1 y kbd;
+  fbdev directo, script ejecutable con captura, enlace systemd y WCN/PCIe0
+  aislado. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.26-direct-fbdev-capture-sm-x910-twrp.zip`,
+  80.854.080 bytes, SHA-256
+  `e2713a80edebd9897ccbdf7a4143d83d055579fb896056b15156357816c9b876`.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -981,6 +1011,11 @@ lado del workspace.
   sin consultar el journal persistente o probar RNDIS. v0.23 llega a
   `graphical.target`, Xorg/greeter y OpenSSH; su síntoma visual es un fallo de
   handoff/repintado entre VT1 y VT7 separado del estado de userspace.
+- No seguir atribuyendo la imagen v0.25 a que LightDM no cambie de VT: el
+  servicio corregido ejecuta `chvt 1`/`chvt 7` y `fgconsole` confirma VT7. El
+  DDX fbdev también abre `/dev/fb0`, pero con `ShadowFB=true` depende de una
+  copia intermedia que no modifica la imagen física; v0.26 prueba acceso
+  directo y conserva el contenido del framebuffer para análisis offline.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó
