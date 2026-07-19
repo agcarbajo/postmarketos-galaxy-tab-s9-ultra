@@ -52,23 +52,25 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.26 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.25 permanece estable más de 15 minutos |
-| DTS `gts9uwifi` | 🧪 v0.26 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
+| Kernel mainline SM8550 | ✅ v0.27 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.25 permanece estable más de 15 minutos |
+| DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.26 reproducible: device r10, kernel r17 y firmware WCN7850 r1; fbdev directo y captura persistente |
-| Rootfs postmarketOS | ✅ v0.26 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.25 valida VT7 y fbdev con sombra, pero el panel queda estático; v0.26 elimina ShadowFB y captura `/dev/fb0` |
+| Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
+| Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
+| Escritorio | 🧪 v0.26 demuestra que `/dev/fb0` contiene el greeter correcto mientras el panel conserva los pingüinos; v0.27 fuerza daño y reactivación KMS |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
-| Bundle Android v4 | ✅ v0.26 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
+| Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 ZIP v0.26 copiado y verificado en TWRP; pendiente flash manual y validación física/directa del framebuffer |
+| Imagen/paquete de prueba | 🧪 ZIP v0.27 copiado y verificado en TWRP; pendiente flash manual y validación física del refresco KMS |
 
 ## Reto en curso
 
-Validar físicamente fbdev sin buffer sombra en v0.26 y recuperar su captura
-persistente si el panel no cambia; conservar SSH RNDIS y después reintroducir
+Validar físicamente la ruta `modesetting` con sombra software y refresco KMS
+completo de v0.27. La captura v0.26 ya demuestra que el escritorio está bien
+renderizado en memoria y que el defecto restante es exclusivamente la
+propagación/scanout al panel; conservar SSH RNDIS y después reintroducir
 WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
@@ -974,6 +976,26 @@ lado del workspace.
   `e2713a80edebd9897ccbdf7a4143d83d055579fb896056b15156357816c9b876`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. El
   asistente no flasheó ninguna partición.
+- La captura v0.26 recuperada desde la microSD mide exactamente 21.880.320
+  bytes y tiene SHA-256
+  `a987f44c03315694b0716b929f6d9c7bb2aeee0a3c412dd4871bc357689d6aed`.
+  Interpretada como XRGB8888 de 2960x1848 muestra completo y correcto el
+  greeter de LightDM, el fondo XFCE y el teclado en pantalla. La conversión se
+  conserva en `work/v026-rootfs-logs-20260720/gts9uwifi-fb0-after-x.png`.
+- Esta evidencia descarta un fallo de boot, LightDM, X, VT o dibujo en fbdev:
+  el panel sigue escaneando el buffer de la consola aunque `/dev/fb0` ya
+  contiene otro frame. v0.27 vuelve al DDX `modesetting`, desactiva glamor con
+  `AccelMethod=none`, activa `ShadowFB=true` y, tras el rebote VT1→VT7, ejecuta
+  `xrandr` para desactivar y reactivar `None-1` a 2960x1848. El objetivo es
+  obligar a simpledrm a enviar daño completo y actualizar el plano KMS.
+- Build v0.27 verificada: device r11, kernel `7.2_rc3-r17`, firmware r1 y kbd;
+  `modesetting` software, script 0755, unidad/enlace systemd y aislamiento
+  WCN/PCIe0 presentes. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.27-kms-shadow-refresh-sm-x910-twrp.zip`,
+  80.854.291 bytes, SHA-256
+  `e665a73e8efa51198f87a3fba2dc5bed8a8839406af00a05309d04b47bd58bc8`.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. El
+  asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1011,11 +1033,13 @@ lado del workspace.
   sin consultar el journal persistente o probar RNDIS. v0.23 llega a
   `graphical.target`, Xorg/greeter y OpenSSH; su síntoma visual es un fallo de
   handoff/repintado entre VT1 y VT7 separado del estado de userspace.
-- No seguir atribuyendo la imagen v0.25 a que LightDM no cambie de VT: el
+- No seguir atribuyendo la imagen estática a boot, LightDM, X, greeter, VT ni
+  al contenido dibujado en fbdev: el
   servicio corregido ejecuta `chvt 1`/`chvt 7` y `fgconsole` confirma VT7. El
-  DDX fbdev también abre `/dev/fb0`, pero con `ShadowFB=true` depende de una
-  copia intermedia que no modifica la imagen física; v0.26 prueba acceso
-  directo y conserva el contenido del framebuffer para análisis offline.
+  DDX fbdev abre `/dev/fb0` y v0.26 demuestra con una captura completa que el
+  greeter correcto ya está en sus 21.880.320 bytes mientras el panel conserva
+  los pingüinos. El defecto pendiente es la propagación/scanout de simpledrm;
+  v0.27 prueba daño y reactivación completa del plano KMS.
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó

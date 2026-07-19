@@ -22,7 +22,18 @@ sleep 1
 after=$(fgconsole 2>&1 || true)
 echo "SM-X910 display handoff: active-after=$after"
 
-# Persist the X-visible fbdev contents for offline comparison with the panel.
+# Force a full KMS plane disable/enable after the VT transition.  simpledrm
+# cannot change the physical mode, but this makes the modesetting DDX submit a
+# complete plane update instead of relying on the stale boot-console scanout.
+if command -v xrandr >/dev/null 2>&1; then
+	DISPLAY=:0 XAUTHORITY=/var/run/lightdm/root/:0 \
+		xrandr --output None-1 --off 2>&1 || true
+	sleep 1
+	DISPLAY=:0 XAUTHORITY=/var/run/lightdm/root/:0 \
+		xrandr --output None-1 --mode 2960x1848 2>&1 || true
+fi
+
+# Persist the compatibility fbdev contents for offline comparison with the panel.
 # 2960 * 1848 * 4 = 21880320 bytes = 42735 blocks of 512 bytes.
 sleep 5
 if [ -c /dev/fb0 ]; then

@@ -1512,3 +1512,36 @@ física.
   panel sigue en los pingüinos y SSH no enumera, volver a TWRP sin necesidad de
   vídeo; extraer y convertir `gts9uwifi-fb0-after-x.raw` antes de cualquier
   cambio adicional.
+
+## 2026-07-20 — sesión 39: framebuffer correcto y refresco KMS v0.27
+
+- Tras v0.26 el panel siguió mostrando los pingüinos y Windows mantuvo el USB
+  con Code 43, por lo que la usuaria regresó manualmente a TWRP. El asistente
+  no escribió ninguna partición.
+- Desde `mmcblk1p2` se recuperó
+  `/var/log/gts9uwifi-fb0-after-x.raw`: mide exactamente 21.880.320 bytes
+  (`2960*1848*4`) y su SHA-256 es
+  `a987f44c03315694b0716b929f6d9c7bb2aeee0a3c412dd4871bc357689d6aed`.
+- La conversión XRGB8888 little-endian se conserva en
+  `work/v026-rootfs-logs-20260720/gts9uwifi-fb0-after-x.png`. La inspección
+  visual muestra el greeter completo de LightDM, fondo XFCE, reloj, entrada de
+  contraseña y teclado en pantalla. X dibuja correctamente; el panel físico
+  continúa leyendo el buffer de la consola.
+- La captura descarta de forma concluyente nuevos cambios ciegos en boot,
+  systemd, LightDM, greeter, selección de VT o contenido de `/dev/fb0`. El
+  defecto actual está entre el daño del buffer y el scanout físico de
+  simpledrm.
+- v0.27 cambia el DDX a `modesetting`, fija `AccelMethod=none` y
+  `ShadowFB=true`. Después del handoff VT1→VT7 ejecuta con la autoridad de
+  LightDM `xrandr --output None-1 --off`, espera un segundo y reactiva
+  `None-1 --mode 2960x1848`, intentando forzar una copia de daño y actualización
+  completa del plano KMS.
+- Build limpia verificada: device r11, kernel `7.2_rc3-r17`, firmware r1 y
+  kbd; configuración X, `xrandr`, script ejecutable, unidad/enlace systemd y
+  nodos WCN/PCIe0/PHY deshabilitados presentes.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.27-kms-shadow-refresh-sm-x910-twrp.zip`,
+  80.854.291 bytes, SHA-256
+  `e665a73e8efa51198f87a3fba2dc5bed8a8839406af00a05309d04b47bd58bc8`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide. Pendiente
+  flash manual y validación física; el asistente no flasheó la tablet.
