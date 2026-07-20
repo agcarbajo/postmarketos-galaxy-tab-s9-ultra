@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 64, diagnóstico QMI ath12k en v0.48).
+> Última actualización: 2026-07-21 (sesión 65, BDF QRD en ELF para el amss oficial, v0.49).
 
 ## Objetivo
 
@@ -58,30 +58,30 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware r3: amss.bin y board-2.bin oficiales + BDF Samsung fallback + m3 oficial |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.47: el amss oficial arranca (fw 0x1103006c) pero la descarga QMI de la BDF expira (-110); v0.48 añade `debug_mask` QMI/BOOT/WMI para ver la transacción exacta |
+| Wi-Fi | 🧪 v0.48 acota el cuelgue: el firmware oficial no digiere la BDF sin su envoltorio ELF (se cuelga en el último segmento tipo 0); v0.49 sirve la BDF QRD en ELF extraída del board-2 oficial |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.48 validada y copiada a `/sdcard`; SHA-256 local/tablet `6b9c4129…f31c9`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.49 validada y copiada a `/sdcard`; SHA-256 local/tablet `bb0e2357…c5253`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.48 (diagnóstico QMI). El enlace PCIe quedó resuelto
-en v0.45 y la enumeración es estable. Con el amss Samsung, las descargas
-BDF/M3 completan y muere `wmi unified ready`; v0.46 demostró que el mapeo
-BDF/M3 no era la causa. Con el amss oficial de linux-firmware (v0.47, fw
-`0x1103006c` UPSTREAM-3), el firmware arranca y responde el cap QMI pero
-deja de responder durante la propia descarga de board data
-(`qmi failed to load board data file: -110`). El log estándar no dice qué
-fichero de board eligió ath12k (board-2.bin oficial o el fallback BDF
-Samsung) ni en qué mensaje QMI se atasca. v0.48 (kernel r27) activa
-`CONFIG_ATH12K_DEBUG` y fija `debug_mask=0x62` (WMI|BOOT|QMI) por
-modprobe.d: el siguiente journal contendrá el boardname construido, el
-fichero elegido y cada transacción QMI hasta el punto exacto del timeout,
-para decidir entre BDF alternativa, ajuste de la descarga o versión de amss.
-El USB Code 43 continúa aplazado mientras Wi-Fi pueda proporcionar el canal
-de control:
+Flashear manualmente v0.49. El debug QMI de v0.48 acotó el cuelgue con
+precisión: el boardname X910 (`subsystem 17cb:1107, qmi-board-id=255`) no
+existe en el `board-2.bin` oficial, ath12k cae al fallback `board.bin`
+(entonces el payload Samsung sin ELF) y lo envía como `bdf_type 0`; el
+firmware oficial acepta todos los segmentos y nunca responde al último (el
+que dispara el parseo) → -110. La entrada QRD del contenedor oficial
+(`subsystem 17cb:3378, board-id 255`) resulta ser un ELF ARM, igual que el
+`bdwlan.elf` de Samsung: las BDF de WCN7850 viajan con su envoltorio ELF y
+ath12k selecciona el tipo QMI por la magia; despojar el ELF (v0.46) era el
+error. v0.49 extrae reproduciblemente esa BDF QRD (`qrd-board.bin`,
+`0ef5f6f3…26a3`) y la instala como fallback: es la pareja exacta amss
+oficial + BDF QRD que funciona en la QRD SM8550 con mainline. RF con
+calibración genérica de momento; la conversión de la BDF Samsung queda como
+mejora posterior. El USB Code 43 continúa aplazado mientras Wi-Fi pueda
+proporcionar el canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el

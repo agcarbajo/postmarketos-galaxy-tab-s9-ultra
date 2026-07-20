@@ -2598,3 +2598,45 @@ física.
   (board-2 vs fallback Samsung), cada transacción QMI y el mensaje exacto
   donde el firmware oficial deja de responder; con eso se decidirá el
   arreglo (BDF alternativa, tamaño de segmentos, o versión de amss).
+
+## 2026-07-21 — sesión 65: el debug QMI acota el cuelgue al formato de la BDF; v0.49
+
+- La usuaria flasheó v0.48 (boot hash `377818da…596e`). Journal del boot
+  `92bfcc8facc1433fb51ce14109e481a4` extraído a
+  `work/v048-wifi-boot-20260721/` (system.journal + dos rotados); rootfs
+  desmontada. El debug `0x62` funcionó y la transacción QMI quedó a la vista.
+- Secuencia exacta registrada: el boardname construido es
+  `bus=pci,vendor=17cb,device=1107,subsystem-vendor=17cb,
+  subsystem-device=1107,qmi-chip-id=2,qmi-board-id=255`; el regdb se
+  descarga entero como `bdf_type 4` sin problema; la búsqueda en el
+  `board-2.bin` oficial falla (`failed to fetch board data …`), ath12k cae
+  al fallback `board.bin` (payload Samsung de 87.040 bytes) y lo envía como
+  `bdf_type 0` en segmentos de 6144 bytes: el firmware ACEPTA todos hasta
+  `remaining 1024` y nunca responde al último segmento (el que marca fin y
+  dispara el parseo) → timeout -110 a los 10 s.
+- La inspección del `board-2.bin` oficial explica ambas cosas: no existe
+  ninguna entrada `subsystem 17cb:1107` con `qmi-board-id=255` (sólo 44/82),
+  y la entrada de referencia con board-id 255 es la QRD
+  (`subsystem 17cb:3378`). Al extraerla del contenedor (88.872 bytes) resulta
+  ser **un ELF ARM**, igual que el `bdwlan.elf` de Samsung: las BDF de
+  WCN7850 se distribuyen con su envoltorio ELF y ath12k elige el `bdf_type`
+  QMI según la magia. La corrección v0.46 de despojar el ELF era errónea:
+  el payload plano se envía como tipo 0 y el firmware oficial se cuelga
+  parseándolo. Coherente con v0.45/v0.46: el amss Samsung sí digería ambas
+  variantes y fallaba después por el phy_ucode ausente.
+- v0.49 (sólo firmware, kernel intacto): `stage-stock-wifi-firmware.sh`
+  extrae reproduciblemente la entrada QRD del contenedor oficial
+  (`qrd-board.bin`, SHA-256 `0ef5f6f3…26a3`) y el overlay la instala como
+  `board.bin` fallback. Es exactamente la pareja amss oficial + BDF QRD que
+  funciona en la QRD SM8550 con mainline; el RF queda con calibración
+  genérica hasta convertir la BDF Samsung más adelante.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.49-wcn7850-qrd-bdf-sm-x910-twrp.zip`,
+  27.286.591 bytes, SHA-256
+  `bb0e235789f629dd196c2f86961309ad2b08d3a5146a0cb6abeef00fb5ec5253`.
+  El overlay instala la BDF QRD verificada por hash; copiado a `/sdcard` con
+  la única comparación local/tablet coincidente. El asistente no flasheó
+  ninguna partición.
+- Próximo paso: flash manual v0.49. El debug seguirá activo: el journal debe
+  mostrar el fallback enviándose ahora como tipo ELF y, si el firmware lo
+  acepta, `wmi unified ready`, mac80211 y `wlan0` en NetworkManager.
