@@ -2092,3 +2092,65 @@ física.
 - Próximo paso: flash manual v0.38 y no reiniciar si TWRP muestra error. Tras
   un flash exitoso, arrancar y evaluar LightDM/táctil/Wi-Fi; si Wi-Fi sigue sin
   aparecer, volver a TWRP para extraer por primera vez el journal WCN real.
+
+## 2026-07-20 — sesión 55: v0.38 valida la cadena WCN previa; diagnóstico v0.39
+
+- La usuaria flasheó v0.38 correctamente. El sistema alcanza de nuevo el
+  escritorio, el táctil conserva su funcionamiento y no aparece Wi-Fi. Al
+  volver a TWRP se verificó la instalación física: `boot` tiene SHA-256
+  `fc9171bfe1a33e96c71341351e76c9a94da4cbb3cddaf576004a5b14a66ab919`
+  y `vendor_boot`
+  `a5f165326e2659174ef0fe81b6bbe6474e0e6de84321894d0e97e4690a5b0c12`,
+  ambos iguales al bundle. La rootfs contiene sólo `ath12k.ko.zst` y
+  `wifi7/ath12k_wifi7.ko.zst` para release `7.2.0-rc3-dirty`, junto con
+  `ath12k.conf`; por tanto v0.38 sí fue la build arrancada.
+- Se extrajo en sólo lectura el journal del boot
+  `5c45011802064b0d99c39349dd5265e3` a
+  `work/v038-wifi-boot-20260720/` y se desmontó la rootfs. El orden es
+  concluyente: PCIe0/PHY resuelven sus dependencias; el PMU adquiere siete
+  regulators; `WLAN_EN cold reset value=0`; se registra el secuenciador; los
+  siete rails devuelven éxito; WLAN_EN pasa de 0 a 1; iATU se inicializa; y
+  unos 1,18 s después `qcom-pcie 1c00000.pcie` termina `Device not found`.
+- El bus sí crea el root port Qualcomm `17cb:0113`, pero nunca enumera el
+  endpoint Kiwi `17cb:1107`. `ath12k_wifi7` se inserta con éxito, aunque no
+  tiene dispositivo PCI al que enlazarse. NetworkManager carga
+  `NMWifiFactory` y rfkill declara Wi-Fi habilitado, pero no puede aparecer una
+  interfaz. El fallo está antes de MHI, ath12k, board data y firmware.
+- En DesignWare, `Device not found` tras esperar el enlace significa que el
+  LTSSM sigue en `Detect.Quiet`/`Detect.Active`: el root complex funciona pero
+  no percibe receptor en el endpoint. La evidencia stock relevante es GPIO80
+  WLAN_EN, GPIO94 PERST, GPIO95 CLKREQ, GPIO96 WAKE y PCIe x2 Gen3.
+- Se encontró una diferencia concreta en alimentación. El FDT stock X910
+  vota S5G=1.000.000 µV (WLAN), S2G=980.000 µV (AON), S4E=950.000 µV (DIG),
+  S4G=1.350.000 µV (RFA2), S6G=1.900.000 µV (RFA1), L15B=1.800.000 µV y
+  L3G=1.200.000 µV. v0.38 fijaba L15B/L3G, pero declaraba rangos amplios para
+  los cinco SMPS; el éxito de `regulator_bulk_enable()` no demostraba qué
+  tensión efectiva escogió el framework.
+- v0.39 fija los cinco SMPS restantes al voto stock exacto. El nuevo parche
+  `diagnose-wcn7850-pcie-link.patch` registra, sin alterar la secuencia, el
+  estado/tensión efectiva de cada rail, PERST lógico/raw antes y después de
+  assert/deassert, y PARF LTSSM/DBI DEBUG0/DEBUG1 al iniciar training. El
+  paquete kernel sube a r20; providers PCIe/WCN siguen built-in y sólo se
+  construyen los dos módulos ath12k aislados.
+- Build terminada: `Image.gz` SHA-256
+  `9d080e225c7fb3a5b87abb318e2611e8e37912452cf6e9c6398f7233d26222f0`;
+  DTB `80af01d4c3bcca50f7da9b75e4ddc892709fc45c7029ba12428b5c91a1aebbcc`;
+  config `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`;
+  `boot.img`
+  `a5dc4e6299b7865200a5232ae2229c5dbe213dc0971e6bf2b9b7dc1ba04d6b18`;
+  `vendor_boot.img`
+  `5402ca5cff47603d7d73fb6759424ef768ff4db18441d6c0534a825a3766e5d6`.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.39-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.182.376 bytes, SHA-256
+  `8fc0877dd30c83095aa2df404f8b52e32c8f3aa0450cbd364fbe0730cafdec18`.
+  La validación inspeccionó los siete voltajes en el DTB, las trazas del
+  kernel, exactamente dos módulos con vermagic/dependencia/alias correctos,
+  firmware, CRC, imágenes, overlay, permisos e instalador. Se copió a
+  `/sdcard` y la única comparación local/tablet coincide; el asistente no
+  flasheó ninguna partición.
+- Próximo paso: flash manual v0.39. Si no aparece Wi-Fi, volver a TWRP y
+  extraer el journal: los criterios son los siete voltajes reales, PERST raw
+  0 durante assert y 1 tras deassert, estado LTSSM y endpoint `17cb:1107`. Si
+  todo salvo el endpoint es correcto, el siguiente cambio debe comparar la
+  tabla PHY QMP/refclock y la secuencia stock, no ath12k ni firmware.

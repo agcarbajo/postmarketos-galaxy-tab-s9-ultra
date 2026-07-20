@@ -1,0 +1,59 @@
+diff --git a/drivers/power/sequencing/pwrseq-qcom-wcn.c b/drivers/power/sequencing/pwrseq-qcom-wcn.c
+--- a/drivers/power/sequencing/pwrseq-qcom-wcn.c
++++ b/drivers/power/sequencing/pwrseq-qcom-wcn.c
+@@ -79,12 +79,20 @@
+ static int pwrseq_qcom_wcn_vregs_enable(struct pwrseq_device *pwrseq)
+ {
+ 	struct pwrseq_qcom_wcn_ctx *ctx = pwrseq_device_get_drvdata(pwrseq);
++	size_t i;
+ 	int ret;
+ 
+ 	pr_info("SM-X910 WCN diag: enabling %zu PMU input regulators\n",
+ 		ctx->pdata->num_vregs);
+ 	ret = regulator_bulk_enable(ctx->pdata->num_vregs, ctx->regs);
+ 	pr_info("SM-X910 WCN diag: PMU input regulators result=%d\n", ret);
++	if (!ret) {
++		for (i = 0; i < ctx->pdata->num_vregs; i++)
++			pr_info("SM-X910 WCN diag: rail %s enabled=%d voltage=%d uV\n",
++				ctx->regs[i].supply,
++				regulator_is_enabled(ctx->regs[i].consumer),
++				regulator_get_voltage(ctx->regs[i].consumer));
++	}
+ 
+ 	return ret;
+ }
+diff --git a/drivers/pci/controller/dwc/pcie-qcom.c b/drivers/pci/controller/dwc/pcie-qcom.c
+--- a/drivers/pci/controller/dwc/pcie-qcom.c
++++ b/drivers/pci/controller/dwc/pcie-qcom.c
+@@ -303,8 +303,17 @@
+ 	int val = assert ? 1 : 0;
+ 
+ 	list_for_each_entry(port, &pcie->ports, list) {
+-		list_for_each_entry(perst, &port->perst, list)
++		list_for_each_entry(perst, &port->perst, list) {
++			dev_info(pcie->pci->dev,
++				 "SM-X910 PCIe diag: PERST assert=%d before logical=%d raw=%d\n",
++				 assert, gpiod_get_value_cansleep(perst->desc),
++				 gpiod_get_raw_value_cansleep(perst->desc));
+ 			gpiod_set_value_cansleep(perst->desc, val);
++			dev_info(pcie->pci->dev,
++				 "SM-X910 PCIe diag: PERST assert=%d after logical=%d raw=%d\n",
++				 assert, gpiod_get_value_cansleep(perst->desc),
++				 gpiod_get_raw_value_cansleep(perst->desc));
++		}
+ 	}
+ 
+ 	usleep_range(PERST_DELAY_US, PERST_DELAY_US + 500);
+@@ -335,6 +344,12 @@
+ 	if (pcie->cfg->ops->ltssm_enable)
+ 		pcie->cfg->ops->ltssm_enable(pcie);
+ 
++	dev_info(pci->dev,
++		 "SM-X910 PCIe diag: LTSSM start PARF=%#x DEBUG0=%#x DEBUG1=%#x\n",
++		 readl(pcie->parf + PARF_LTSSM),
++		 dw_pcie_readl_dbi(pci, PCIE_PORT_DEBUG0),
++		 dw_pcie_readl_dbi(pci, PCIE_PORT_DEBUG1));
++
+ 	return 0;
+ }
+ 

@@ -88,6 +88,11 @@ if ! grep -q 'WLAN_EN cold reset value' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/cold-reset-wcn7850-before-pcie-probe.patch"
 fi
+if ! grep -q 'rail %s enabled=%d voltage=%d uV' \
+	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/diagnose-wcn7850-pcie-link.patch"
+fi
 if ! grep -q 'default y if ARCH_QCOM' \
 	"$kernel_tree/drivers/pci/pwrctrl/Kconfig"; then
 	patch -d "$kernel_tree" -p1 \

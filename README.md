@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 54, v0.38 Wi-Fi preparada).
+> Última actualización: 2026-07-20 (sesión 55, v0.39 Wi-Fi preparada).
 
 ## Objetivo
 
@@ -52,40 +52,47 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 v0.38 conserva el release estable `7.2.0-rc3-dirty`, integra proveedores WCN/PCIe en el kernel y deja sólo los dos módulos ath12k aislados; pendiente prueba física real |
-| DTS `gts9uwifi` | 🧪 v0.38 reactiva PMU WCN, PCIe0 y PHY, añade L3G 1,2 V sin padre espurio y conserva el resto de la base visible/táctil |
+| Kernel mainline SM8550 | 🧪 v0.38 validada físicamente con release `7.2.0-rc3-dirty`; v0.39 añade diagnóstico de rails, PERST y LTSSM sin alterar la base visible/táctil |
+| DTS `gts9uwifi` | 🧪 v0.39 conserva PMU WCN/PCIe0/PHY/L3G y fija los siete votos de tensión a los valores exactos del FDT stock X910 |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r19 añade cold-reset WCN7850 y proveedores PCIe/WCN built-in; device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r20 añade votos stock exactos y trazas PCIe/WCN; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.38 preparada: rails completos, pulso bajo→alto de WLAN_EN, PCIe/pwrseq built-in, firmware stock y sólo `ath12k`/`ath12k_wifi7` cargables; v0.37 no llegó a instalarse |
+| Wi-Fi | 🧪 v0.38 prueba reset frío y root port PCIe, pero no enumera el endpoint `17cb:1107`; v0.39 vota tensiones stock exactas e instrumenta PERST/LTSSM |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.38 validada y copiada a `/sdcard`; SHA-256 local/tablet `67c0d7bf…32d5e`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.39 validada y copiada a `/sdcard`; SHA-256 local/tablet `8fc0877d…ec18`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.38 y comprobar que conserva LightDM y el táctil antes
-de evaluar Wi-Fi. Esta build no recupera el árbol completo de módulos que
-provocó la regresión visual desde v0.19: PCIe PHY, pwrctrl/pwrseq, QRTR, MHI,
-cfg80211 y mac80211 están integrados en el kernel; el overlay contiene sólo
-`ath12k.ko.zst` y `ath12k_wifi7.ko.zst`, cargados tras montar la rootfs real.
-La hipótesis concreta es que el bootloader dejaba GPIO80/WLAN_EN alto y el
-pwrseq upstream preservaba ese estado, por lo que el WCN7850 nunca recibía el
-reset bajo→alto necesario. v0.38 fuerza exclusivamente para WCN7850 un pulso
-bajo de 5–10 ms antes de la secuencia normal. También declara el rail real
-L3G 1,2 V directamente, como los DTS upstream SM8550, sin el
-`vdd-l3-supply` incorrecto que causó el ciclo de v0.20.
+Flashear manualmente v0.39 y comprobar que conserva LightDM y el táctil antes
+de evaluar Wi-Fi. v0.38 ya fue instalada realmente: fuerza el pulso bajo→alto
+de WLAN_EN, habilita los siete rails, registra el secuenciador y levanta el
+root port Qualcomm `17cb:0113`; después de aproximadamente 1,18 s el LTSSM
+sigue sin detectar receptor, termina en `Device not found` y nunca aparece el
+endpoint Kiwi `17cb:1107`. `ath12k_wifi7` sí se inserta, NetworkManager carga
+su plugin Wi-Fi y rfkill está habilitado, pero no hay dispositivo PCI al que
+enlazar el driver. El fallo actual está antes de ath12k y del firmware.
 
-Tras el arranque se volverá a TWRP para extraer el journal persistente y buscar,
-en este orden: `WLAN_EN cold reset value=0`, una única secuencia del host
-PCIe0, endpoint Kiwi `17cb:1107`, carga de firmware ath12k y aparición de una
-interfaz en NetworkManager. Si el endpoint aparece, el siguiente paso será
-conectar desde la GUI y usar Wi-Fi para SSH; si no aparece, se instrumentarán
-PERST/LTSSM/PHY sin volver a cambiar rails a ciegas. El USB Code 43 queda
-aplazado mientras Wi-Fi pueda proporcionar el canal de control:
+El FDT stock vota valores fijos que v0.38 sólo expresaba como rangos amplios:
+S5G 1,000 V, S2G 0,980 V, S4E 0,950 V, S4G 1,350 V y S6G 1,900 V; L15B y L3G
+ya estaban fijos a 1,800 V y 1,200 V. v0.39 reproduce exactamente esos siete
+votos e imprime después de `regulator_bulk_enable()` la tensión y estado real
+de cada rail. También registra el valor lógico/raw de PERST antes/después de
+assert/deassert y los registros PARF LTSSM/DBI DEBUG0/DEBUG1 al iniciar el
+training. Conserva PCIe/pwrseq/QRTR/MHI/cfg80211/mac80211 built-in y sólo los
+dos módulos ath12k aislados, para no reintroducir la regresión visual v0.19.
+
+Tras la prueba se volverá a TWRP para extraer el journal persistente. Primero
+se verificarán los siete voltajes efectivos y PERST raw (0 afirmado, 1
+liberado); después el estado LTSSM y la presencia de `17cb:1107`. Si el
+endpoint aparece, se continúa con MHI/firmware/ath12k y se conecta desde la GUI
+para usar Wi-Fi como SSH. Si sigue ausente con tensiones y PERST correctos, el
+siguiente ámbito será la PHY QMP/refclock/secuencia stock, no userspace ni los
+blobs. El USB Code 43 queda aplazado mientras Wi-Fi pueda proporcionar el canal
+de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1259,6 +1266,33 @@ lado del workspace.
   CRC, manifiestos, permisos, imágenes, overlay e instalador están validados;
   se copió a `/sdcard` y la única comparación local/tablet coincide.
 
+- La prueba física v0.38 confirma que el instalador nuevo sí escribió todas
+  las imágenes y el overlay. `boot`/`vendor_boot` coinciden con el bundle y la
+  rootfs contiene exactamente los dos módulos `7.2.0-rc3-dirty` y su
+  configuración de carga. La tablet alcanza el escritorio y conserva el
+  táctil, por lo que el aislamiento de módulos evita la regresión visual.
+- El boot `5c45011802064b0d99c39349dd5265e3` prueba el cold-reset y la cadena
+  previa al driver: `WLAN_EN cold reset value=0`, siete rails habilitados,
+  WLAN_EN final en 1, iATU inicializada y root port `17cb:0113`. PCIe termina
+  `Device not found`; no aparece `17cb:1107`. `ath12k_wifi7` se inserta pero
+  queda sin dispositivo. NetworkManager/rfkill funcionan en userspace.
+- La diferencia restante demostrable con stock eran cinco votos de tensión
+  expresados como rangos. v0.39 fija S5G=1,000 V, S2G=0,980 V, S4E=0,950 V,
+  S4G=1,350 V y S6G=1,900 V; conserva L15B=1,800 V y L3G=1,200 V. Añade
+  lecturas pasivas de tensión real, PERST lógico/raw y PARF/DBI LTSSM.
+- Build v0.39: kernel `Image.gz`
+  `9d080e225c7fb3a5b87abb318e2611e8e37912452cf6e9c6398f7233d26222f0`,
+  DTB `80af01d4c3bcca50f7da9b75e4ddc892709fc45c7029ba12428b5c91a1aebbcc`,
+  config `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`.
+  El DTB final contiene los siete valores exactos y el kernel las trazas
+  nuevas; los dos módulos conservan release/vermagic y dependencia correctos.
+- ZIP TWRP v0.39:
+  `postmarketos-edge-xfce-mainline-v0.39-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.182.376 bytes, SHA-256
+  `8fc0877dd30c83095aa2df404f8b52e32c8f3aa0450cbd364fbe0730cafdec18`.
+  Pasó CRC, imágenes, overlay, permisos, firmware, módulos y aserciones DTB;
+  se copió a `/sdcard` y la única comparación local/tablet coincide.
+
 ## Lo que no ha funcionado / no repetir
 
 - No dejar `dev_info` por evento dentro de `dwc3_process_event_entry()`,
@@ -1292,6 +1326,12 @@ lado del workspace.
   un ZIP con overlay. v0.37 abortó correctamente antes de escribir imágenes y
   el reinicio arrancó v0.36, creando una falsa prueba Wi-Fi. Desde v0.38 el
   instalador limpia de forma explícita ese montaje temporal.
+- No interpretar `regulator_bulk_enable() = 0` como prueba de que WCN recibe
+  los votos stock: sólo acredita que los proveedores aceptaron habilitarse.
+  Comprobar las tensiones efectivas de los siete rails, como instrumenta v0.39.
+- No depurar firmware, board data ni ath12k mientras PCIe no enumere
+  `17cb:1107`. v0.38 inserta el módulo y carga el plugin Wi-Fi, pero el fallo
+  ocurre antes, durante la detección eléctrica del endpoint por el LTSSM.
 - No ordenar los `sha512sums` de un APKBUILD de forma distinta a `source=`:
   abuild empareja ambas listas por posición. La primera construcción rootfs
   r14 detectó el orden incorrecto de cuatro parches aunque la build directa
