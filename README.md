@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.33 generada; conserva v0.32 y añade acceso SSH por clave, pendiente copiar desde TWRP y flash manual |
+| Imagen/paquete de prueba | 🧪 v0.33 copiada a `/sdcard` y verificada; conserva v0.32 y añade acceso SSH por clave, pendiente flash manual |
 
 ## Reto en curso
 
@@ -1108,8 +1108,8 @@ lado del workspace.
   `postmarketos-edge-xfce-mainline-v0.33-goodix-ssh-no-modules-sm-x910-twrp.zip`,
   22.007.913 bytes, SHA-256 previo a la copia
   `cc06f194a62653f731c4ef4238fed4ee047e2fbc2e173244a1f132c3eee6db71`.
-  Pendiente entrar en TWRP, copiarlo a `/sdcard` y hacer la única comparación
-  local/remota antes del flash manual.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
+  flash manual; el asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 

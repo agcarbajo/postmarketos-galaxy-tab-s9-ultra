@@ -1822,3 +1822,7 @@ física.
 - Próximo paso: volver manualmente a TWRP, copiar v0.33, comparar una sola vez
   el SHA local/remoto y flashear. Tras validar SSH por clave se hará el bisect
   de módulos responsable de apagar el scanout conservado.
+- La usuaria dejó la tablet en TWRP y v0.33 se copió a `/sdcard`. La única
+  comparación local/remota coincide en
+  `cc06f194a62653f731c4ef4238fed4ee047e2fbc2e173244a1f132c3eee6db71`;
+  queda pendiente únicamente el flash manual y el arranque.
