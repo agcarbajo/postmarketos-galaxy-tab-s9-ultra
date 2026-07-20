@@ -76,9 +76,11 @@ autocargado. La auditoría offline de v0.34 confirma que clave, fingerprint,
 drop-in, configuración efectiva, permisos, propietarios y shadow físicos son
 correctos. Sin embargo, todas las conexiones externas anteriores iban al otro
 pmOS: su host key es distinta y responde OpenSSH 10.3, mientras la microSD
-X910 contiene OpenSSH 10.4. Windows muestra simultáneamente ese NCM funcional
-y la X910 como dispositivo desconocido por error de descriptor. v0.35 queda
-sin validar en red hasta enumerar el USB correcto; después se iniciará el
+X910 contiene OpenSSH 10.4. Tras desconectar el otro pmOS, el NCM desaparece y
+sólo permanece la X910 como `VID_0000/PID_0002` por error de descriptor. Está
+conectada mediante un hub Genesys `05e3:0608`; falta probar un puerto directo
+antes de cambiar software. v0.35 queda sin validar en red hasta enumerar el
+USB correcto; después se iniciará el
 bisect acumulativo de módulos y se retomará WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
@@ -1176,6 +1178,11 @@ lado del workspace.
   ejecutaron porque Windows exige elevación y devolvió `Acceso denegado`; el
   estado no cambió. Hace falta aislar el otro USB y reconectar físicamente el
   cable de la X910 mientras v0.35 permanece arrancada.
+- Al desconectar el otro pmOS y reconectar la tablet desaparecen por completo
+  el NCM, la ruta `172.16.42.0/24` y la dirección host `172.16.42.2`. Sólo
+  queda `USB\\VID_0000&PID_0002...` con Code 43: queda demostrado que ésa es
+  la X910. Su parent es un hub Genesys `USB\\VID_05E3&PID_0608...`, puerto 4;
+  la próxima prueba física es conexión directa al PC, sin ese hub.
 
 ## Lo que no ha funcionado / no repetir
 

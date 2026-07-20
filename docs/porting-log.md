@@ -1950,3 +1950,11 @@ física.
   por falta de elevación; Windows no cambió ningún dispositivo. La siguiente
   acción es física: desconectar el otro pmOS USB si está conectado y reinsertar
   el cable de la X910 manteniendo v0.35 arrancada.
+- Tras hacerlo, `UsbNcm Host Device #7`, la interfaz `172.16.42.2/24` y toda la
+  ruta `172.16.42.0/24` desaparecieron. Sólo permanece el dispositivo
+  desconocido `VID_0000:PID_0002` con Code 43, confirmando que el NCM era del
+  otro equipo y el error de descriptor corresponde a la X910.
+- La propiedad PnP sitúa la tablet detrás de
+  `USB\\VID_05E3&PID_0608...`, `Port_#0004.Hub_#0003`. Antes de cambiar kernel,
+  PHY o gadget se probará un puerto USB directo del PC y, si es posible, otro
+  cable, manteniendo el sistema arrancado.
