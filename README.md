@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 44, v0.31).
+> Última actualización: 2026-07-20 (sesión 45, v0.32).
 
 ## Objetivo
 
@@ -52,32 +52,32 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.30 recupera el boot v0.18 y vuelve a mostrar el escritorio; v0.31 usa el kernel/DTS actuales con sufijo `-dirty` y sin módulos cargables |
+| Kernel mainline SM8550 | ✅ v0.31 demuestra que el kernel/DTS actuales llegan a LightDM sin módulos; v0.32 corrige la aplicación incompleta del parche Goodix en la build directa |
 | DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | ✅ v0.30 validada físicamente: LightDM, escritorio y táctil funcionan; v0.31 aislará kernel/DTS actuales frente a la autocarga de módulos |
+| Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
-| Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
+| Táctil | 🧪 v0.31 registra Goodix pero rechaza eventos por checksum; v0.32 restaura el arreglo completo ya validado en v0.17 |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.31 copiada a `/sdcard` y verificada; pendiente flash manual para probar kernel/DTS actuales sin módulos |
+| Imagen/paquete de prueba | 🧪 v0.32 copiada a `/sdcard` y verificada; pendiente flash manual para validar LightDM + táctil con kernel actual sin módulos |
 
 ## Reto en curso
 
-Probar físicamente v0.31. v0.30 ya confirma el control completo: vuelve a
-mostrar LightDM, permite entrar al escritorio y conserva el táctil. También
-enumera NCM con host `172.16.42.2` y un sshd responde en `172.16.42.1`, aunque
-la contraseña automatizada `<DEV_PASSWORD>` fue rechazada. La transición v0.19 mezcló
-kernel/DTS nuevos y autocarga completa de módulos; v0.31 conserva el kernel y
-DTS actuales (WCN/PCIe0/PHY deshabilitados) pero usa release
-`7.2.0-rc3-dirty`, sin directorio de módulos coincidente, y mantiene el Xorg
-funcional de v0.30. Si muestra el escritorio, la regresión es exclusivamente
-un módulo y se inicia un bisect acumulativo por grupos; si reaparecen los
-pingüinos, el diferenciador está en kernel/DTS/initramfs posterior a v0.18.
-Después: conservar SSH RNDIS y reintroducir WCN7850:
+Probar físicamente v0.32. v0.31 ya confirma que el kernel/DTS/initramfs
+actuales, manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables,
+llegan a LightDM; por tanto la regresión que deja los pingüinos en pantalla
+desde v0.19 pertenece exclusivamente a algún módulo autocargado. El táctil de
+v0.31 falló por un problema distinto y ya identificado: la build directa
+detectaba el marcador de un parche Goodix parcial y omitía tanto el forzado de
+eventos Samsung de 16 bytes para PID 6936 como la prelectura de un solo
+contacto. v0.32 corrige la guarda, actualiza automáticamente los worktrees
+parciales y conserva el aislamiento sin módulos. Si LightDM y el táctil
+funcionan juntos, esta será la base usable para reintroducir por grupos los
+módulos, conservar SSH NCM/RNDIS y después reactivar WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1067,9 +1067,39 @@ lado del workspace.
   `be37c78307d00dc065ed368ec4e35ecac434d7a11beead7b010e924ae1406d0e`.
   Copiado a `/sdcard`; la comparación local/remota coincide. v0.30 permanece
   también en la tarjeta como retorno inmediato a la base visible.
+- La prueba física v0.31 muestra primero los pingüinos del arranque y después
+  llega a LightDM. Esto demuestra que kernel, DTS, initramfs y userspace
+  actuales sí pueden presentar el greeter; la congelación permanente de
+  v0.19–v0.29 sólo aparece al habilitar la autocarga de módulos. NCM vuelve a
+  exponer `172.16.42.1:22`, aunque `phablet`/`<DEV_PASSWORD>` sigue siendo rechazado.
+- El táctil de v0.31 no responde. El journal del boot
+  `b3a671533e71486d949090199774a7dc`, extraído en sólo lectura a
+  `work/v031-rootfs-logs-20260720/`, confirma que Goodix registra el
+  dispositivo y recibe datos, pero repite `touch data checksum error`.
+- La causa es reproducible: el worktree directo contenía sólo el decodificador
+  Samsung inicial. `scripts/build-mainline-kernel.sh` comprobaba únicamente
+  `GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK`, lo consideraba completo y omitía el
+  forzado de 16 bytes para PID 6936 y la prelectura de un contacto/26 bytes.
+  El guard ahora exige el mensaje final exacto y aplica
+  `upgrade-partial-goodix-samsung-events.patch` cuando encuentra el estado
+  parcial; los worktrees limpios siguen usando el parche completo original.
+- v0.32 conserva el kernel actual `7.2.0-rc3-dirty`, DTS con WCN/PCIe0/PHY
+  deshabilitados, Xorg neutro, handoff no-op y ausencia deliberada de módulos.
+  El binario contiene el forzado PID 6936 y la fuente compilada usa
+  `GOODIX_BERLIN_PRE_READ_TOUCHES=1`. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.32-current-kernel-goodix-no-modules-sm-x910-twrp.zip`,
+  22.007.128 bytes, SHA-256
+  `c4509790f42bb6cff93e73ca0a7bdd2609d6c2b1f19eb6a6526bac263d5a67b9`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide; el
+  asistente no flasheó ninguna partición. v0.30 permanece como rollback.
 
 ## Lo que no ha funcionado / no repetir
 
+- No usar la presencia de un marcador antiguo del parche Goodix como prueba de
+  que el arreglo está completo. El worktree directo puede contener el
+  decodificador Samsung sin el forzado PID 6936 ni la prelectura de un solo
+  contacto; la guarda debe exigir la cadena final exacta y actualizar el
+  estado parcial.
 - Ejecutar WSL desde el usuario de sandbox: devuelve
   `WSL_E_DISTRO_NOT_FOUND` aunque las distros sí existen para la usuaria.
 - Pasar una línea compleja con paréntesis, `$()` y comillas mediante

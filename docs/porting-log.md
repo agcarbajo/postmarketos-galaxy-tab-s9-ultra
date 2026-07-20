@@ -1749,3 +1749,47 @@ física.
 - Interpretación prevista: si v0.31 muestra el escritorio, el culpable es uno
   de los módulos que empezaron a cargar en v0.19; si muestra pingüinos, debe
   bisectarse kernel/DTS/initramfs entre v0.18 y la base actual.
+
+## 2026-07-20 — sesión 45: v0.31 a LightDM, Goodix completo y v0.32
+
+- La prueba física v0.31 confirma que los ocho pingüinos son sólo el contenido
+  inicial: tras unos segundos el panel cambia y aparece LightDM. El kernel y
+  DTB actuales, el initramfs y el userspace quedan validados para display al
+  conservar el release `7.2.0-rc3-dirty` sin módulos coincidentes. La regresión
+  permanente de v0.19–v0.29 está causada exclusivamente por uno de los módulos
+  que entonces empezaron a autocargarse.
+- El táctil no respondió en v0.31. NCM enumeró y el puerto SSH respondió en
+  `172.16.42.1`, pero la autenticación `phablet`/`<DEV_PASSWORD>` fue rechazada de nuevo,
+  por lo que la usuaria regresó manualmente a TWRP.
+- Se montó `mmcblk1p2` desde TWRP con `ro,noload` y se extrajeron journals,
+  dmesg y logs X/LightDM a `work/v031-rootfs-logs-20260720/`. El boot relevante
+  es `b3a671533e71486d949090199774a7dc`: LightDM arranca a 19,369 s y el no-op
+  termina a 19,657 s. Goodix está registrado y recibe actividad, pero todos los
+  paquetes se descartan como `touch data checksum error`.
+- La comparación del kernel v0.18 con v0.31 localizó la diferencia. v0.18
+  contiene el mensaje `forcing 16-byte Samsung events for firmware PID 6936`
+  y la prelectura de un solo contacto; v0.31 no contenía el mensaje. El
+  worktree directo conservaba un parche Samsung parcial y la guarda del script
+  sólo buscaba `GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK`, por lo que saltaba
+  incorrectamente el parche completo.
+- Se añadió
+  `upgrade-partial-goodix-samsung-events.patch` y se endureció
+  `scripts/build-mainline-kernel.sh`: ahora exige el mensaje final exacto. Si
+  detecta un estado parcial, añade `GOODIX_BERLIN_PRE_READ_TOUCHES=1`, fuerza
+  16 bytes para PID 6936 y lee inicialmente un único contacto (26 bytes); si
+  no encuentra ningún soporte Samsung, aplica el parche completo existente.
+- El kernel v0.32 recompilado contiene el mensaje PID 6936, release
+  `7.2.0-rc3-dirty` y la fuente compilada confirma la prelectura de un contacto.
+  Mantiene el DT actual con WCN PMU, PCIe0 y PHY deshabilitados y sigue sin
+  directorio de módulos coincidente, para cambiar una sola variable respecto a
+  v0.31.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.32-current-kernel-goodix-no-modules-sm-x910-twrp.zip`,
+  22.007.128 bytes, SHA-256
+  `c4509790f42bb6cff93e73ca0a7bdd2609d6c2b1f19eb6a6526bac263d5a67b9`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide. v0.30
+  permanece como rollback; el asistente no flasheó ninguna partición.
+- Próxima prueba: flash manual v0.32. El resultado esperado es el mismo
+  handoff a LightDM de v0.31 con el táctil funcional. Si se confirma, se usará
+  esta base para un bisect acumulativo de los módulos y conservar USB SSH antes
+  de retomar WCN7850.

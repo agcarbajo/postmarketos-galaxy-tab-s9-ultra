@@ -47,10 +47,16 @@ if ! grep -q 'Match Samsung SM8550 sequencing' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/match-samsung-sm8550-eusb2-phy-init.patch"
 fi
-if ! grep -q 'GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK' \
+if ! grep -q 'forcing 16-byte Samsung events for firmware PID 6936' \
 	"$kernel_tree/drivers/input/touchscreen/goodix_berlin_core.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/support-samsung-goodix-16-byte-events.patch"
+	if grep -q 'GOODIX_BERLIN_SAMSUNG_EVENT_ID_MASK' \
+		"$kernel_tree/drivers/input/touchscreen/goodix_berlin_core.c"; then
+		patch -d "$kernel_tree" -p1 \
+			< "$package/upgrade-partial-goodix-samsung-events.patch"
+	else
+		patch -d "$kernel_tree" -p1 \
+			< "$package/support-samsung-goodix-16-byte-events.patch"
+	fi
 fi
 if ! grep -q 'PTN3222_MAX_INIT_CELLS' \
 	"$kernel_tree/drivers/phy/phy-nxp-ptn3222.c"; then
