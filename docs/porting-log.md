@@ -1878,3 +1878,43 @@ física.
   clave/configuración instaladas, `stat` de toda la ruta, passwd/shadow,
   configuración efectiva de sshd, logs del último boot y propietarios/modos
   del home. Sólo esa evidencia decidirá el siguiente arreglo.
+
+## 2026-07-20 — sesión 49: auditoría SSH física y aislamiento de PAM v0.35
+
+- Desde TWRP se montó `mmcblk1p2` con `ro,noload` y se extrajo una auditoría a
+  `work/v034-auth-audit-20260720-2/`, incluidos los journals persistentes. La
+  partición se desmontó antes de continuar.
+- La instalación física es correcta: el drop-in `00-*`, la clave plana y el
+  drop-in heredado `90-*` existen. `/etc/ssh` y `sshd_config.d` son
+  `root:root 0755`; el drop-in nuevo y la clave plana son `root:root 0644`.
+  Sólo la carpeta antigua v0.33 conserva `0777`, pero ya no aparece en la ruta
+  efectiva de v0.34.
+- La clave instalada tiene exactamente fingerprint
+  `SHA256:EsZ6dkUkxnvcfUDER6tbuQOKEZ4KRc9RjfYBFnrWQ94`. `phablet` es UID/GID
+  10000, home owned por UID 10000, shell `/bin/ash` válido, cuenta desbloqueada
+  y el hash físico confirma la contraseña `<DEV_PASSWORD>`.
+- Se ejecutó el binario ARM64 correcto `/usr/sbin/sshd.pam -T` dentro de la
+  rootfs desde TWRP con `/dev` y `/proc` enlazados temporalmente. Su
+  configuración efectiva usa la clave plana, pubkey, `StrictModes yes`, PAM,
+  contraseña y keyboard-interactive. La precedencia `00-*` funciona.
+- Los journals sólo registran el listener al nivel INFO; los hijos de
+  autenticación no dejaron el motivo del rechazo. Un sshd temporal `-ddd` en
+  el recovery se expuso mediante `adb forward tcp:2222`, pero su hijo preauth
+  cerró la conexión justo después de instalar seccomp, antes de KEX. Es una
+  incompatibilidad entre el userspace pmOS y el kernel TWRP, no evidencia sobre
+  el fallo del boot mainline. El proceso, forward y todos los mounts se
+  retiraron.
+- Como clave y contraseña fallan pese a credenciales/configuración correctas,
+  v0.35 aísla la fase PAM común. El drop-in fija `UsePAM no`, deshabilita los
+  métodos interactivos, exige `AuthenticationMethods publickey` y eleva el log
+  a `DEBUG3`, manteniendo `StrictModes yes` y la clave root-owned.
+- Kernel, DTB, `boot`, `init_boot`, `vendor_boot`, `dtbo` y `vbmeta` son byte a
+  byte los de v0.32. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.35-goodix-ssh-no-pam-no-modules-sm-x910-twrp.zip`,
+  22.007.992 bytes, SHA-256
+  `7a1de9353d6614130f545f9cdb337818ec24746c00ecdad29ef15a39894ef537`.
+  Se copió a `/sdcard` y la única comparación local/remota coincide; el
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.35, arrancar y probar la clave. Si se acepta,
+  PAM era la barrera y se podrá depurar en vivo; si se rechaza, extraer el
+  journal DEBUG3 sin otra build intermedia.

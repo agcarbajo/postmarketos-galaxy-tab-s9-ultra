@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 48, v0.34 probada).
+> Última actualización: 2026-07-20 (sesión 49, v0.35 preparada).
 
 ## Objetivo
 
@@ -63,24 +63,24 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ⚠️ v0.34 mantiene LightDM/táctil/NCM/sshd pero también rechaza la clave; pendiente auditoría offline de la rootfs física |
+| Imagen/paquete de prueba | 🧪 v0.35 copiada y verificada; SSH sólo por clave y sin PAM sobre la base v0.32, pendiente flash manual |
 
 ## Reto en curso
 
-Auditar desde TWRP la autenticación SSH de la rootfs física. v0.32 confirma
+Probar v0.35 para aislar PAM de la autenticación SSH. v0.32 confirma
 físicamente que el kernel/DTS/initramfs actuales,
 manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
 LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
 pingüinos en pantalla desde v0.19 pertenece exclusivamente a algún módulo
 autocargado. NCM funciona en `172.16.42.1:22`, pero la contraseña de la rootfs
 física rechaza `phablet/<DEV_PASSWORD>` aunque la rootfs generada contiene un hash válido
-para `<DEV_PASSWORD>`. v0.33 y v0.34 tampoco aceptan la clave; v0.34 usa un fichero plano
-en `/etc/ssh`, carga su configuración primero y asegura a `0755` los
-directorios del overlay, por lo que queda refutada la hipótesis de que bastaba
-corregir la carpeta creada por TWRP. El siguiente paso obligatorio es extraer
-ficheros, modos, propietarios, shadow y logs reales antes de modificar de
-nuevo la imagen. Una vez validado el acceso se iniciará el bisect acumulativo
-de módulos y después se retomará WCN7850:
+para `<DEV_PASSWORD>`. La auditoría offline de v0.34 confirma que clave, fingerprint,
+drop-in, configuración efectiva, permisos, propietarios y shadow físicos son
+correctos; fallan a la vez clave y contraseña. v0.35 cambia únicamente la fase
+común restante: `UsePAM no`, autenticación sólo por clave y `LogLevel DEBUG3`,
+conservando `StrictModes yes`. Si entra, se iniciará el bisect acumulativo de
+módulos y después se retomará WCN7850; si no, el log detallado identificará la
+comprobación interna exacta:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1134,6 +1134,31 @@ lado del workspace.
   vuelve a rechazar la clave ofrecida. Esto refuta que el único bloqueo fuese
   el modo de `/etc/ssh/authorized_keys`. Antes de otra build se inspeccionará
   desde TWRP la rootfs física y el estado real de la cuenta.
+- La auditoría offline se conserva en
+  `work/v034-auth-audit-20260720-2/`. La rootfs física contiene la clave
+  Ed25519 esperada y ambos drop-ins; `/etc/ssh`, el drop-in `00-*` y
+  `/etc/ssh/gts9uwifi_authorized_keys` son `root:root` con modos
+  `0755/0644/0644`. `phablet` es UID 10000, usa `/bin/ash`, no está bloqueado
+  y su hash físico valida `<DEV_PASSWORD>`.
+- Ejecutar el propio `/usr/sbin/sshd.pam -T` ARM64 desde TWRP confirma la
+  configuración efectiva: `PubkeyAuthentication yes`, `StrictModes yes`,
+  `AuthorizedKeysFile /etc/ssh/gts9uwifi_authorized_keys`, contraseña y
+  keyboard-interactive habilitados y `AuthenticationMethods any`. No queda un
+  error de instalación o precedencia de configuración.
+- El intento de ejecutar sshd en `-ddd` dentro del kernel TWRP acepta la
+  conexión redirigida por ADB, pero el hijo preauth muere justo después de
+  instalar su filtro seccomp, antes del intercambio KEX. Es una incompatibilidad
+  del entorno recovery y no reproduce la autenticación del kernel mainline;
+  se cerró el proceso y se desmontaron `/run`, `/proc`, `/dev` y la rootfs.
+- v0.35 prueba la fase común restante: el drop-in fija `UsePAM no`, deshabilita
+  contraseña/keyboard-interactive, exige `AuthenticationMethods publickey` y
+  activa `LogLevel DEBUG3`; `StrictModes` permanece habilitado. Kernel, DTB y
+  las cinco imágenes Android son idénticos a v0.32. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.35-goodix-ssh-no-pam-no-modules-sm-x910-twrp.zip`,
+  22.007.992 bytes, SHA-256
+  `7a1de9353d6614130f545f9cdb337818ec24746c00ecdad29ef15a39894ef537`.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
+  flash manual; el asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 

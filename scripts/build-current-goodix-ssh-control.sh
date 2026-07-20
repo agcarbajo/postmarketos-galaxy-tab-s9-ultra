@@ -3,15 +3,15 @@ set -euo pipefail
 
 base=${PMOS_WORKDIR:-/root/pmos-gts9u}
 project=${PROJECT_MNT:-'/mnt/c/Users/agcar/Desktop/Aplicaciones/Custom Roms/GALAXY TAB S9 ULTRA/Ubuntu Touch/PostmarketOS'}
-kernel="$base/out/kernel-gts9uwifi-v034"
-bundle="$base/out/gts9uwifi-mainline-v0.34"
-overlay="$base/out/rootfs-overlay-v0.34"
-artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v0.34-goodix-ssh-flat-key-no-modules-sm-x910-twrp.zip"}
+kernel="$base/out/kernel-gts9uwifi-v035"
+bundle="$base/out/gts9uwifi-mainline-v0.35"
+overlay="$base/out/rootfs-overlay-v0.35"
+artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v0.35-goodix-ssh-no-pam-no-modules-sm-x910-twrp.zip"}
 
 KERNEL_OUT_DIR="$kernel" bash "$project/scripts/build-mainline-kernel.sh"
 
 case "$overlay" in
-	"$base"/out/rootfs-overlay-v0.34) rm -rf -- "$overlay" ;;
+	"$base"/out/rootfs-overlay-v0.35) rm -rf -- "$overlay" ;;
 	*) echo "unsafe overlay path: $overlay" >&2; exit 1 ;;
 esac
 mkdir -p \
@@ -40,6 +40,6 @@ DISABLE_RUNTIME_DTBO=1 \
 python3 "$project/scripts/make-twrp-zip.py" "$bundle" "$artifact" \
 	--project "$project" \
 	--rootfs-overlay "$overlay" \
-	--label 'postmarketOS mainline v0.34 for SM-X910 (Goodix, flat development SSH key, no modules)'
+	--label 'postmarketOS mainline v0.35 for SM-X910 (Goodix, key-only SSH without PAM, no modules)'
 
 stat -c '%n %s bytes' "$artifact"
