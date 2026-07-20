@@ -1793,3 +1793,32 @@ física.
   handoff a LightDM de v0.31 con el táctil funcional. Si se confirma, se usará
   esta base para un bisect acumulativo de los módulos y conservar USB SSH antes
   de retomar WCN7850.
+
+## 2026-07-20 — sesión 46: v0.32 validada y acceso SSH por clave en v0.33
+
+- La usuaria flasheó manualmente v0.32. Arranca hasta LightDM y confirma que el
+  táctil funciona sin problema. Quedan validados juntos el kernel/DTS actuales,
+  display, Goodix con eventos Samsung de 16 bytes y la prelectura de un solo
+  contacto. La base sin módulos es físicamente usable.
+- Windows enumera `UsbNcm Host Device #7` a 426 Mbps. El host usa
+  `172.16.42.2/24`, dos pings a `172.16.42.1` responden en 1 ms sin pérdidas y
+  el puerto 22 acepta conexiones. El transporte USB y OpenSSH funcionan.
+- La autenticación `phablet`/`<DEV_PASSWORD>` vuelve a ser rechazada. La inspección de la
+  rootfs de build demuestra que el usuario tiene `/bin/ash`, ese shell es
+  válido, la cuenta no está bloqueada y su hash SHA-512 sí corresponde a
+  `<DEV_PASSWORD>`; sshd carga PAM. La discrepancia queda en el estado persistente de la
+  rootfs física, no en la receta actual.
+- Se generó una clave Ed25519 exclusiva de desarrollo. La privada queda fuera
+  del repositorio en `/root/.ssh/gts9u_pmos`; sólo la pública se integra en el
+  overlay. `90-gts9uwifi-development-key.conf` habilita pubkey y busca primero
+  `/etc/ssh/authorized_keys/%u`, ruta root-owned compatible con el instalador
+  TWRP sin depender del propietario de `/home/phablet`.
+- `scripts/build-current-goodix-ssh-control.sh` reproduce v0.33. Kernel, DTB y
+  las cinco imágenes Android tienen exactamente los mismos hashes que v0.32;
+  sólo cambian los dos ficheros SSH del overlay. ZIP preparado:
+  `postmarketos-edge-xfce-mainline-v0.33-goodix-ssh-no-modules-sm-x910-twrp.zip`,
+  22.007.913 bytes, SHA-256 previo a copia
+  `cc06f194a62653f731c4ef4238fed4ee047e2fbc2e173244a1f132c3eee6db71`.
+- Próximo paso: volver manualmente a TWRP, copiar v0.33, comparar una sola vez
+  el SHA local/remoto y flashear. Tras validar SSH por clave se hará el bisect
+  de módulos responsable de apagar el scanout conservado.

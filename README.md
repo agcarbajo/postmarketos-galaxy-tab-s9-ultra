@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 45, v0.32).
+> Última actualización: 2026-07-20 (sesión 46, v0.33 preparada).
 
 ## Objetivo
 
@@ -52,7 +52,7 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.31 demuestra que el kernel/DTS actuales llegan a LightDM sin módulos; v0.32 corrige la aplicación incompleta del parche Goodix en la build directa |
+| Kernel mainline SM8550 | ✅ v0.32 valida físicamente kernel/DTS actuales, LightDM y táctil sin módulos; la regresión de los pingüinos queda aislada a un módulo |
 | DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
@@ -60,24 +60,24 @@ demostrarlo en este dispositivo.
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
-| Táctil | 🧪 v0.31 registra Goodix pero rechaza eventos por checksum; v0.32 restaura el arreglo completo ya validado en v0.17 |
+| Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.32 copiada a `/sdcard` y verificada; pendiente flash manual para validar LightDM + táctil con kernel actual sin módulos |
+| Imagen/paquete de prueba | 🧪 v0.33 generada; conserva v0.32 y añade acceso SSH por clave, pendiente copiar desde TWRP y flash manual |
 
 ## Reto en curso
 
-Probar físicamente v0.32. v0.31 ya confirma que el kernel/DTS/initramfs
-actuales, manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables,
-llegan a LightDM; por tanto la regresión que deja los pingüinos en pantalla
-desde v0.19 pertenece exclusivamente a algún módulo autocargado. El táctil de
-v0.31 falló por un problema distinto y ya identificado: la build directa
-detectaba el marcador de un parche Goodix parcial y omitía tanto el forzado de
-eventos Samsung de 16 bytes para PID 6936 como la prelectura de un solo
-contacto. v0.32 corrige la guarda, actualiza automáticamente los worktrees
-parciales y conserva el aislamiento sin módulos. Si LightDM y el táctil
-funcionan juntos, esta será la base usable para reintroducir por grupos los
-módulos, conservar SSH NCM/RNDIS y después reactivar WCN7850:
+Instalar v0.33 para obtener SSH por clave pública sobre la base v0.32 ya
+validada. v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
+manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
+LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
+pingüinos en pantalla desde v0.19 pertenece exclusivamente a algún módulo
+autocargado. NCM funciona en `172.16.42.1:22`, pero la contraseña de la rootfs
+física rechaza `phablet/<DEV_PASSWORD>` aunque la rootfs generada contiene un hash válido
+para `<DEV_PASSWORD>`. v0.33 no cambia ninguna imagen de boot respecto a v0.32 y añade
+únicamente una clave pública bajo `/etc/ssh/authorized_keys`. Una vez validado
+el acceso se iniciará el bisect acumulativo de módulos y después se retomará
+WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1092,6 +1092,24 @@ lado del workspace.
   `c4509790f42bb6cff93e73ca0a7bdd2609d6c2b1f19eb6a6526bac263d5a67b9`.
   Se copió a `/sdcard` y la única comparación local/remota coincide; el
   asistente no flasheó ninguna partición. v0.30 permanece como rollback.
+- La prueba física v0.32 valida el resultado esperado: llega a LightDM y el
+  táctil responde correctamente. NCM enumera como `UsbNcm Host Device #7`, el
+  host obtiene `172.16.42.2/24`, hay ping sin pérdidas a `172.16.42.1` y
+  OpenSSH escucha en el puerto 22. La contraseña `phablet/<DEV_PASSWORD>` continúa
+  rechazada.
+- La rootfs de build sí contiene un hash SHA-512 desbloqueado que valida
+  `<DEV_PASSWORD>`, `/bin/ash` figura en `/etc/shells` y sshd usa PAM. Para no modificar
+  a ciegas la contraseña persistente de la microSD, v0.33 añade una clave
+  Ed25519 de desarrollo mediante `AuthorizedKeysFile
+  /etc/ssh/authorized_keys/%u`; la clave privada sólo existe en WSL bajo
+  `/root/.ssh/gts9u_pmos` y no se versiona.
+- v0.33 reutiliza byte por byte el kernel, DTB y las cinco imágenes Android de
+  v0.32; únicamente amplía el overlay de rootfs. ZIP preparado:
+  `postmarketos-edge-xfce-mainline-v0.33-goodix-ssh-no-modules-sm-x910-twrp.zip`,
+  22.007.913 bytes, SHA-256 previo a la copia
+  `cc06f194a62653f731c4ef4238fed4ee047e2fbc2e173244a1f132c3eee6db71`.
+  Pendiente entrar en TWRP, copiarlo a `/sdcard` y hacer la única comparación
+  local/remota antes del flash manual.
 
 ## Lo que no ha funcionado / no repetir
 
