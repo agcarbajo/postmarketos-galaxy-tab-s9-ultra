@@ -2557,3 +2557,44 @@ física.
   board-2.bin no casara con `board_id 0xff`, ath12k caerá al BDF Samsung; si
   aun así fallara WMI, quedaría investigar la compatibilidad
   amss-oficial↔BDF-Samsung y probar la BDF genérica del contenedor.
+
+## 2026-07-21 — sesión 64: el amss oficial arranca pero la BDF QMI expira; v0.48
+
+- La usuaria flasheó v0.47. La SD contiene el set oficial verificado por
+  hash (amss `43aadfd3…`, board-2 `1abee713…`, board.bin Samsung, m3
+  oficial). Journal del boot `bac3eec4ddbf460bbfa138a5862453e7` extraído a
+  `work/v047-wifi-boot-20260721/`; rootfs desmontada.
+- El amss oficial ARRANCA: `fw_version 0x1103006c`, build 2026-03-06,
+  `WLAN.HMT.1.1.c7-00108-…_UPSTREAM-3` (la rama de linux-firmware), MHI
+  Mission mode y QMI cap correctos. Pero el fallo se adelanta: a los 25,0 s
+  `qmi failed to load bdf file` / `qmi failed to load board data file: -110`.
+  Con el amss Samsung la descarga BDF completaba y moría WMI después; con el
+  oficial el firmware deja de responder durante la propia descarga de board
+  data. No hay mensajes de error de fetch de fichero, así que no se puede
+  saber a ciegas si ath12k eligió board-2.bin o el fallback Samsung, ni en
+  qué mensaje QMI exacto se atasca.
+- v0.48 es una build de diagnóstico de una sola variable: activa
+  `CONFIG_ATH12K_DEBUG=y` en el fragment (kernel r27; el Image no cambia, el
+  símbolo sólo afecta al módulo) y añade
+  `/etc/modprobe.d/ath12k-debug.conf` con `options ath12k debug_mask=0x62`
+  (WMI|BOOT|QMI). El journal del siguiente arranque mostrará el boardname
+  construido, qué fichero de board se usó, cada petición/respuesta QMI y el
+  punto exacto del timeout.
+- Trampa de build descubierta y corregida: el build `M=` deposita los
+  objetos en el worktree fuente, no en el directorio `O=`, y el cambio de
+  config no forzó recompilación; los dos primeros empaquetados v0.48
+  salieron byte a byte idénticos y sin las cadenas `ath12k_dbg`. Tras
+  limpiar `*.o/.cmd/*.mod*` del worktree, el módulo contiene `boot using
+  board name` y las cadenas QMI; el validador comprueba ahora una cadena
+  real de `ath12k_dbg` en el binario.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.48-wcn7850-qmi-debug-sm-x910-twrp.zip`,
+  27.287.294 bytes, SHA-256
+  `6b9c41293ec94f3d159905af293f9cafd03b08b0530f075696a43e99d89f31c9`.
+  Copiado a `/sdcard`; la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.48 y arrancar hasta el escritorio. El journal
+  con `debug_mask=0x62` mostrará el boardname, el fichero de board elegido
+  (board-2 vs fallback Samsung), cada transacción QMI y el mensaje exacto
+  donde el firmware oficial deja de responder; con eso se decidirá el
+  arreglo (BDF alternativa, tamaño de segmentos, o versión de amss).

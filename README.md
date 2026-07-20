@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 63, amss oficial de linux-firmware en v0.47).
+> Última actualización: 2026-07-21 (sesión 64, diagnóstico QMI ath12k en v0.48).
 
 ## Objetivo
 
@@ -55,31 +55,33 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r26 sin cambios; firmware r3: amss.bin y board-2.bin oficiales de linux-firmware + BDF Samsung como fallback + m3 oficial |
+| Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware r3: amss.bin y board-2.bin oficiales + BDF Samsung fallback + m3 oficial |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 Enlace PCIe y enumeración estables; v0.46 refuta el mapeo BDF/M3 como causa del `wmi ready -110`; v0.47 sustituye el amss stock (exige phy_ucode vía cnss2) por el oficial de linux-firmware |
+| Wi-Fi | 🧪 v0.47: el amss oficial arranca (fw 0x1103006c) pero la descarga QMI de la BDF expira (-110); v0.48 añade `debug_mask` QMI/BOOT/WMI para ver la transacción exacta |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.47 validada y copiada a `/sdcard`; SHA-256 local/tablet `9b502da2…f4e48`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.48 validada y copiada a `/sdcard`; SHA-256 local/tablet `6b9c4129…f31c9`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.47. El enlace PCIe y la enumeración quedaron
-resueltos en v0.45 (mux PIPE des-aparcado → `PCIe Gen.2 x2 link up`,
-`17cb:1107`, ath12k enlazado, MHI Mission mode, QMI leyendo chip y
-fw_version). v0.46 corrigió el mapeo BDF/M3 (payload real del bdwlan.elf y
-m3 oficial) y el fallo `wmi unified ready -110` persistió idéntico: el
-mapeo queda refutado como causa. La variable restante demostrable es el
-`amss20.bin` stock: es la rama downstream `WLAN.HMT.2.0.c3.1` que cnss2
-alimenta con `phy_ucode20.elf` por un canal QMI inexistente en mainline; sin
-ese microcódigo su subsistema WLAN no arranca. v0.47 instala el firmware
-oficial de linux-firmware para WCN7850 hw2.0 (amss.bin + board-2.bin, con el
-BDF Samsung como fallback API-1 y el m3 oficial), sin tocar el kernel. El USB
-Code 43 continúa aplazado mientras Wi-Fi pueda proporcionar el canal de
-control:
+Flashear manualmente v0.48 (diagnóstico QMI). El enlace PCIe quedó resuelto
+en v0.45 y la enumeración es estable. Con el amss Samsung, las descargas
+BDF/M3 completan y muere `wmi unified ready`; v0.46 demostró que el mapeo
+BDF/M3 no era la causa. Con el amss oficial de linux-firmware (v0.47, fw
+`0x1103006c` UPSTREAM-3), el firmware arranca y responde el cap QMI pero
+deja de responder durante la propia descarga de board data
+(`qmi failed to load board data file: -110`). El log estándar no dice qué
+fichero de board eligió ath12k (board-2.bin oficial o el fallback BDF
+Samsung) ni en qué mensaje QMI se atasca. v0.48 (kernel r27) activa
+`CONFIG_ATH12K_DEBUG` y fija `debug_mask=0x62` (WMI|BOOT|QMI) por
+modprobe.d: el siguiente journal contendrá el boardname construido, el
+fichero elegido y cada transacción QMI hasta el punto exacto del timeout,
+para decidir entre BDF alternativa, ajuste de la descarga o versión de amss.
+El USB Code 43 continúa aplazado mientras Wi-Fi pueda proporcionar el canal
+de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el

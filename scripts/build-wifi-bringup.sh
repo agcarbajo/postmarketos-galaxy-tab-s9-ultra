@@ -19,6 +19,7 @@ case "$overlay" in
 esac
 mkdir -p \
 	"$overlay/etc/modules-load.d" \
+	"$overlay/etc/modprobe.d" \
 	"$overlay/etc/ssh/sshd_config.d" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/libexec" \
@@ -27,6 +28,8 @@ mkdir -p \
 cp -a "$kernel/modules-root/." "$overlay/"
 install -m 0644 "$project/configs/wifi/ath12k.conf" \
 	"$overlay/etc/modules-load.d/ath12k.conf"
+install -m 0644 "$project/configs/wifi/ath12k-debug.conf" \
+	"$overlay/etc/modprobe.d/ath12k-debug.conf"
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \
