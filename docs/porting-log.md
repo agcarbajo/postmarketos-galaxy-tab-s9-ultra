@@ -2203,3 +2203,55 @@ física.
   comprobar que los siete rails registran y leer sus voltajes efectivos,
   PERST lógico/raw, PARF/DBI LTSSM y la presencia de `17cb:1107` antes de
   decidir si la siguiente diferencia está en PHY/refclock.
+
+## 2026-07-20 — sesión 57: v0.40 llega a Detect.Active; diagnóstico v0.41
+
+- La usuaria flasheó v0.40. La tablet mantiene escritorio y táctil, pero no
+  muestra Wi-Fi; volvió manualmente a TWRP. `boot` y `vendor_boot` coinciden
+  con v0.40 (`06105bda…d2d` y `a525f2ec…892`), y la rootfs contiene sólo los
+  dos módulos ath12k esperados. El journal del boot
+  `f596bbdabbd344c781908d016c8bcee4` se extrajo a
+  `work/v040-wifi-boot-20260720/` y la rootfs quedó desmontada.
+- Los siete inputs WCN registran y quedan habilitados a 1.000.000, 1.800.000,
+  1.200.000, 980.000, 952.000, 1.352.000 y 1.904.000 µV. WLAN_EN ejecuta el
+  cold-reset 0→1; PERST raw es 0 afirmado y 1 liberado; iATU se inicializa.
+  El root port `17cb:0113` aparece, pero no el endpoint `17cb:1107`.
+- Al iniciar training, PARF `0x101` indica LTSSM habilitado en estado 1
+  (`Detect.Active`), DEBUG0 vale `0xff2d01` y DEBUG1 `0x08600000`, sin bits de
+  link-up/training. Tras ~0,96 s termina `Device not found`. ath12k carga como
+  módulo pero no puede enlazarse: el fallo precede MHI, firmware y mac80211.
+- La PHY usada es Gen3x2, como stock. Su tabla mainline coincide con la
+  `qcom,phy-sequence` del FDT vivo; también coinciden PERST GPIO94, CLKREQ
+  GPIO95 y WAKE GPIO96. El driver stock `cnss2.ko` extraído de `vendor_dlkm`
+  confirma que para Kiwi v2 `0x1107` la secuencia genérica es rails, clocks y
+  WLAN_EN. La lectura SW_CTRL y el ciclo extra de 100 ms sólo se ejecutan para
+  `0x1103`, por lo que no se fuerzan GPIO82/83.
+- Se añadió `diagnose-sm8550-pcie-clocks-phy.patch`, acotado por compatibles
+  SM8550: registra los seis clocks QMP y sus rates, los clocks del controlador,
+  registros PCS power/reset/start/status/endpoint-refclk, TLMM de GPIO80–83 y
+  94–96, `TCSR_PCIE_0_CLKREF_EN` y PARF SYS/PHY/REFCLK/LTSSM. No altera rails,
+  delays, muxes ni la secuencia estable. El kernel reproducible sube a r22.
+- El primer empaquetado v0.41 se descartó: el build incremental aún no conocía
+  el parche nuevo y produjo el mismo `Image.gz` que v0.40. Se corrigió
+  `scripts/build-mainline-kernel.sh`; el intento real recompiló QMP/PCIe. Un
+  error por `__clk_is_enabled` sin declarar se resolvió añadiendo
+  `<linux/clk-provider.h>` al parche reproducible.
+- Build válida: `Image.gz` SHA-256
+  `2c111b8417a0954b597264cd292d9dcaae7dd38bd0de63e888461f046686fb9f`;
+  DTB `2ae3b8fca09dc3f5eb7d038ade1db030ab0cb3210259649473888d3a25789866`;
+  config `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`;
+  `boot.img` `adfd2e7c51cd923e93448719d7526eecaedf19f287f6488e0e182859fbfb7f47`;
+  `vendor_boot.img`
+  `a525f2ec7b95edb9205ffafd4b1c408665259e0c4c06500e2295cb1927390892`.
+  El binario contiene las cinco familias de trazas y la secuencia completa de
+  parches se aplica limpiamente sobre upstream.
+- ZIP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.41-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.181.338 bytes, SHA-256
+  `78dee1a129ecdfc9e3162a093771e00c4fc78894ceda195af82ac0136d0f0ec4`.
+  Se copió a `/sdcard` y la única comparación local/tablet coincide; el
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.41, arrancar y volver a TWRP. El journal debe
+  mostrar si `TCSR_CLKREF`, el mux CLKREQ, los clocks QMP/controlador y PCS
+  están realmente activos. Sólo entonces aplicar el arreglo eléctrico mínimo
+  justificado, conservando pantalla y táctil.

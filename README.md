@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 56, v0.40 Wi-Fi preparada).
+> Última actualización: 2026-07-20 (sesión 57, v0.41 diagnóstico PHY/refclock preparada).
 
 ## Objetivo
 
@@ -52,44 +52,40 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 v0.39 conserva físicamente escritorio/táctil; v0.40 mantiene release `7.2.0-rc3-dirty` y diagnóstico de rails, PERST y LTSSM |
-| DTS `gts9uwifi` | 🧪 v0.40 traduce los votos WCN stock a los selectores discretos representables por PM8550VS y conserva PMU/PCIe0/PHY/L3G |
+| Kernel mainline SM8550 | 🧪 v0.40 conserva físicamente escritorio/táctil; v0.41 mantiene release `7.2.0-rc3-dirty` y añade diagnóstico de clocks, PHY, TLMM y TCSR |
+| DTS `gts9uwifi` | 🧪 v0.41 conserva los siete votos WCN verificados, PMU/PCIe0/PHY/L3G y no cambia la secuencia eléctrica estable |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r21 corrige los selectores PM8550VS y conserva trazas PCIe/WCN; device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r22 instrumenta PHY/refclock/TLMM además de las trazas PCIe/WCN; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.38 llega al root port pero no enumera `17cb:1107`; v0.39 falla antes por tres tensiones no representables; v0.40 usa 952/1352/1904 mV |
+| Wi-Fi | 🧪 v0.40 habilita los siete rails y llega a LTSSM `Detect.Active`, pero no enumera `17cb:1107`; v0.41 medirá clocks/PHY/GPIO restantes |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.40 validada y copiada a `/sdcard`; SHA-256 local/tablet `cb911bb9…1225d`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.41 validada y copiada a `/sdcard`; SHA-256 local/tablet `78dee1a1…0ec4`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.40 y comprobar primero LightDM y táctil. v0.39 sí se
-instaló y ambos siguen funcionando, pero no llegó al PMU WCN: el journal
-`0e4b737851aa4f3cb70529b8c17c2ea8` muestra que S4E y S4G fallan al registrar
-con `-ENOTRECOVERABLE`; WCN/PCIe permanecen en deferred probe. La causa es que
-los votos stock nominales 950, 1350 y 1900 mV no coinciden con selectores del
-FTSMPS525 mainline. Al usar `min=max`, el framework intentaba aplicarlos al
-registrar el proveedor y no podía mapearlos.
+Flashear manualmente v0.41, comprobar LightDM/táctil y volver a TWRP para
+extraer el journal. v0.40 ya verificó físicamente toda la cadena anterior a la
+PHY: los siete rails registran, quedan habilitados a 1000/1800/1200/980/952/
+1352/1904 mV, WLAN_EN pasa de 0 a 1, PERST raw pasa de 0 a 1 e iATU arranca.
+El root port `17cb:0113` aparece, pero el endpoint `17cb:1107` no: al iniciar
+LTSSM, PARF vale `0x101` (estado 1, `Detect.Active`), DEBUG0 `0xff2d01` y
+DEBUG1 `0x08600000`; termina `Device not found`. El fallo es eléctrico,
+refclock/PHY o wake del endpoint, previo a MHI, ath12k y firmware.
 
-v0.40 usa el primer selector físico igual o superior a cada petición stock:
-S4E 952 mV y S4G 1352 mV en la región de pasos de 4 mV, y S6G 1904 mV en la
-región de 8 mV. S2G 980 mV y S5G 1000 mV ya son representables; L15B 1800 mV
-y L3G 1200 mV permanecen sin cambios. De este modo los reguladores deben
-registrarse, almacenar el voto y enviarlo antes del enable. Se conservan las
-trazas de tensión efectiva, PERST lógico/raw y PARF/DBI LTSSM, además del
-aislamiento de sólo dos módulos ath12k que mantiene estable el escritorio.
-
-Tras la prueba se volverá a TWRP para extraer el journal. Primero debe
-desaparecer `devm_regulator_register() failed`; después se comprobarán los
-siete voltajes, PERST raw (0 afirmado, 1 liberado), LTSSM y `17cb:1107`. Si el
-endpoint aparece, se continúa con MHI/firmware/ath12k y Wi-Fi SSH. Si sigue
-ausente con todo lo anterior correcto, el siguiente ámbito será la PHY
-QMP/refclock/secuencia stock. El USB Code 43 queda aplazado mientras Wi-Fi
-pueda proporcionar el canal de control:
+La tabla Gen3x2 mainline coincide entrada por entrada con `qcom,phy-sequence`
+stock, y GPIO94 PERST, GPIO95 CLKREQ y GPIO96 WAKE coinciden en mux/bias. El
+`cnss2.ko` stock confirma además que el X910 `0x1107` usa rails, clocks y
+WLAN_EN sin el ciclo SW_CTRL/100 ms reservado al ID `0x1103`. v0.41 no cambia
+esa secuencia: registra los clocks QMP/controlador y sus rates, los registros
+PCS finales (power/reset/start/status/refclk), los valores TLMM de GPIO80–83 y
+94–96, `TCSR_PCIE_0_CLKREF_EN` y PARF SYS/PHY/REFCLK/LTSSM. Es la medición
+mínima para decidir si hay que forzar un reloj, corregir un mux o buscar una
+diferencia de alimentación todavía no modelada. El USB Code 43 continúa
+aplazado mientras Wi-Fi pueda proporcionar el canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
