@@ -1719,3 +1719,32 @@ física.
   greeter, conservar la tablet sobre esta base usable y hacer un bisect por
   grupos de los módulos que empezaron a cargar en v0.19, trasladando al kernel
   r17 únicamente la exclusión causal mínima.
+
+## 2026-07-20 — sesión 44: v0.30 visible y aislamiento sin módulos v0.31
+
+- La usuaria flasheó manualmente v0.30. El control funcionó: la tablet arranca,
+  el táctil responde y se puede iniciar sesión hasta llegar al escritorio.
+  Esto confirma que el rootfs actual no es la causa y recupera una base
+  físicamente usable anterior a la regresión v0.19.
+- Windows enumera además `UsbNcm Host Device #7`; el host usa
+  `172.16.42.2/24` y `172.16.42.1:22` responde con OpenSSH 10.3. El usuario
+  configurado sigue siendo `phablet`, pero la autenticación automatizada con
+  la contraseña documentada `<DEV_PASSWORD>` fue rechazada; no se alteró el sistema vivo.
+- Para separar los dos cambios simultáneos de v0.19 se construyó v0.31 con el
+  kernel y DTB actuales mediante `scripts/build-mainline-kernel.sh`, pero sin
+  módulos. El release embebido es `7.2.0-rc3-dirty` y el rootfs no contiene un
+  directorio coincidente, reproduciendo el aislamiento de módulos de v0.18 sin
+  revertir los arreglos actuales del kernel/DTS.
+- El DTB v0.31 confirma `status=disabled` para WCN PMU, PCIe0 y PCIe0 PHY. El
+  overlay conserva Xorg modesetting por defecto y el handoff no-op validado en
+  v0.30. Se añadió `scripts/build-current-no-modules-control.sh` para hacer la
+  prueba reproducible.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.31-current-kernel-no-modules-sm-x910-twrp.zip`,
+  22.008.887 bytes, SHA-256
+  `be37c78307d00dc065ed368ec4e35ecac434d7a11beead7b010e924ae1406d0e`.
+  Está validado localmente y pendiente de copiar a `/sdcard` cuando la tablet
+  vuelva a TWRP; el asistente no flasheó ninguna partición.
+- Interpretación prevista: si v0.31 muestra el escritorio, el culpable es uno
+  de los módulos que empezaron a cargar en v0.19; si muestra pingüinos, debe
+  bisectarse kernel/DTS/initramfs entre v0.18 y la base actual.

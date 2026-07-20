@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 43, v0.30).
+> Última actualización: 2026-07-20 (sesión 44, v0.31).
 
 ## Objetivo
 
@@ -52,34 +52,32 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.30 recupera como control el boot `7.2.0-rc3-dirty` físicamente funcional de v0.18; la rama reproducible r17 se conserva para el bisect posterior |
+| Kernel mainline SM8550 | ✅ v0.30 recupera el boot v0.18 y vuelve a mostrar el escritorio; v0.31 usa el kernel/DTS actuales con sufijo `-dirty` y sin módulos cargables |
 | DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 La regresión comienza en v0.19 al activar el kernel APK y todos sus módulos; v0.30 reproduce íntegramente el boot/X de v0.18 para recuperar primero una interfaz usable |
+| Escritorio | ✅ v0.30 validada físicamente: LightDM, escritorio y táctil funcionan; v0.31 aislará kernel/DTS actuales frente a la autocarga de módulos |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.30 copiada a `/sdcard` y verificada; pendiente de flash manual del baseline v0.18 conocido |
+| Imagen/paquete de prueba | 🧪 v0.31 construida y validada; pendiente volver a TWRP para copiarla y probar kernel/DTS actuales sin módulos |
 
 ## Reto en curso
 
-Probar físicamente v0.30 para recuperar primero una tablet usable y establecer
-un control exacto. La auditoría confirma que v0.19 mezcló dos cambios: añadió
-WCN/RNDIS al DT/config y sustituyó el kernel directo `7.2.0-rc3-dirty` por el
-kernel APK `7.2.0-rc3`, haciendo que udev cargase por primera vez todo el árbol
-de módulos. v0.28 sólo bloqueó cuatro controladores multimedia y quedó
-refutada; v0.29 bloquea además dos módulos SCM, pero sigue siendo un bisect
-parcial no validado. v0.30 reutiliza byte por byte las cinco imágenes de boot
-de v0.18 —pantalla y táctil físicamente funcionales— con el instalador actual,
-restaura el Xorg modesetting por defecto (`ShadowFB=false`) y neutraliza el
-rebote VT/xrandr posterior. Si reaparece LightDM, se mantiene esta base usable
-y se bisectan por grupos los módulos hasta identificar el consumidor exacto;
-después se traslada la exclusión mínima al kernel reproducible r17. Después:
-conservar SSH RNDIS y reintroducir WCN7850:
+Probar físicamente v0.31. v0.30 ya confirma el control completo: vuelve a
+mostrar LightDM, permite entrar al escritorio y conserva el táctil. También
+enumera NCM con host `172.16.42.2` y un sshd responde en `172.16.42.1`, aunque
+la contraseña automatizada `<DEV_PASSWORD>` fue rechazada. La transición v0.19 mezcló
+kernel/DTS nuevos y autocarga completa de módulos; v0.31 conserva el kernel y
+DTS actuales (WCN/PCIe0/PHY deshabilitados) pero usa release
+`7.2.0-rc3-dirty`, sin directorio de módulos coincidente, y mantiene el Xorg
+funcional de v0.30. Si muestra el escritorio, la regresión es exclusivamente
+un módulo y se inicia un bisect acumulativo por grupos; si reaparecen los
+pingüinos, el diferenciador está en kernel/DTS/initramfs posterior a v0.18.
+Después: conservar SSH RNDIS y reintroducir WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1051,6 +1049,23 @@ lado del workspace.
   `4f4797b29559496aa678f70e2f2a51bbb510b58258a49d62f4b3355b6735c83b`.
   Copiado a `/sdcard`; la comparación local/remota coincide. El asistente no
   flasheó ninguna partición.
+- La prueba física v0.30 confirma el resultado esperado: arranca hasta
+  LightDM, el táctil responde y la usuaria puede entrar al escritorio. Queda
+  demostrado que el rootfs actual es compatible y que la regresión se limita
+  al conjunto de cambios de boot introducido desde v0.19.
+- v0.30 también enumera `UsbNcm Host Device` en Windows; el host recibe
+  `172.16.42.2/24` y el puerto 22 de `172.16.42.1` responde con OpenSSH 10.3.
+  La autenticación automática de `phablet` con `<DEV_PASSWORD>` fue rechazada, por lo
+  que no se modificó la sesión viva.
+- v0.31 compila el kernel/DTS actuales mediante la ruta directa y conserva
+  `Linux version 7.2.0-rc3-dirty`; como el rootfs no contiene
+  `/usr/lib/modules/7.2.0-rc3-dirty`, ningún módulo puede cargarse. El DTB
+  confirma WCN PMU, PCIe0 y PHY deshabilitados, y el overlay conserva Xorg por
+  defecto y el handoff no-op. ZIP:
+  `postmarketos-edge-xfce-mainline-v0.31-current-kernel-no-modules-sm-x910-twrp.zip`,
+  22.008.887 bytes, SHA-256
+  `be37c78307d00dc065ed368ec4e35ecac434d7a11beead7b010e924ae1406d0e`.
+  Pendiente volver a TWRP para copiar y verificar el archivo.
 
 ## Lo que no ha funcionado / no repetir
 
