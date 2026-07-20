@@ -146,6 +146,7 @@ if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
         esac
         target="$ROOTFS_MOUNT/$relative"
         mkdir -p "${target%/*}" || abort "cannot create directory for $relative"
+        chmod 0755 "${target%/*}" || abort "cannot secure directory for $relative"
         unzip -p "$ZIPFILE" "rootfs-overlay/$relative" > "$target" || \
             abort "cannot extract rootfs overlay file $relative"
         chmod "$mode" "$target" || abort "cannot set mode on $relative"

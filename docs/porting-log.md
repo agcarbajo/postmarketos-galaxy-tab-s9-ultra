@@ -1826,3 +1826,32 @@ física.
   comparación local/remota coincide en
   `cc06f194a62653f731c4ef4238fed4ee047e2fbc2e173244a1f132c3eee6db71`;
   queda pendiente únicamente el flash manual y el arranque.
+
+## 2026-07-20 — sesión 47: v0.33 rechaza la clave y hardening v0.34
+
+- La usuaria flasheó v0.33 y arrancó de nuevo la base funcional. NCM conserva
+  `172.16.42.2/24` en el host, dos pings a `172.16.42.1` responden en 1 ms y el
+  puerto 22 está abierto.
+- El cliente ofrece la clave Ed25519 esperada, fingerprint
+  `SHA256:EsZ6dkUkxnvcfUDER6tbuQOKEZ4KRc9RjfYBFnrWQ94`, pero OpenSSH 10.3 la
+  rechaza y vuelve a `publickey,password,keyboard-interactive`. El ZIP sí
+  contiene tanto la clave como el drop-in con bytes LF correctos.
+- El instalador imponía modo a cada fichero, pero no a los directorios creados
+  por `mkdir -p`. La ruta nueva `/etc/ssh/authorized_keys` podía heredar el
+  `umask` permisivo de TWRP; `StrictModes` rechaza entonces la ruta completa
+  aunque el fichero final sea `0644`. Es la diferencia material frente a los
+  overlays anteriores, que escribían en directorios ya existentes.
+- El instalador se endurece de forma general: tras crear el directorio padre
+  de cada entrada aplica `chmod 0755` antes de extraerla. v0.34 mueve además la
+  clave a `/etc/ssh/gts9uwifi_authorized_keys`, directamente bajo el directorio
+  preexistente, y usa `00-gts9uwifi-development-key.conf` para que la primera
+  definición de `AuthorizedKeysFile` gane incluso aunque el drop-in `90-*` de
+  v0.33 permanezca en la microSD.
+- v0.34 conserva byte por byte kernel, DTB, `boot`, `init_boot`, `vendor_boot`,
+  `dtbo` y `vbmeta` de v0.32/v0.33. ZIP preparado:
+  `postmarketos-edge-xfce-mainline-v0.34-goodix-ssh-flat-key-no-modules-sm-x910-twrp.zip`,
+  22.007.934 bytes, SHA-256 previo a copia
+  `aa92d42f62f5922a0a9713f9eccd8d15e3740942fcb27f170d19f661f8f49fa6`.
+- Próximo paso: regresar a TWRP, copiar/verificar v0.34 y flashearla. Si la
+  clave siguiera rechazada, extraer desde TWRP los ficheros instalados, sus
+  modos/propietarios y el journal SSH antes de otra hipótesis.
