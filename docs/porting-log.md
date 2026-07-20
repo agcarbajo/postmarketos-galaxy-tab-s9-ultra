@@ -1990,3 +1990,7 @@ física.
   `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
 - Próximo paso: volver a TWRP, copiar/verificar v0.36 y flashearla. Mantener el
   otro pmOS desconectado; aceptar SSH sólo si la host key es `1N9kAKdf...`.
+- La usuaria volvió a TWRP. v0.36 se copió a `/sdcard` y la única comparación
+  local/remota coincide en
+  `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
+  Queda pendiente el flash manual; el asistente no escribió particiones.

@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.36 generada y validada; elimina los logs DWC3 que bloquean el hot path, pendiente copiar desde TWRP |
+| Imagen/paquete de prueba | 🧪 v0.36 copiada a `/sdcard` y verificada; elimina los logs DWC3 del hot path, pendiente flash manual |
 
 ## Reto en curso
 
@@ -1198,7 +1198,8 @@ lado del workspace.
   `postmarketos-edge-xfce-mainline-v0.36-usb-hotpath-clean-no-modules-sm-x910-twrp.zip`,
   22.007.155 bytes, SHA-256 previo a copia
   `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
-  Pendiente volver a TWRP, copiar y comparar una sola vez antes del flash.
+  Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
+  flash manual; el asistente no flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
