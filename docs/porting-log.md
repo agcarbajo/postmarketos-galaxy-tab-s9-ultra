@@ -2154,3 +2154,52 @@ física.
   0 durante assert y 1 tras deassert, estado LTSSM y endpoint `17cb:1107`. Si
   todo salvo el endpoint es correcto, el siguiente cambio debe comparar la
   tabla PHY QMP/refclock y la secuencia stock, no ath12k ni firmware.
+
+## 2026-07-20 — sesión 56: selectores PM8550VS corregidos en v0.40
+
+- La usuaria flasheó v0.39. La tablet alcanza el escritorio, conserva el
+  táctil y sigue sin Wi-Fi; volvió manualmente a TWRP. Se montó
+  `mmcblk1p2` como `ro,noload`, se extrajeron los journals a
+  `work/v039-wifi-boot-20260720/` y se desmontó la rootfs.
+- La identidad física coincide con v0.39: `boot` SHA-256
+  `a5dc4e6299b7865200a5232ae2229c5dbe213dc0971e6bf2b9b7dc1ba04d6b18`
+  y `vendor_boot`
+  `5402ca5cff47603d7d73fb6759424ef768ff4db18441d6c0534a825a3766e5d6`;
+  la rootfs contiene exactamente los dos módulos `7.2.0-rc3-dirty` y
+  `ath12k.conf`.
+- El boot relevante es `0e4b737851aa4f3cb70529b8c17c2ea8`. A 1,068 s S4E
+  registra `failed to get the current voltage: -ENOTRECOVERABLE` y el
+  proveedor PM8550VS-E falla en `smps4` con `-131`; a 1,091 s sucede lo mismo
+  con S4G y el proveedor PM8550VS-G. WCN queda esperando S6G y PCIe0 PHY a
+  L3G. No existen cold-reset, rails, PERST ni LTSSM porque la cadena no llegó
+  a ejecutarse; ath12k y NetworkManager sí cargan pero siguen sin dispositivo.
+- La causa está en la tabla `pmic5_ftsmps525` del driver mainline. Admite
+  `300000 + 4000*n` µV hasta 1.372.000 µV y, desde 1.376.000 µV,
+  `1376000 + 8000*n` µV. Los votos nominales stock 950.000, 1.350.000 y
+  1.900.000 µV no son seleccionables. Al expresarlos como `min=max`, el core
+  activa `apply_uV`, no puede mapearlos y aborta el registro del proveedor.
+- v0.40 traduce cada voto nominal stock al primer nivel físico superior:
+  S4E=952.000 µV, S4G=1.352.000 µV y S6G=1.904.000 µV.
+  S2G=980.000 µV y S5G=1.000.000 µV ya son selectores exactos; L15B/L3G
+  permanecen en 1.800.000/1.200.000 µV. El paquete kernel sube a r21 y todas
+  las trazas v0.39 permanecen.
+- Build v0.40: `Image.gz`
+  `9d080e225c7fb3a5b87abb318e2611e8e37912452cf6e9c6398f7233d26222f0`;
+  DTB `2ae3b8fca09dc3f5eb7d038ade1db030ab0cb3210259649473888d3a25789866`;
+  config `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`;
+  `boot.img`
+  `06105bda5545ec06a0b1749a07bb7b0c86932045810fea6f2f0f1c702aab0d2d`;
+  `vendor_boot.img`
+  `a525f2ec7b95edb9205ffafd4b1c408665259e0c4c06500e2295cb1927390892`.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.40-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.182.373 bytes, SHA-256
+  `cb911bb9a68fe93c4d8bbfd61866f822d5d5ac39d1586ebf1c1740af0191225d`.
+  La validación comprobó los cinco selectores SMPS, L3G, trazas, release,
+  exactamente dos módulos y su dependencia/alias, firmware, imágenes, CRC,
+  manifests, modos e instalador. Se copió a `/sdcard` y la única comparación
+  local/tablet coincide; el asistente no flasheó particiones.
+- Próximo paso: flash manual v0.40. Si sigue sin Wi-Fi, volver a TWRP para
+  comprobar que los siete rails registran y leer sus voltajes efectivos,
+  PERST lógico/raw, PARF/DBI LTSSM y la presencia de `17cb:1107` antes de
+  decidir si la siguiente diferencia está en PHY/refclock.

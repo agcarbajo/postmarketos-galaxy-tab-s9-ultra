@@ -176,9 +176,9 @@
 		/* Stock Kiwi v2 votes PM8550VS-G L3 through its WCN PDC map. */
 		vddio1p2-supply = <&vreg_l3g_1p2>;
 		vddaon-supply = <&vreg_s2g_0p98>;
-		vdddig-supply = <&vreg_s4e_0p95>;
-		vddrfa1p2-supply = <&vreg_s4g_1p35>;
-		vddrfa1p8-supply = <&vreg_s6g_1p9>;
+		vdddig-supply = <&vreg_s4e_0p952>;
+		vddrfa1p2-supply = <&vreg_s4g_1p352>;
+		vddrfa1p8-supply = <&vreg_s6g_1p904>;
 
 		regulators {
 			vreg_pmu_rfa_cmn: ldo0 {
@@ -303,11 +303,11 @@
 		vdd-s4-supply = <&vph_pwr>;
 		vdd-s5-supply = <&vph_pwr>;
 
-		vreg_s4e_0p95: smps4 {
-			regulator-name = "vreg_s4e_0p95";
-			/* X910 chip_cfg@1 votes exactly 0.950 V for WLAN_DIG. */
-			regulator-min-microvolt = <950000>;
-			regulator-max-microvolt = <950000>;
+		vreg_s4e_0p952: smps4 {
+			regulator-name = "vreg_s4e_0p952";
+			/* Stock asks 0.950 V; FTSMPS525 rounds up in 4 mV steps. */
+			regulator-min-microvolt = <952000>;
+			regulator-max-microvolt = <952000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -345,11 +345,11 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		vreg_s4g_1p35: smps4 {
-			regulator-name = "vreg_s4g_1p35";
-			/* X910 chip_cfg@1 votes exactly 1.350 V for WLAN_RFA2. */
-			regulator-min-microvolt = <1350000>;
-			regulator-max-microvolt = <1350000>;
+		vreg_s4g_1p352: smps4 {
+			regulator-name = "vreg_s4g_1p352";
+			/* Stock asks 1.350 V; FTSMPS525 rounds up in 4 mV steps. */
+			regulator-min-microvolt = <1352000>;
+			regulator-max-microvolt = <1352000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -361,11 +361,11 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		vreg_s6g_1p9: smps6 {
-			regulator-name = "vreg_s6g_1p9";
-			/* X910 chip_cfg@1 votes exactly 1.900 V for WLAN_RFA1. */
-			regulator-min-microvolt = <1900000>;
-			regulator-max-microvolt = <1900000>;
+		vreg_s6g_1p904: smps6 {
+			regulator-name = "vreg_s6g_1p904";
+			/* Stock asks 1.900 V; FTSMPS525 rounds up in 8 mV steps. */
+			regulator-min-microvolt = <1904000>;
+			regulator-max-microvolt = <1904000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
