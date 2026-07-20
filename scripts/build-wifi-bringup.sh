@@ -3,7 +3,7 @@ set -euo pipefail
 
 base=${PMOS_WORKDIR:-/root/pmos-gts9u}
 project=${PROJECT_MNT:-'/mnt/c/Users/agcar/Desktop/Aplicaciones/Custom Roms/GALAXY TAB S9 ULTRA/Ubuntu Touch/PostmarketOS'}
-version=${WIFI_BUILD_VERSION:-0.41}
+version=${WIFI_BUILD_VERSION:-0.42}
 kernel="$base/out/kernel-gts9uwifi-v${version/./}"
 bundle="$base/out/gts9uwifi-mainline-v$version"
 overlay="$base/out/rootfs-overlay-v$version"

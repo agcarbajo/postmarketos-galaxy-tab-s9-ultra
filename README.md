@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 57, v0.41 diagnóstico PHY/refclock preparada).
+> Última actualización: 2026-07-20 (sesión 58, recuperación v0.42 preparada).
 
 ## Objetivo
 
@@ -52,23 +52,23 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 v0.40 conserva físicamente escritorio/táctil; v0.41 mantiene release `7.2.0-rc3-dirty` y añade diagnóstico de clocks, PHY, TLMM y TCSR |
-| DTS `gts9uwifi` | 🧪 v0.41 conserva los siete votos WCN verificados, PMU/PCIe0/PHY/L3G y no cambia la secuencia eléctrica estable |
+| Kernel mainline SM8550 | 🧪 v0.40 conserva físicamente escritorio/táctil; v0.41 reinicia antes de journald por instrumentación MMIO/clocks; v0.42 vuelve al código estable |
+| DTS `gts9uwifi` | 🧪 v0.42 conserva sin cambios los siete votos WCN verificados, PMU/PCIe0/PHY/L3G y la secuencia eléctrica estable |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r22 instrumenta PHY/refclock/TLMM además de las trazas PCIe/WCN; device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r23 retira la instrumentación temprana insegura y conserva las trazas PCIe/WCN de v0.40; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.40 habilita los siete rails y llega a LTSSM `Detect.Active`, pero no enumera `17cb:1107`; v0.41 medirá clocks/PHY/GPIO restantes |
+| Wi-Fi | 🧪 v0.40 habilita los siete rails y llega a LTSSM `Detect.Active`, pero no enumera `17cb:1107`; v0.42 trasladará clocks/GPIO a diagnóstico userspace |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.41 validada y copiada a `/sdcard`; SHA-256 local/tablet `78dee1a1…0ec4`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.42 validada y copiada a `/sdcard`; SHA-256 local/tablet `f2343525…936e8`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.41, comprobar LightDM/táctil y volver a TWRP para
-extraer el journal. v0.40 ya verificó físicamente toda la cadena anterior a la
+Flashear manualmente v0.42 para recuperar el arranque, comprobar LightDM y
+táctil y volver a TWRP para extraer el journal. v0.40 ya verificó físicamente toda la cadena anterior a la
 PHY: los siete rails registran, quedan habilitados a 1000/1800/1200/980/952/
 1352/1904 mV, WLAN_EN pasa de 0 a 1, PERST raw pasa de 0 a 1 e iATU arranca.
 El root port `17cb:0113` aparece, pero el endpoint `17cb:1107` no: al iniciar
@@ -79,12 +79,14 @@ refclock/PHY o wake del endpoint, previo a MHI, ath12k y firmware.
 La tabla Gen3x2 mainline coincide entrada por entrada con `qcom,phy-sequence`
 stock, y GPIO94 PERST, GPIO95 CLKREQ y GPIO96 WAKE coinciden en mux/bias. El
 `cnss2.ko` stock confirma además que el X910 `0x1107` usa rails, clocks y
-WLAN_EN sin el ciclo SW_CTRL/100 ms reservado al ID `0x1103`. v0.41 no cambia
-esa secuencia: registra los clocks QMP/controlador y sus rates, los registros
-PCS finales (power/reset/start/status/refclk), los valores TLMM de GPIO80–83 y
-94–96, `TCSR_PCIE_0_CLKREF_EN` y PARF SYS/PHY/REFCLK/LTSSM. Es la medición
-mínima para decidir si hay que forzar un reloj, corregir un mux o buscar una
-diferencia de alimentación todavía no modelada. El USB Code 43 continúa
+WLAN_EN sin el ciclo SW_CTRL/100 ms reservado al ID `0x1103`. v0.41 intentó
+leer clocks, TLMM/TCSR y PCS dentro de los drivers QMP/PCIe, pero la tablet se
+reinicia antes de crear un journal nuevo. Al ser el único cambio frente a
+v0.40 y no existir cambio de DTB/rootfs, esa instrumentación temprana queda
+descartada. v0.42 vuelve íntegramente al código kernel de v0.40 y recopila
+`clk_summary`, GPIO y pinmux mediante debugfs desde el servicio userspace que
+ya se ejecuta al alcanzar `graphical.target`. Así se recupera la tablet y se
+obtiene evidencia sin MMIO adicional en el kernel. El USB Code 43 continúa
 aplazado mientras Wi-Fi pueda proporcionar el canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y

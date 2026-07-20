@@ -2255,3 +2255,48 @@ física.
   mostrar si `TCSR_CLKREF`, el mux CLKREQ, los clocks QMP/controlador y PCS
   están realmente activos. Sólo entonces aplicar el arreglo eléctrico mínimo
   justificado, conservando pantalla y táctil.
+
+## 2026-07-20 — sesión 58: v0.41 reinicia temprano; recuperación v0.42
+
+- La usuaria flasheó v0.41, que se reinicia antes de llegar al escritorio, y
+  dejó de nuevo la tablet en TWRP. La partición `boot` confirma físicamente la
+  build mediante SHA-256 `adfd2e7c…fb7f47`; `vendor_boot` conserva
+  `a525f2ec…892`. Se extrajeron en lectura el journal, `/proc/last_kmsg`, lista
+  de módulos y hashes a `work/v041-crash-boot-20260720/`, y la rootfs quedó
+  desmontada.
+- No existe un boot ID nuevo después de v0.40
+  (`f596bbdabbd344c781908d016c8bcee4`): v0.41 reinicia antes de que journald
+  pueda persistir el kernel log. El `last_kmsg` expuesto por TWRP corresponde
+  al kernel recovery Samsung y no contiene el log mainline previo; pstore está
+  vacío. Por ello no es posible atribuir el reset a una lectura individual.
+- DTB, vendor_boot, módulos, firmware, rails y secuencia de alimentación eran
+  idénticos a v0.40. El único cambio ejecutable era la instrumentación dentro
+  de QMP/PCIe (`__clk_is_enabled`, registros PCS y `ioremap` de TLMM/TCSR), por
+  lo que se retira completa: no se conservarán lecturas físicas ad hoc en la
+  ruta de probe. El parche se eliminó de la receta y del build incremental;
+  el kernel reproducible sube a r23 para registrar la reversión.
+- v0.42 recompiló QMP y PCIe tras retirar la instrumentación. Conserva las
+  trazas seguras de v0.40 (rails, WLAN_EN, PERST y LTSSM) y el mismo DTB. La
+  observación restante se trasladó a userspace: al alcanzar
+  `graphical.target`, `gts9uwifi-display-handoff` registra en el journal el
+  `clk_summary`, GPIO80–83/94–96 y su pinmux bajo el tag
+  `gts9uwifi-wifi-diag`. Sólo lee debugfs y no toca MMIO ni estados del clock
+  framework durante el probe.
+- Build v0.42: `Image.gz`
+  `ec12fd56f84515ea22ec5d65928eb9df8ded562c4b1ed58b3e5c511fc4ea9740`;
+  DTB `2ae3b8fca09dc3f5eb7d038ade1db030ab0cb3210259649473888d3a25789866`;
+  config `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`;
+  `boot.img` `ddc4169afaddb97592a1ca15ac07e223da0e14a80cc78f226b2f1beb5ad95e85`;
+  `vendor_boot.img`
+  `a525f2ec7b95edb9205ffafd4b1c408665259e0c4c06500e2295cb1927390892`.
+  El binario ya no contiene ninguna cadena QMP/TLMM/PARF añadida por v0.41 y
+  el script userspace supera `sh -n` y está presente en el ZIP.
+- Artefacto:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.42-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.181.773 bytes, SHA-256
+  `f234352596adfcce3002d01135ac6f67939505fc75f8abd673745fa0742936e8`.
+  Se copió a `/sdcard` y la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.42. Debe recuperar LightDM/táctil; después
+  volver a TWRP para extraer el journal y leer el snapshot
+  `gts9uwifi-wifi-diag` antes de decidir el siguiente cambio de Wi-Fi.

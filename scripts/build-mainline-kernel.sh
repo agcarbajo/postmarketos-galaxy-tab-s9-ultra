@@ -93,11 +93,6 @@ if ! grep -q 'rail %s enabled=%d voltage=%d uV' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/diagnose-wcn7850-pcie-link.patch"
 fi
-if ! grep -q 'SM-X910 QMP diag: clock' \
-	"$kernel_tree/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/diagnose-sm8550-pcie-clocks-phy.patch"
-fi
 if ! grep -q 'default y if ARCH_QCOM' \
 	"$kernel_tree/drivers/pci/pwrctrl/Kconfig"; then
 	patch -d "$kernel_tree" -p1 \
