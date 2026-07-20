@@ -1172,6 +1172,10 @@ lado del workspace.
   externa v0.30–v0.35; siguen válidos los journals offline que demuestran
   `usb0`, DHCP y sshd internos. v0.35 está flasheada, pero su clave no ha sido
   probada contra la tablet real.
+- `pnputil /restart-device` sobre el USB desconocido y `/scan-devices` no se
+  ejecutaron porque Windows exige elevación y devolvió `Acceso denegado`; el
+  estado no cambió. Hace falta aislar el otro USB y reconectar físicamente el
+  cable de la X910 mientras v0.35 permanece arrancada.
 
 ## Lo que no ha funcionado / no repetir
 

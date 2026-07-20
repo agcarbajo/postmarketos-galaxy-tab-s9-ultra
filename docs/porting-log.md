@@ -1945,3 +1945,8 @@ física.
   reconectar físicamente la tablet y comprobar enumeración/host key. Si la
   X910 sigue como Code 43, retomar el defecto de descriptor desde la cadena
   DWC3/EP0 ya instrumentada, sin mezclarlo con autenticación.
+- Se intentó reiniciar sólo `USB\\VID_0000&PID_0002...` y solicitar un scan
+  PnP sin tocar el NCM ajeno. Ambas operaciones devolvieron `Acceso denegado`
+  por falta de elevación; Windows no cambió ningún dispositivo. La siguiente
+  acción es física: desconectar el otro pmOS USB si está conectado y reinsertar
+  el cable de la X910 manteniendo v0.35 arrancada.
