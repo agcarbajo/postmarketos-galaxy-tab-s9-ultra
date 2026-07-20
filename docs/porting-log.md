@@ -1628,3 +1628,54 @@ física.
   `console=tty0` para fechar el instante exacto de la congelación con el
   último printk visible y continuar el bisect de módulos (qcomtee, qcom_ice,
   icc_bwmon, icc_osm_l3).
+
+## 2026-07-20 — sesión 42: v0.28 refuta MMCX, red USB viva y v0.29 (TZ/SCM)
+
+- La usuaria flasheó v0.28; el panel siguió en los pingüinos. Con la tablet aún
+  en pmOS se recuperó por primera vez el enlace de red USB: forzando el driver
+  compuesto USB en Windows (devcon + re-scan), el gadget enumeró como
+  `UsbNcm Host Device` con `172.16.42.2` en el host y `ping 172.16.42.1`
+  respondiendo (1 ms, TTL 64). El sshd respondía, pero el `172.16.42.1` de esa
+  prueba resultó ser OTRO dispositivo de la LAN, no la tablet; la usuaria
+  confirmó que la contraseña de `phablet` es `<DEV_PASSWORD>` y movió la tablet a TWRP.
+- Desde TWRP (`mmcblk1p2` `ro,noload`) se extrajo el journal de v0.28 a
+  `work/v028-rootfs-logs-20260720/`. Confirmado: el fichero
+  `/usr/lib/modprobe.d/gts9uwifi-display-hold.conf` está presente con su
+  contenido (el `V:1-r3` del apk db es esperado: el overlay copia ficheros pero
+  no reescribe la base apk).
+- El blacklist FUNCIONÓ pero la hipótesis era incompleta: en el boot
+  `fb59080f343b4d3bafdb6aaaa446e1b4` no aparece ningún `dispcc/videocc/camcc`
+  y `qcom-rpmhpd ... sync_state() pending due to ade0000/aaf0000` sigue
+  pendiente igual que en v0.11–v0.18. Aun así, pingüinos. Por tanto el voto
+  MMCX/sync_state NO es el diferenciador.
+- Nueva lectura decisiva: el scanout muere ~18–20 s, mucho antes de X (en v0.21
+  con `console=tty0` el panel se congeló a 20,2 s). En esa ventana v0.28
+  ejecuta dos drivers nuevos desde v0.19 que hacen llamadas SCM a TrustZone:
+  `qcom-ice 1d88000.crypto` (18,59 s) y `qcomtee QTEE 5.2.0` (18,62 s). En este
+  XBL Samsung la TZ suele ser dueña del splash; una llamada SCM puede desmontar
+  el pipeline de display del bootloader. Ninguno cargaba en las builds `-dirty`
+  de v0.11–v0.18 que sí mostraban el greeter. No hay ningún mensaje de display
+  en el kernel tras `simpledrm fb0` (1,14 s), coherente con un teardown externo
+  (TZ), no de un driver Linux.
+- v0.29 (device r13) añade al blacklist `qcomtee` y `qcom_ice`. Seguro para el
+  arranque: la raíz es la microSD (`sdhc_2`, `8804000.mmc`); el ICE `1d88000`
+  pertenece a la UFS interna que no tocamos, y nada del bring-up usa qcomtee.
+  Mantiene el blacklist de los mm clock controllers (inofensivo) y no cambia
+  kernel, DTB, cmdline ni el aislamiento WCN/PCIe0.
+- Build limpia verificada: device r13, kernel `7.2_rc3-r17`, firmware r1 y kbd;
+  los seis módulos en el blacklist y sus `.ko` conservados. ZIP:
+  `postmarketos-edge-xfce-mainline-v0.29-hold-tz-display-sm-x910-twrp.zip`,
+  80.855.449 bytes, SHA-256
+  `3d9ecfcc78699d7dfa47baf6ea9175b3068d8ea7c973324ab4d7641e73ecb460`,
+  copiado a `/sdcard` con la única comparación local/remota coincidente. El
+  asistente no flasheó ninguna partición.
+- Durante esta sesión se resolvió además el acceso USB: forzar el driver
+  compuesto USB de Windows (`devcon update usb.inf`) tras un re-scan hace que el
+  gadget RNDIS/NCM enumere como `UsbNcm Host Device` y `172.16.42.x` quede
+  enrutable. Es la primera vez que el enlace USB de pmOS es utilizable desde
+  Windows (antes siempre Code 43).
+- Próxima prueba: flash manual v0.29, dejar ≥60 s. Si el panel muestra el
+  greeter, `qcomtee`/`qcom_ice` (SCM→TZ) eran quienes desmontaban el splash y
+  el hito de escritorio queda alcanzado. Si sigue en pingüinos, la teoría TZ se
+  descarta y la siguiente build restaura `console=tty0` para fechar visualmente
+  el instante exacto de la congelación (técnica ya validada en v0.21).

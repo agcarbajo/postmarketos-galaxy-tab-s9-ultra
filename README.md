@@ -57,29 +57,30 @@ demostrarlo en este dispositivo.
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 Causa raíz identificada: cargar dispcc/videocc/camcc dispara `sync_state` de rpmhpd y apaga MMCX/MDSS; v0.28 los bloquea con modprobe.d y espera prueba física |
+| Escritorio | 🧪 v0.28 refutó la teoría MMCX (módulos bloqueados, rpmhpd retenido, aún pingüinos); scanout muere ~18–20 s en las llamadas SCM de qcom-ice/qcomtee; v0.29 los bloquea y espera prueba |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.28 copiada a `/sdcard` y verificada; pendiente de flash manual (blacklist de clock controllers multimedia) |
+| Imagen/paquete de prueba | 🧪 v0.29 copiada a `/sdcard` y verificada; pendiente de flash manual (blacklist de qcomtee/qcom_ice + mm clocks) |
 
 ## Reto en curso
 
-Probar físicamente v0.28. El journal v0.27 confirmó que el handoff y ambos
-`xrandr` se ejecutaron sin error (incluido un modeset completo con framebuffer
-nuevo a 2960x1848), descartando definitivamente X/LightDM/VT. La comparación
-v0.18↔v0.27 encontró la regresión real: los kernels v0.4–v0.18 eran builds
-directas `7.2.0-rc3-dirty` que nunca cargaron módulos; desde v0.19 el release
-coincide con `/lib/modules/7.2.0-rc3` y udev carga `dispcc/videocc/camcc
--sm8550`, con lo que `qcom-rpmhpd` completa su lista de consumidores, ejecuta
-`sync_state()`, suelta el voto de arranque de MMCX y apaga el MDSS: el panel
-command-mode retiene el último frame (los pingüinos). v0.28 (device r12)
-instala `/usr/lib/modprobe.d/gts9uwifi-display-hold.conf` con blacklist de
-`dispcc_sm8550`, `videocc_sm8550`, `camcc_sm8550` y `gpucc_sm8550` para que el
-sync_state quede pendiente como en v0.11–v0.18. Después: conservar SSH RNDIS y
-reintroducir WCN7850:
+Probar físicamente v0.29. La v0.28 refutó la teoría MMCX: con
+`dispcc/videocc/camcc` bloqueados el journal confirma que NO cargan y que
+`qcom-rpmhpd ... sync_state() pending` sigue reteniendo los dominios igual que
+en v0.11–v0.18, pero el panel sigue en los pingüinos. La lectura decisiva es
+que el scanout muere ~18–20 s (en v0.21 con `console=tty0` el panel se congeló
+a 20,2 s), mucho antes de X. En esa ventana v0.28 ejecuta dos drivers nuevos
+desde v0.19 que hacen llamadas SCM a TrustZone: `qcom-ice 1d88000.crypto`
+(18,59 s) y `qcomtee` (18,62 s); en este XBL Samsung la TZ suele ser dueña del
+splash y una SCM puede desmontar el pipeline del bootloader. v0.29 (device r13)
+los añade al blacklist (seguro: la raíz es la microSD `sdhc_2`/`8804000`; el
+ICE `1d88000` es de la UFS interna que no usamos). Si el greeter aparece,
+`qcomtee`/`qcom_ice` eran la causa; si no, se restaura `console=tty0` para
+fechar visualmente la congelación. Después: conservar SSH RNDIS y reintroducir
+WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1077,12 +1078,21 @@ lado del workspace.
   los pingüinos. v0.27 ejecutó además un ciclo completo de apagado y
   reactivación KMS sin efecto físico: no queda nada que corregir en X ni en
   las VT.
-- No dejar que udev cargue `dispcc/videocc/camcc/gpucc-sm8550` mientras el
-  scanout dependa del estado que dejó el bootloader: completan la lista de
-  consumidores de `qcom-rpmhpd`, su `sync_state()` suelta el voto de arranque
-  de MMCX y el MDSS se apaga con el panel congelado en su GRAM. v0.28 los
-  bloquea vía `modprobe.d`; retirar ese fichero sólo junto con el driver
-  DRM/DSI nativo que vote sus propios dominios.
+- La hipótesis MMCX/rpmhpd quedó REFUTADA por v0.28: con
+  `dispcc/videocc/camcc/gpucc-sm8550` bloqueados el journal confirma que no
+  cargan y que `qcom-rpmhpd ... sync_state() pending` sigue reteniendo los
+  dominios, pero el panel sigue en los pingüinos. Bloquearlos no basta; se
+  mantienen en el blacklist sólo porque no tienen uso antes del stack msm
+  nativo, no como arreglo del scanout.
+- El scanout físico muere ~18–20 s, antes de X (v0.21 con `console=tty0` se
+  congeló a 20,2 s). El sospechoso real son las llamadas SCM a TrustZone de
+  `qcom-ice` y `qcomtee` (18,59/18,62 s), nuevas desde v0.19 y ausentes en las
+  builds `-dirty` que mostraban el greeter. En XBL Samsung la TZ suele ser
+  dueña del splash. v0.29 las bloquea; si no arregla, `console=tty0` fechará el
+  punto exacto.
+- No usar `Set-Content`/`Out-File` de PowerShell para scripts que ejecuta bash
+  en WSL: escriben CRLF y `set -euo pipefail` falla con `invalid option name`.
+  Usar la herramienta Write (LF) o `dos2unix`.
 - No comparar sólo configuraciones y DTS al buscar regresiones entre builds:
   verificar también el release del kernel arrancado frente a
   `/lib/modules/`. v0.4–v0.18 corrían `7.2.0-rc3-dirty` sin ningún módulo y
