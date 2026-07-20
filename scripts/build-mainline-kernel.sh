@@ -108,6 +108,11 @@ if ! grep -q 'SW_CTRL wlan=' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/read-wcn7850-sw-ctrl-after-enable.patch"
 fi
+if ! grep -q 'pipe mux unpark' \
+	"$kernel_tree/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/unpark-pcie0-pipe-mux.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

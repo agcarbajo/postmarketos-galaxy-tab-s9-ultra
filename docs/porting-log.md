@@ -2418,3 +2418,60 @@ física.
   interno del módulo (candidatos: orden AOP↔power-on, BT_EN, delay). Si el
   rescan tardío enumera `17cb:1107`, el problema era sólo de tiempo y se
   corrige con un retraso/retry reproducible en el kernel.
+
+## 2026-07-20 — sesión 61: el mux PIPE de PCIe0 está aparcado en XO; v0.45
+
+- La usuaria flasheó v0.44 (hashes físicos `fa962978…9cdf` /
+  `0f35ae5f…bb05`) y sigue sin Wi-Fi. Journal del boot
+  `3e51479c021244b5b0bba4103728a7ef` extraído en sólo lectura a
+  `work/v044-wifi-boot-20260720/`; rootfs desmontada.
+- Las sondas responden: `SW_CTRL wlan=1 bt=1` desde t+0 y estables hasta
+  t+600 ms tras WLAN_EN — el módulo señala power-good (bt=1 con BT_EN bajo
+  aconseja cautela por posible pull-up, pero el rescan PCI de los ~18 s
+  tampoco encuentra `17cb:1107`, descartando el arranque lento). El retraso
+  añadido de 600 ms antes de PERST tampoco cambia nada: LTSSM en
+  `Detect.Active` (`DEBUG0=0x75001`).
+- Revisión del clk_summary de v0.42/v0.44 con el código del driver delante:
+  `gcc_pcie_0_pipe_clk_src` muestra 19.200.000. En `clk-regmap-phy-mux.c` de
+  7.2-rc3, `recalc_rate` LEE el registro hardware del mux (0x6b070) y sólo
+  devuelve 19,2 MHz cuando el campo vale `PHY_MUX_REF_SRC`: **el mux PIPE de
+  PCIe0 está físicamente aparcado en el XO**. En este kernel los ops del mux
+  son sólo `recalc/determine/set_rate` (sin `.enable`), nadie en el árbol
+  llama a `clk_set_rate(pipe, ULONG_MAX)` y no hay `assigned-clocks` para él:
+  mainline confía en el valor de reset del registro (0 = fuente PHY). En la
+  QRD eso se cumple; la cadena de arranque Samsung deja el mux aparcado
+  (coherente con el manejo `clock-suppressible` downstream) y mainline nunca
+  lo des-aparca.
+- Mecánica completa del fallo: con el mux en REF, la interfaz PIPE MAC↔serdes
+  está muerta; el LTSSM no puede ordenar receiver-detect a la PHY y permanece
+  para siempre en `Detect.Active` aunque la PHY reporte ready (el PCS no
+  depende del mux GCC), los clocks del controlador corran y el módulo esté
+  encendido (SW_CTRL=1). Explica todos los DEBUG0 vistos y por qué ni AOP,
+  ni delays, ni rescans cambiaban nada.
+- v0.45 (kernel r26) añade `unpark-pcie0-pipe-mux.patch`: en
+  `qmp_pcie_power_on`, tras `clk_bulk_prepare_enable(pipe_clks)`, ejecuta
+  `clk_set_rate(pipe, ULONG_MAX)` — el centinela documentado de
+  `clk-regmap-phy-mux` para "selecciona la fuente PHY", propagado por el
+  branch con `CLK_SET_RATE_PARENT` — y registra el resultado
+  (`SM-X910 PCIe diag: pipe mux unpark ret=`). Es una llamada clk normal
+  (regmap GCC), sin ioremap ni MMIO crudo; no toca la secuencia eléctrica.
+- Build v0.45: `boot.img`
+  `f5dbc10004c6afcbe2d74aad434042c987e78d98eba4044da3b10a8ed2223341`;
+  `vendor_boot.img` sin cambios
+  `0f35ae5ffdd9bdbfe7f589a9d9b2ea7cf56d48e5f0e7565cdd35655ba07bbb05`;
+  DTB idéntico a v0.44
+  `dd4ef65d0f1970954bee860ae0fb3d7c7390b24daef8f2f44a3d737c6be3b3bc`.
+  Validado: la traza `pipe mux unpark` está en el binario junto a las de
+  SW_CTRL y AOP pdc.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.45-wcn7850-unpark-pipe-mux-sm-x910-twrp.zip`,
+  27.179.920 bytes, SHA-256
+  `4d9703f22f5f018d93c838a60f31c942bc4db2a5760fed1ffe2b6ff9761b3fee`.
+  Copiado a `/sdcard`; la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.45. Éxito esperado: `pipe mux unpark ret=0`,
+  el LTSSM saliendo de Detect, `17cb:1107` enumerado y ath12k enlazado (el
+  firmware WCN7850 ya está en la rootfs desde v0.37). Si el mux se des-aparca
+  pero el enlace sigue en Detect, el siguiente sospechoso es que el registro
+  vuelva a aparcarse por hardware al no recibir el pipe clock del serdes, lo
+  que movería el foco a la puesta en marcha del serdes de la PHY.

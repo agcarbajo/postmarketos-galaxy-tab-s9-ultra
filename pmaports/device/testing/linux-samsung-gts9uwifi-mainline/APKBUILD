@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=25
+pkgrel=26
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -57,6 +57,7 @@ source="
 	build-wcn-pcie-providers-in.patch
 	program-wcn7850-wlan-pdc-aop.patch
 	read-wcn7850-sw-ctrl-after-enable.patch
+	unpark-pcie0-pipe-mux.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 "
@@ -116,6 +117,7 @@ d8854ef8cb67c77b638d3f7a3052471af501ca5e4190083f535ff9cc96473cbe6f73b2974d712f3e
 d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
 a7d984f3e4aa8b7589d3e767037dfe13fd4dfadcfdfd8510a539bb3cac949921e02a93c8230ab7d9db04f445a49289cf9fff4243d3e1b13cc60cd8f796051dc4  program-wcn7850-wlan-pdc-aop.patch
 75cdf46ea78cb97dde0d9cb6a581b4f42f3c1dba67740cc4849f4212a731c9711761bf5a32d885a6333398f7266c598dff8790504dac4fbe1a811c378e3e9b7d  read-wcn7850-sw-ctrl-after-enable.patch
+ea7107b82d1bc6eccbf1ae69aaf1076d4c7d85ed21ddd15563e6cee1df15f55aa0e94c89b51446b4dbb94a192da9ebd2017818434c767d27af3d5d3e92f0b8d2  unpark-pcie0-pipe-mux.patch
 99c864c84936b3e1ea6001d3c79663608f45af62aaca62c649dac7f2e105c8abb376ee291a209b5054da249e0060e3e850bb901f1ab9c24483b9e864f231b108  config-gts9uwifi.fragment
 d3391860cb125413c4eac2ed3d59b893400369b40cbda3e37ee70ea5bd9751451e0a8913661838b3ff8edfccaf3e8b0ccebb3aa865f6bc7f4ff5158dbe4200fe  sm8550-samsung-gts9uwifi.dts
 "
