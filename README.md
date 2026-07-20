@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 53, v0.37 Wi-Fi preparada).
+> Última actualización: 2026-07-20 (sesión 54, v0.38 Wi-Fi preparada).
 
 ## Objetivo
 
@@ -52,29 +52,29 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 v0.37 conserva el release estable `7.2.0-rc3-dirty`, integra proveedores WCN/PCIe en el kernel y deja sólo los dos módulos ath12k aislados; pendiente prueba física |
-| DTS `gts9uwifi` | 🧪 v0.37 reactiva PMU WCN, PCIe0 y PHY, añade L3G 1,2 V sin padre espurio y conserva el resto de la base visible/táctil |
+| Kernel mainline SM8550 | 🧪 v0.38 conserva el release estable `7.2.0-rc3-dirty`, integra proveedores WCN/PCIe en el kernel y deja sólo los dos módulos ath12k aislados; pendiente prueba física real |
+| DTS `gts9uwifi` | 🧪 v0.38 reactiva PMU WCN, PCIe0 y PHY, añade L3G 1,2 V sin padre espurio y conserva el resto de la base visible/táctil |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | 🧪 Kernel r19 añade cold-reset WCN7850 y proveedores PCIe/WCN built-in; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.37 preparada: rails completos, pulso bajo→alto de WLAN_EN, PCIe/pwrseq built-in, firmware stock y sólo `ath12k`/`ath12k_wifi7` cargables; falta validar el endpoint `17cb:1107` |
+| Wi-Fi | 🧪 v0.38 preparada: rails completos, pulso bajo→alto de WLAN_EN, PCIe/pwrseq built-in, firmware stock y sólo `ath12k`/`ath12k_wifi7` cargables; v0.37 no llegó a instalarse |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.37 validada estáticamente y copiada a `/sdcard`; SHA-256 local/tablet `b3552240…af5a`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.38 validada y copiada a `/sdcard`; SHA-256 local/tablet `67c0d7bf…32d5e`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.37 y comprobar que conserva LightDM y el táctil antes
+Flashear manualmente v0.38 y comprobar que conserva LightDM y el táctil antes
 de evaluar Wi-Fi. Esta build no recupera el árbol completo de módulos que
 provocó la regresión visual desde v0.19: PCIe PHY, pwrctrl/pwrseq, QRTR, MHI,
 cfg80211 y mac80211 están integrados en el kernel; el overlay contiene sólo
 `ath12k.ko.zst` y `ath12k_wifi7.ko.zst`, cargados tras montar la rootfs real.
 La hipótesis concreta es que el bootloader dejaba GPIO80/WLAN_EN alto y el
 pwrseq upstream preservaba ese estado, por lo que el WCN7850 nunca recibía el
-reset bajo→alto necesario. v0.37 fuerza exclusivamente para WCN7850 un pulso
+reset bajo→alto necesario. v0.38 fuerza exclusivamente para WCN7850 un pulso
 bajo de 5–10 ms antes de la secuencia normal. También declara el rail real
 L3G 1,2 V directamente, como los DTS upstream SM8550, sin el
 `vdd-l3-supply` incorrecto que causó el ciclo de v0.20.
@@ -1237,7 +1237,27 @@ lado del workspace.
   27.179.256 bytes, SHA-256
   `b35522406582727052ea768c564ab8c7623891726c1b5b0700cfc5d0d011af5a`.
   Se copió a `/sdcard` y la única comparación local/tablet coincide. El
-  asistente no flasheó ninguna partición; queda pendiente el flash manual.
+  asistente no flasheó ninguna partición. Los dos intentos manuales posteriores
+  abortaron antes de escribir imágenes porque la rootfs seguía montada en
+  `/tmp/pmos-root`; el arranque observado era todavía v0.36.
+
+- La lectura de las particiones desde TWRP confirma ese diagnóstico: `boot`
+  conserva el hash v0.36 `bf83c827…2da7` y `vendor_boot` el hash común anterior
+  `6793730d…e3f5`; la rootfs no contiene ni
+  `/usr/lib/modules/7.2.0-rc3-dirty` ni `ath12k.conf`. El journal carece, como
+  corresponde, de PMU WCN, PCIe0 y cold-reset.
+- El `last_log.gz` de TWRP registra ambos intentos v0.37 con el mismo aborto:
+  `Device or resource busy` al montar `mmcblk1p2` en `/tmp/pmos-root`. El
+  instalador no había escrito aún `boot`, por lo que reiniciar no dañó ni
+  probó la build nueva.
+- v0.38 endurece el instalador: detecta el dispositivo o mountpoint temporal
+  ya montado, lo desmonta con comprobación y sólo después monta la rootfs en
+  escritura. Kernel, DTB, módulos y firmware son los de v0.37. ZIP:
+  `postmarketos-edge-xfce-mainline-v0.38-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.179.387 bytes, SHA-256
+  `67c0d7bfda6e41eeca81a0d9494034c0746ee4c78735652c20884dc0e2632d5e`.
+  CRC, manifiestos, permisos, imágenes, overlay e instalador están validados;
+  se copió a `/sdcard` y la única comparación local/tablet coincide.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1268,6 +1288,10 @@ lado del workspace.
   `WSL_E_DISTRO_NOT_FOUND` aunque las distros sí existen para la usuaria.
 - Pasar una línea compleja con paréntesis, `$()` y comillas mediante
   `wsl ... bash -lc`: PowerShell/WSL altera el quoting. Usar scripts.
+- No dejar `/dev/block/mmcblk1p2` montada en `/tmp/pmos-root` antes de flashear
+  un ZIP con overlay. v0.37 abortó correctamente antes de escribir imágenes y
+  el reinicio arrancó v0.36, creando una falsa prueba Wi-Fi. Desde v0.38 el
+  instalador limpia de forma explícita ese montaje temporal.
 - No ordenar los `sha512sums` de un APKBUILD de forma distinta a `source=`:
   abuild empareja ambas listas por posición. La primera construcción rootfs
   r14 detectó el orden incorrecto de cuatro parches aunque la build directa

@@ -2054,3 +2054,41 @@ física.
   para extraer el journal. Buscar el cold-reset GPIO, una sola secuencia PCIe,
   endpoint `17cb:1107`, MHI/firmware ath12k e interfaz NetworkManager. Si no
   aparece el endpoint, instrumentar PERST/LTSSM/PHY sin cambiar rails a ciegas.
+
+## 2026-07-20 — sesión 54: v0.37 no se instaló; instalador corregido en v0.38
+
+- La usuaria informó que el sistema volvía a LightDM con táctil pero sin
+  Wi-Fi. Desde TWRP se montó `mmcblk1p2` en `ro,noload`, se extrajeron los doce
+  journals de sistema más recientes y los logs persistentes de recovery, y se
+  desmontó la rootfs antes de continuar.
+- La rootfs física no contiene `/usr/lib/modules/7.2.0-rc3-dirty` ni
+  `/etc/modules-load.d/ath12k.conf`; sólo permanece el árbol antiguo
+  `7.2.0-rc3`. El boot más reciente registra errores de módulos ausentes y no
+  contiene ninguna traza PMU WCN, cold-reset, PCIe0 o ath12k.
+- La comprobación de particiones en lectura fija la identidad de la build:
+  `boot` tiene SHA-256 `bf83c827…2da7`, exactamente v0.36, y `vendor_boot`
+  conserva `6793730d…e3f5`, no los hashes v0.37 `fc9171bf…919` y
+  `a5f16532…c12`. `init_boot`/`dtbo` no discriminan porque son comunes.
+- `last_log.gz` resuelve la contradicción: los dos intentos manuales de v0.37
+  abortaron en cero segundos con `Device or resource busy` al intentar montar
+  `/dev/block/mmcblk1p2` sobre `/tmp/pmos-root`. La partición seguía montada de
+  una auditoría anterior. El aborto ocurrió antes del bucle que escribe
+  `boot`, así que el posterior reinicio arrancó v0.36 intacta. Wi-Fi v0.37 no
+  llegó a probarse.
+- Se corrige `configs/twrp/mainline-update-binary`: si `mmcblk1p2` está montada
+  en cualquier ruta, o si `/tmp/pmos-root` contiene otro montaje temporal, el
+  instalador lo desmonta y verifica antes del montaje RW. También corrige el
+  mensaje del overlay para describir configuración en vez de `deviceinfo`.
+- v0.38 reconstruye de forma incremental los mismos kernel, DTB, dos módulos
+  ath12k y cuatro blobs WCN de v0.37. La validación final cubre CRC, manifiestos,
+  modos, imágenes, alias/dependencias de módulos, firmware y la nueva guarda
+  del instalador.
+- Artefacto:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.38-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.179.387 bytes, SHA-256
+  `67c0d7bfda6e41eeca81a0d9494034c0746ee4c78735652c20884dc0e2632d5e`.
+  Se copió a `/sdcard`; la única comparación local/tablet coincide. La rootfs
+  está desmontada y el asistente no ha flasheado ninguna partición.
+- Próximo paso: flash manual v0.38 y no reiniciar si TWRP muestra error. Tras
+  un flash exitoso, arrancar y evaluar LightDM/táctil/Wi-Fi; si Wi-Fi sigue sin
+  aparecer, volver a TWRP para extraer por primera vez el journal WCN real.

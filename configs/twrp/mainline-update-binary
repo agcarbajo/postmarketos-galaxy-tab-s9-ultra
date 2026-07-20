@@ -87,6 +87,16 @@ if unzip -l "$ZIPFILE" ROOTFS-OVERLAY-SHA256SUMS >/dev/null 2>&1; then
     HAS_ROOTFS_OVERLAY=1
     [ -b /dev/block/mmcblk1p2 ] || abort "microSD root partition mmcblk1p2 is missing"
     mkdir -p "$ROOTFS_MOUNT" || abort "cannot create microSD mount point"
+    EXISTING_ROOTFS_MOUNT="$(grep '^/dev/block/mmcblk1p2 ' /proc/mounts 2>/dev/null | head -n 1 | cut -d' ' -f2)"
+    if [ -n "$EXISTING_ROOTFS_MOUNT" ]; then
+        ui_print "Unmounting stale microSD rootfs mount at $EXISTING_ROOTFS_MOUNT."
+        umount "$EXISTING_ROOTFS_MOUNT" || \
+            abort "cannot unmount stale microSD rootfs mount"
+    fi
+    if grep -q " $ROOTFS_MOUNT " /proc/mounts 2>/dev/null; then
+        ui_print "Unmounting stale filesystem from $ROOTFS_MOUNT."
+        umount "$ROOTFS_MOUNT" || abort "cannot clear stale rootfs mount point"
+    fi
     mount -t ext4 -o rw /dev/block/mmcblk1p2 "$ROOTFS_MOUNT" || \
         abort "cannot mount the postmarketOS microSD rootfs read-write"
     ROOTFS_MOUNTED=1
@@ -111,7 +121,7 @@ fi
 ui_print "Planned writes: boot, init_boot, vendor_boot and dtbo."
 [ "$SKIP_VBMETA" -eq 1 ] || ui_print "vbmeta is writable and will also be updated."
 if [ "$HAS_ROOTFS_OVERLAY" -eq 1 ]; then
-    ui_print "The packaged kernel modules, deviceinfo and Wi-Fi firmware"
+    ui_print "The packaged kernel modules, configuration and Wi-Fi firmware"
     ui_print "will be updated on the postmarketOS microSD rootfs."
 else
     ui_print "No filesystem or user-data partition will be touched."
