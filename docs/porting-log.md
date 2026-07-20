@@ -2640,3 +2640,27 @@ física.
 - Próximo paso: flash manual v0.49. El debug seguirá activo: el journal debe
   mostrar el fallback enviándose ahora como tipo ELF y, si el firmware lo
   acepta, `wmi unified ready`, mac80211 y `wlan0` en NetworkManager.
+
+## 2026-07-21 — sesión 66: ✅ WI-FI FUNCIONAL Y SSH EN VIVO POR WLAN
+
+- La usuaria flasheó v0.49 y confirmó físicamente: **el Wi-Fi funciona**. La
+  combinación ganadora es amss oficial de linux-firmware + m3 oficial + BDF
+  QRD en su envoltorio ELF como fallback `board.bin` + regdb stock, sobre el
+  enlace PCIe recuperado en v0.45 (des-aparcado del mux PIPE).
+- Primer acceso de control remoto del port: la tablet aparece en la LAN como
+  `<TABLET_IP>`, identificada sin ambigüedad por su host key física
+  `SHA256:1N9kAKdfusq7wxZmypG2PsCpqwhhDu5An+HC3SJAu0E`, y la clave de
+  desarrollo Ed25519 (instalada por el overlay desde v0.37, privada en WSL
+  `/root/.ssh/gts9u_pmos`) entra como `phablet`. `nmcli` muestra `wlan0`
+  conectada a `<WIFI_SSID>` con señal 65 y 270 Mbit/s.
+- El journal en vivo confirma la cadena completa sana: probe `17cb:1107`,
+  `MHI_CB_EE_MISSION_MODE`, servicio QMI conectado, `phy capability` con 2
+  PHYs y MLO anunciado, segmentos de memoria QMI concedidos y firmware
+  arrancando WLAN. Evidencia guardada en `work/v049-wifi-live-20260721/`.
+- Con esto quedan cumplidos los hitos 1–5 de la estrategia (kernel mainline,
+  microSD, red+SSH, pantalla+táctil, escritorio) usando exclusivamente la
+  base upstream. Pendientes de pulido, ya con canal de control en vivo:
+  convertir la BDF Samsung para calibración RF nativa (hoy corre la QRD),
+  retirar `debug_mask` y las trazas de bring-up, reintentar `board-2.bin`
+  con entrada propia, Bluetooth (mismo PMU), el USB Code 43 aplazado y el
+  resto del hardware (audio, sensores, GPU/Turnip).

@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 65, BDF QRD en ELF para el amss oficial, v0.49).
+> Última actualización: 2026-07-21 (sesión 66, ✅ Wi-Fi funcional y SSH en vivo por WLAN).
 
 ## Objetivo
 
@@ -58,30 +58,30 @@ demostrarlo en este dispositivo.
 | Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware r3: amss.bin y board-2.bin oficiales + BDF Samsung fallback + m3 oficial |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.48 acota el cuelgue: el firmware oficial no digiere la BDF sin su envoltorio ELF (se cuelga en el último segmento tipo 0); v0.49 sirve la BDF QRD en ELF extraída del board-2 oficial |
-| SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
+| Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada a la red (señal 65, 270 Mbit/s); RF con calibración QRD pendiente de la BDF Samsung |
+| SSH | ✅ **Acceso en vivo por WLAN**: `<TABLET_IP>`, host key `1N9kAKdf…` verificada, clave de desarrollo Ed25519 como `phablet`. El canal USB (Code 43) queda como secundario |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.49 validada y copiada a `/sdcard`; SHA-256 local/tablet `bb0e2357…c5253`; pendiente flash manual |
+| Imagen/paquete de prueba | ✅ v0.49 flasheada y validada físicamente: escritorio + táctil + Wi-Fi + SSH en vivo |
 
 ## Reto en curso
 
-Flashear manualmente v0.49. El debug QMI de v0.48 acotó el cuelgue con
-precisión: el boardname X910 (`subsystem 17cb:1107, qmi-board-id=255`) no
-existe en el `board-2.bin` oficial, ath12k cae al fallback `board.bin`
-(entonces el payload Samsung sin ELF) y lo envía como `bdf_type 0`; el
-firmware oficial acepta todos los segmentos y nunca responde al último (el
-que dispara el parseo) → -110. La entrada QRD del contenedor oficial
-(`subsystem 17cb:3378, board-id 255`) resulta ser un ELF ARM, igual que el
-`bdwlan.elf` de Samsung: las BDF de WCN7850 viajan con su envoltorio ELF y
-ath12k selecciona el tipo QMI por la magia; despojar el ELF (v0.46) era el
-error. v0.49 extrae reproduciblemente esa BDF QRD (`qrd-board.bin`,
-`0ef5f6f3…26a3`) y la instala como fallback: es la pareja exacta amss
-oficial + BDF QRD que funciona en la QRD SM8550 con mainline. RF con
-calibración genérica de momento; la conversión de la BDF Samsung queda como
-mejora posterior. El USB Code 43 continúa aplazado mientras Wi-Fi pueda
-proporcionar el canal de control:
+✅ **Wi-Fi funcional y SSH en vivo por WLAN (v0.49)**. Los hitos 1–5 de la
+estrategia están cumplidos sobre base exclusivamente mainline: kernel 7.2-rc3
+arrancando, rootfs en microSD, red + SSH (ahora por Wi-Fi, `<TABLET_IP>`
+con la clave de desarrollo), pantalla + táctil y escritorio XFCE. La cadena
+Wi-Fi completa quedó: rails/PDC verificados → mux PIPE des-aparcado (v0.45)
+→ enlace PCIe Gen.2 x2 → `17cb:1107` → amss/m3 oficiales de linux-firmware +
+BDF QRD en ELF (v0.49) → WMI ready → mac80211 → `wlan0` asociada con señal
+65 a 270 Mbit/s.
+
+Siguientes trabajos, ya con canal de control en vivo y sin ciclos ciegos de
+flasheo: convertir la BDF Samsung (`bdwlan.elf`) al contenedor `board-2.bin`
+con la entrada `subsystem 17cb:1107, board-id 255` para calibración RF
+nativa; retirar `debug_mask` y las trazas de bring-up de kernel; Bluetooth
+(mismo PMU WCN7850, `bt-enable` GPIO81); reabordar el USB Code 43 como canal
+secundario; y continuar con audio, sensores y GPU/Turnip:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
