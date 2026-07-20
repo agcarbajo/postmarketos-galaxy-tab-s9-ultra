@@ -2521,3 +2521,39 @@ física.
   `wmi unified ready`, registro mac80211 y `wlan0` en NetworkManager. Si el
   BDF de Samsung aún fallara, el plan B es `board-2.bin` genérica de
   linux-firmware (menos óptima en RF pero válida para validar la pila).
+
+## 2026-07-21 — sesión 63: BDF/M3 correctos no bastan; amss oficial en v0.47
+
+- La usuaria flasheó v0.46. La inspección física confirma el firmware
+  corregido en la SD (`m3.bin` `0e72f44d…`, `board.bin` `191ac306…`) y los
+  hashes de boot idénticos (kernel sin cambios). Journal del boot
+  `d8ae45f646754ee1aa428a7163107614` extraído a
+  `work/v046-wifi-boot-20260721/`; rootfs desmontada.
+- El resultado es idéntico a v0.45: enlace arriba, `17cb:1107`, MHI Mission
+  mode, QMI lee chip/fw_version, descargas BDF/M3 sin error visible y
+  `failed to receive wmi unified ready event: -110`. Con BDF y M3 ya
+  correctos, la variable restante demostrable es el propio `amss20.bin`
+  stock: es la rama downstream `WLAN.HMT.2.0.c3.1` que cnss2 alimenta con
+  `phy_ucode20.elf` mediante un tipo de descarga QMI que mainline ath12k no
+  implementa. Sin su microcódigo PHY, el subsistema WLAN del firmware no
+  arranca y WMI nunca señala ready.
+- v0.47 cambia al firmware oficial de linux-firmware para WCN7850 hw2.0,
+  probado con ath12k mainline y con el ucode integrado:
+  `amss.bin` oficial (SHA-256 `43aadfd3…6a68`) y `board-2.bin` oficial
+  (SHA-256 `1abee713…bf4e`, contenedor API-2 que ath12k intenta primero),
+  manteniendo `board.bin` = payload BDF Samsung como fallback API-1, el
+  `m3.bin` oficial y el `regdb.bin` stock. El kernel no cambia.
+  `stage-stock-wifi-firmware.sh` descarga y fija por hash los tres ficheros
+  oficiales; el APKBUILD del firmware sube a r3 con el mismo mapeo.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.47-wcn7850-official-amss-sm-x910-twrp.zip`,
+  27.250.434 bytes, SHA-256
+  `9b502da2870a12bebfc7cbe4c089071afabc2bf07e48a4fdf65f0309110f4e48`.
+  Overlay verificado (cinco hashes) y copiado a `/sdcard` con la única
+  comparación local/tablet coincidente. El asistente no flasheó ninguna
+  partición.
+- Próximo paso: flash manual v0.47. Éxito esperado: el amss oficial levanta
+  WLAN sin ucode externo → `wmi unified ready`, mac80211 y `wlan0`. Si
+  board-2.bin no casara con `board_id 0xff`, ath12k caerá al BDF Samsung; si
+  aun así fallara WMI, quedaría investigar la compatibilidad
+  amss-oficial↔BDF-Samsung y probar la BDF genérica del contenedor.

@@ -35,14 +35,19 @@ install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
 	"$overlay/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
-install -m 0644 "$firmware/amss20.bin" \
+# Official linux-firmware amss: Samsung's WLAN.HMT downstream amss never
+# raises WMI ready under mainline ath12k because it expects the phy_ucode
+# QMI download that only cnss2 implements.
+install -m 0644 "$firmware/official-amss.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/amss.bin"
 # Canonical linux-firmware M3 image; Samsung ships no m3 for kiwi and the
 # earlier phy_ucode20.elf mapping fed the chip PHY microcode as M3.
 install -m 0644 "$firmware/m3.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/m3.bin"
-# Raw BDF payload extracted from Samsung's single-PT_LOAD bdwlan.elf; ath12k
-# transfers board.bin verbatim, so the ELF wrapper must not be shipped.
+# Official board container tried first (API 2); Samsung's raw BDF payload
+# (extracted from the single-PT_LOAD bdwlan.elf) stays as the API-1 fallback.
+install -m 0644 "$firmware/official-board-2.bin" \
+	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/board-2.bin"
 install -m 0644 "$firmware/bdwlan-payload.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/board.bin"
 install -m 0644 "$firmware/regdb.bin" \

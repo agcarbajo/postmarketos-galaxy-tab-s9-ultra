@@ -1,32 +1,37 @@
 maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=firmware-samsung-gts9uwifi
 pkgver=1
-pkgrel=2
+pkgrel=3
 pkgdesc="Stock Qualcomm Kiwi v2 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 url="https://www.samsung.com/"
 arch="aarch64"
 license="proprietary"
 options="!check !strip !archcheck !tracedeps"
 source="
-	amss20.bin
+	official-amss.bin
 	m3.bin
+	official-board-2.bin
 	bdwlan-payload.bin
 	regdb.bin
 "
 
 package() {
 	local fw="$pkgdir/usr/lib/firmware/ath12k/WCN7850/hw2.0"
-	install -Dm644 "$srcdir/amss20.bin" "$fw/amss.bin"
+	# Official linux-firmware amss: Samsung's downstream amss stalls WLAN
+	# start under mainline ath12k (it expects the cnss2-only phy_ucode QMI).
+	install -Dm644 "$srcdir/official-amss.bin" "$fw/amss.bin"
 	# Canonical linux-firmware M3; Samsung ships no m3 for kiwi.
 	install -Dm644 "$srcdir/m3.bin" "$fw/m3.bin"
-	# Raw BDF payload extracted from Samsung's single-PT_LOAD bdwlan.elf.
+	# Official board container first; Samsung raw BDF payload as fallback.
+	install -Dm644 "$srcdir/official-board-2.bin" "$fw/board-2.bin"
 	install -Dm644 "$srcdir/bdwlan-payload.bin" "$fw/board.bin"
 	install -Dm644 "$srcdir/regdb.bin" "$fw/regdb.bin"
 }
 
 sha512sums="
-1edbc8b3cc67ef2c759ac5d77fdb6c037c2953fe921d8d819b1f35317269face49f5d4e2d073353e73de1e06bb9463783976cee2c97eb16bb077fab441477957  amss20.bin
+f97bf4eaf2e2a902ef2c7776ff729bd871d2bb6c52d54054c7aaf8e2b588c1d546ad6243374a9612cc77a4799af7e68eab732c96adf5ad2fff1b76e0f18872cc  official-amss.bin
 01a1ffe2ccf4f134f8419f75c4662155d95c198b944d721d2e5c0c65cde8b41a6600ea352ee5a352a3466d1344852d751dcfe951ca87ddb82e533dd91f4c9bcd  m3.bin
+c64016d271a8bb2d7abcfb445d7a65c7474b25b0d1a008b1f0c064348bac5b6c7d783e3d449b44d3b7eabb10d858fc3c8186a15e7e00094fd23e530853d625b4  official-board-2.bin
 e9d8f56874f65e8d9a36d3bdca6d77eb60e86bef2b17eb482b982a86625e81d47f69fec0b3c13222c2d3abacc1d00daf1530e13e8ed958a7d44ebd73a1df8b9a  bdwlan-payload.bin
 52cf26f9893f42907e3971d890e2ae885b47f74dda3b6599a4293b1d4ae09e3f466a8364a446161a2ace7dc56e52c2ddf4fd3ef92bd47277d103dd104cc40188  regdb.bin
 "

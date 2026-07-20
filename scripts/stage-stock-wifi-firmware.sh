@@ -41,10 +41,18 @@ PYEOF
 
 # WCN7850 hw2.0 uses ath12k_m3_fw_loader_driver, so m3.bin is mandatory.
 # Samsung's kiwi directory ships no m3; use the canonical linux-firmware one.
+# Samsung's amss (WLAN.HMT downstream branch) also stalls WLAN start under
+# mainline ath12k — cnss2 feeds it phy_ucode20.elf over a QMI channel that
+# mainline does not implement — so stage the official amss/board-2 as well.
+lf='https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0'
 if [ ! -f "$target/m3.bin" ]; then
-	curl -fL --retry 3 -o "$target/m3.bin" \
-		'https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0/m3.bin'
+	curl -fL --retry 3 -o "$target/m3.bin" "$lf/m3.bin"
 fi
+for f in amss.bin board-2.bin; do
+	if [ ! -f "$target/official-$f" ]; then
+		curl -fL --retry 3 -o "$target/official-$f" "$lf/$f"
+	fi
+done
 
 cd "$target"
 sha256sum -c <<'EOF'
@@ -53,5 +61,7 @@ sha256sum -c <<'EOF'
 9cade90ae22d7df1c44850bf55c6231bf99b4303f406eca9775d920bb6d4313e  bdwlan.elf
 191ac306aa56e016ace5f0d3406376c6078e92c850644cd1c1d69753e4d3c16d  bdwlan-payload.bin
 0e72f44df7defc269fe92dcea25d4d409046c04b77d41c510c52879b3dfc1055  m3.bin
+43aadfd3df887f27de74020273aee484bac6a31dd53068f91baf2a9b094d6a68  official-amss.bin
+1abee7132dbccb523cca44a8de4e8968aa7bf5a5fcc032c338f687f94ea5bf4e  official-board-2.bin
 75cc107536d3bd03fa2e29f369a4e6d997d2cf090c50620424a9ab1a749c7546  regdb.bin
 EOF

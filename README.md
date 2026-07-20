@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 62, enlace PCIe arriba; firmware corregido en v0.46).
+> Última actualización: 2026-07-21 (sesión 63, amss oficial de linux-firmware en v0.47).
 
 ## Objetivo
 
@@ -55,33 +55,31 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r26 sin cambios; firmware r2 corrige el mapeo: `board.bin` = payload BDF del bdwlan.elf y `m3.bin` = oficial de linux-firmware |
+| Paquetes pmaports | 🧪 Kernel r26 sin cambios; firmware r3: amss.bin y board-2.bin oficiales de linux-firmware + BDF Samsung como fallback + m3 oficial |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.45: **enlace PCIe arriba y `17cb:1107` enumerado**; MHI/QMI leen chip y fw_version; falta `wmi ready` por firmware mal mapeado (BDF con cabecera ELF y phy_ucode como M3), corregido en v0.46 |
+| Wi-Fi | 🧪 Enlace PCIe y enumeración estables; v0.46 refuta el mapeo BDF/M3 como causa del `wmi ready -110`; v0.47 sustituye el amss stock (exige phy_ucode vía cnss2) por el oficial de linux-firmware |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.46 validada y copiada a `/sdcard`; SHA-256 local/tablet `8a28e241…7b4e7`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.47 validada y copiada a `/sdcard`; SHA-256 local/tablet `9b502da2…f4e48`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.46. La v0.45 validó físicamente la causa raíz del
-enlace: con el mux PIPE des-aparcado (`pipe mux unpark ret=0`), el LTSSM sale
-de Detect, aparece `PCIe Gen.2 x2 link up`, **`17cb:1107` enumera** y
-`ath12k_wifi7_pci` se enlaza; MHI llega a Mission mode y QMI lee `chip_id
-0x2`, `board_id 0xff` y `fw_version 0x2036001f` — el amss stock arranca. El
-bloqueo restante es `failed to receive wmi unified ready event: -110`, y
-tiene dos causas de mapeo de firmware demostradas: enviábamos `bdwlan.elf`
-completo (cabecera ELF incluida) como `board.bin` cuando ath12k lo transfiere
-literal como BDF, y `phy_ucode20.elf` como `m3.bin` cuando `wcn7850 hw2.0`
-exige el M3 real (`m3_loader_driver`; el kiwi de Samsung no trae m3). v0.46
-instala `board.bin` = payload PT_LOAD del bdwlan.elf (offset 0x400,
-0x15400 bytes) y `m3.bin` = canónico de linux-firmware, sin tocar el kernel.
-Si el BDF Samsung aún fallara, plan B: `board-2.bin` genérica de
-linux-firmware. El USB Code 43 continúa aplazado mientras Wi-Fi pueda
-proporcionar el canal de control:
+Flashear manualmente v0.47. El enlace PCIe y la enumeración quedaron
+resueltos en v0.45 (mux PIPE des-aparcado → `PCIe Gen.2 x2 link up`,
+`17cb:1107`, ath12k enlazado, MHI Mission mode, QMI leyendo chip y
+fw_version). v0.46 corrigió el mapeo BDF/M3 (payload real del bdwlan.elf y
+m3 oficial) y el fallo `wmi unified ready -110` persistió idéntico: el
+mapeo queda refutado como causa. La variable restante demostrable es el
+`amss20.bin` stock: es la rama downstream `WLAN.HMT.2.0.c3.1` que cnss2
+alimenta con `phy_ucode20.elf` por un canal QMI inexistente en mainline; sin
+ese microcódigo su subsistema WLAN no arranca. v0.47 instala el firmware
+oficial de linux-firmware para WCN7850 hw2.0 (amss.bin + board-2.bin, con el
+BDF Samsung como fallback API-1 y el m3 oficial), sin tocar el kernel. El USB
+Code 43 continúa aplazado mientras Wi-Fi pueda proporcionar el canal de
+control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
