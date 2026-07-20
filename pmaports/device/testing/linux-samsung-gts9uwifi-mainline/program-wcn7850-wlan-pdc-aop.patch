@@ -1,0 +1,64 @@
+--- a/drivers/power/sequencing/pwrseq-qcom-wcn.c	2026-07-20 18:57:59.012085539 +0200
++++ b/drivers/power/sequencing/pwrseq-qcom-wcn.c	2026-07-20 18:57:59.012085539 +0200
+@@ -14,6 +14,7 @@
+ #include <linux/property.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/pwrseq/provider.h>
++#include <linux/soc/qcom/qcom_aoss.h>
+ #include <linux/string.h>
+ #include <linux/types.h>
+ 
+@@ -474,6 +475,42 @@
+ 	return pwrseq_qcom_wcn_match_regulator(pwrseq, dev, "vdd-1.8-xo-supply");
+ }
+ 
++/*
++ * Samsung's cnss2 platform driver programs the AOP WLAN PDC resources through
++ * the QMP mailbox before the first WCN power-on.  The X910 stock FDT carries
++ * a qcom,pdc_init_table for device 0x1107 whose messages enable the baseband
++ * PDC resource and describe the RF rail votes; without them the WCN7850 PMU
++ * never completes its hardware power handshake and the PCIe receivers stay
++ * undetected in Detect.Active.  Boards opt in with a qcom,qmp phandle plus
++ * qcom,wlan-pdc-init strings; everything else is skipped silently.
++ */
++static int pwrseq_qcom_wcn_program_wlan_pdc(struct device *dev)
++{
++	struct property *prop;
++	struct qmp *qmp;
++	const char *msg;
++	int ret;
++
++	if (!of_property_present(dev->of_node, "qcom,qmp"))
++		return 0;
++
++	qmp = qmp_get(dev);
++	if (IS_ERR(qmp))
++		return dev_err_probe(dev, PTR_ERR(qmp),
++				     "Failed to get the AOP QMP mailbox\n");
++
++	of_property_for_each_string(dev->of_node, "qcom,wlan-pdc-init",
++				    prop, msg) {
++		ret = qmp_send(qmp, "%s", msg);
++		dev_info(dev, "SM-X910 WCN diag: AOP pdc '%s' ret=%d\n",
++			 msg, ret);
++	}
++
++	qmp_put(qmp);
++
++	return 0;
++}
++
+ static int pwrseq_qcom_wcn_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -564,6 +601,10 @@
+ 		return dev_err_probe(dev, PTR_ERR(ctx->clk),
+ 				     "Failed to get the reference clock\n");
+ 
++	ret = pwrseq_qcom_wcn_program_wlan_pdc(dev);
++	if (ret)
++		return ret;
++
+ 	memset(&config, 0, sizeof(config));
+ 
+ 	config.parent = dev;

@@ -98,6 +98,11 @@ if ! grep -q 'default y if ARCH_QCOM' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/build-wcn-pcie-providers-in.patch"
 fi
+if ! grep -q 'SM-X910 WCN diag: AOP pdc' \
+	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/program-wcn7850-wlan-pdc-aop.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

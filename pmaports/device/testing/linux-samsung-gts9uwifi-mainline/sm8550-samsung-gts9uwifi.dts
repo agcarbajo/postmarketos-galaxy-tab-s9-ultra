@@ -171,6 +171,29 @@
 		wlan-enable-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
 		bt-enable-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
 
+		/*
+		 * Stock cnss2 sends this exact qcom,pdc_init_table (chip_cfg@1,
+		 * device 0x1107, live X910 FDT) to the AOP through the QMP
+		 * mailbox before the first WLAN power-on.  It enables the
+		 * baseband PDC resource and programs the RF rail votes the
+		 * WCN7850 PMU handshake relies on.
+		 */
+		qcom,qmp = <&aoss_qmp>;
+		qcom,wlan-pdc-init =
+			"{class: wlan_pdc, ss: rf, res: s4e.v, upval: 916}",
+			"{class: wlan_pdc, ss: rf, res: s4e.v, dwnval: 612}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, upval: 1316}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, dwnval: 944}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, upval: 1864}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, dwnval: 1820}",
+			"{class: wlan_pdc, ss: rf, res: s2g.m, enable: 0}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, enable: 0}",
+			"{class: wlan_pdc, ss: bb, res: pdc, enable: 1}",
+			"{class: wlan_pdc, ss: bb, res: s2g.v, upval: 976}",
+			"{class: wlan_pdc, ss: bb, res: s2g.v, dwnval: 512}",
+			"{class: wlan_pdc, ss: bb, res: s5g.v, upval: 980}",
+			"{class: wlan_pdc, ss: bb, res: s5g.v, dwnval: 420}";
+
 		vdd-supply = <&vreg_s5g_1p0>;
 		vddio-supply = <&vreg_l15b_1p8>;
 		/* Stock Kiwi v2 votes PM8550VS-G L3 through its WCN PDC map. */

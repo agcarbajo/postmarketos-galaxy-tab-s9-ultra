@@ -2300,3 +2300,67 @@ física.
 - Próximo paso: flash manual v0.42. Debe recuperar LightDM/táctil; después
   volver a TWRP para extraer el journal y leer el snapshot
   `gts9uwifi-wifi-diag` antes de decidir el siguiente cambio de Wi-Fi.
+
+## 2026-07-20 — sesión 59: snapshot v0.42 limpio y programación AOP/PDC v0.43
+
+- La usuaria flasheó v0.42, que recupera escritorio y táctil, y volvió a TWRP.
+  Los hashes físicos confirman la build (`boot` `ddc4169a…5e85`,
+  `vendor_boot` `a525f2ec…892`) y la rootfs conserva exactamente los dos
+  módulos `7.2.0-rc3-dirty`. El journal del boot
+  `a56864047e844a4e8cb0f0b574595ce2` (sesión de ~28 min) se extrajo en sólo
+  lectura a `work/v042-wifi-boot-20260720/` y la rootfs quedó desmontada.
+- El snapshot userspace `gts9uwifi-wifi-diag` se ejecutó completo y despeja
+  todas las dudas del lado SoC: `gcc_pcie_0_*` (slv/mstr/cfg/aux/ddrss/
+  aggre_noc) activos, `gcc_pcie_0_pipe_clk` habilitado con `pcie0_pipe_clk` a
+  125 MHz, `gcc_pcie_0_phy_rchng_clk` a 100 MHz y, crucialmente,
+  `tcsr_pcie_0_clkref_en` habilitado a 38,4 MHz por `1c06000.phy`. El pinmux
+  confirma GPIO80/81 reclamados por `wcn7850-pmu`, GPIO82/83 sin reclamar
+  (correcto para `0x1107`), GPIO94 PERST y GPIO96 WAKE como `gpio` y GPIO95
+  con función `pcie0_clk_req_n`. Los siete rails repiten sus tensiones stock y
+  el enlace vuelve a morir en `Detect.Active` (`DEBUG0=0x8a6901` esta vez).
+- Con clocks, refclk, CLKREQ, PERST, rails y WLAN_EN verificados, la única
+  diferencia estructural restante frente a stock es el bloque AOP/PDC del
+  nodo cnss: `mboxes = <&qmp_aop>`, `qcom,vreg_pdc_map` y una
+  `qcom,pdc_init_table` específica de `0x1107` que cnss2 envía al AOP por el
+  mailbox QMP antes del primer power-on. Sus 13 mensajes habilitan el recurso
+  PDC de banda base (`{class: wlan_pdc, ss: bb, res: pdc, enable: 1}`) y
+  programan los votos up/down de los rails RF. Sin esa programación, el PMU
+  del WCN7850 no completa su handshake hardware de encendido y nunca presenta
+  receptores PCIe: exactamente el síntoma observado. La QRD upstream funciona
+  sin esto porque su AOP trae el recurso habilitado por defecto; el de Samsung
+  no.
+- v0.43 añade `program-wcn7850-wlan-pdc-aop.patch` (kernel r24): en el probe
+  de `pwrseq-qcom-wcn`, si el DT declara `qcom,qmp`, obtiene el mailbox con
+  `qmp_get()` (API mainline, `CONFIG_QCOM_AOSS_QMP=y` ya presente) y envía
+  cada cadena de `qcom,wlan-pdc-init` con `qmp_send()`, registrando el
+  resultado por mensaje bajo `SM-X910 WCN diag: AOP pdc`. No hay MMIO nuevo ni
+  cambios en la secuencia eléctrica; sin las propiedades DT el código es un
+  no-op. El DTS añade `qcom,qmp = <&aoss_qmp>` y las 13 cadenas copiadas
+  literalmente del `chip_cfg@1` del FDT vivo.
+- El diagnóstico userspace se amplía para listar `/sys/bus/pci/devices` con
+  vendor/device/driver: el éxito se verá como una segunda entrada `17cb:1107`
+  con `ath12k` enlazado, sin depender de NetworkManager.
+- Build v0.43: `Image.gz`
+  `09944d99929f4a0dc96189839dd1c78e7c76b3efaee5c512a04fa908f23ace96`;
+  DTB `641b20ba39130a93da37cd10bd04a69d29ad1f970e1699425fa37e29746f6b4a`;
+  config sin cambios
+  `f20f2ca0c058cad4772bf5af52ff6041c02b2bd5ff74bfc60e25c2fc2af9a42f`;
+  `boot.img` `6cab3ea19452f6e5adb62c0c2a43b3cd64c4a7919dbf084712d10ed408a53436`;
+  `vendor_boot.img`
+  `37124faedba4060b190ea7c7f34808a3762f6d7de9f2b2ee77d9ec10c9252ad2`.
+  La validación confirma las trazas `AOP pdc` en el binario, las 13 cadenas y
+  el phandle `qcom,qmp` en el DTB compilado, los nodos WCN/PCIe0/PHY activos y
+  el listado PCI en el script del overlay.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.43-wcn7850-aop-pdc-sm-x910-twrp.zip`,
+  27.183.654 bytes, SHA-256
+  `b4f06bcdad3e56e91dd9df33bdccdcdaaedd9593f68adfc196ab76662e58bd7c`.
+  Copiado a `/sdcard`; la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.43 y arrancar hasta el escritorio. En el
+  journal, `SM-X910 WCN diag: AOP pdc ... ret=0` confirmará que el AOP aceptó
+  cada mensaje; el snapshot listará los dispositivos PCI. Si `17cb:1107`
+  enumera, continuar con MHI/ath12k/firmware; si el AOP acepta los mensajes y
+  el endpoint sigue ausente, la siguiente variable es el orden temporal
+  (enviar la tabla también inmediatamente antes del deassert de PERST) o el
+  wake handshake GPIO96.

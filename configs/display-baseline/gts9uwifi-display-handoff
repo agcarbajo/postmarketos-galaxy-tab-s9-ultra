@@ -33,4 +33,12 @@ for file in /sys/kernel/debug/pinctrl/*/pinmux-pins; do
 		| while IFS= read -r line; do logger -t "$tag" -- "$line"; done \
 		|| true
 done
+# Enumerated PCI devices: 17cb:0113 is only the root port; success means a
+# second entry with vendor/device 17cb:1107 and ath12k bound to it.
+for dev in /sys/bus/pci/devices/*; do
+	[ -e "$dev" ] || continue
+	driver=none
+	[ -L "$dev/driver" ] && driver=$(basename "$(readlink "$dev/driver")")
+	logger -t "$tag" -- "pci $(basename "$dev") id=$(cat "$dev/vendor" 2>/dev/null):$(cat "$dev/device" 2>/dev/null) driver=$driver"
+done
 logger -t "$tag" "end userspace PCIe/WCN snapshot"
