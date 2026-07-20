@@ -1860,3 +1860,21 @@ física.
   `aa92d42f62f5922a0a9713f9eccd8d15e3740942fcb27f170d19f661f8f49fa6`.
   Queda pendiente el flash manual y el arranque; el asistente no escribió
   ninguna partición.
+
+## 2026-07-20 — sesión 48: v0.34 refuta el directorio SSH como causa única
+
+- La usuaria flasheó manualmente v0.34 y arrancó el sistema. NCM sigue
+  funcionando: el host conserva `172.16.42.2/24`, dos pings a
+  `172.16.42.1` responden en 1 ms y el puerto 22 está abierto.
+- El cliente ofrece la clave Ed25519 correcta en modo no interactivo, pero
+  OpenSSH vuelve a responder `Permission denied
+  (publickey,password,keyboard-interactive)`. Por tanto mover la clave a un
+  fichero plano, ordenar el drop-in como `00-*` y fijar los padres a `0755` no
+  resuelve la autenticación.
+- La hipótesis de `StrictModes` sobre el directorio creado por TWRP queda
+  refutada como explicación suficiente. El hardening general del instalador
+  sigue siendo correcto, pero no se hará otra build basada sólo en inferencia.
+- Próximo paso: regresar a TWRP y montar `mmcblk1p2` en `ro,noload`. Extraer la
+  clave/configuración instaladas, `stat` de toda la ruta, passwd/shadow,
+  configuración efectiva de sshd, logs del último boot y propietarios/modos
+  del home. Sólo esa evidencia decidirá el siguiente arreglo.

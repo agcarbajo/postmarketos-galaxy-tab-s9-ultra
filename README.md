@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 47, v0.34 preparada).
+> Última actualización: 2026-07-20 (sesión 48, v0.34 probada).
 
 ## Objetivo
 
@@ -63,24 +63,24 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.34 copiada a `/sdcard` y verificada; conserva v0.32 y corrige la ruta/permisos de la clave SSH, pendiente flash manual |
+| Imagen/paquete de prueba | ⚠️ v0.34 mantiene LightDM/táctil/NCM/sshd pero también rechaza la clave; pendiente auditoría offline de la rootfs física |
 
 ## Reto en curso
 
-Instalar v0.34 para obtener SSH por clave pública sobre la base v0.32 ya
-validada. v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
+Auditar desde TWRP la autenticación SSH de la rootfs física. v0.32 confirma
+físicamente que el kernel/DTS/initramfs actuales,
 manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
 LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
 pingüinos en pantalla desde v0.19 pertenece exclusivamente a algún módulo
 autocargado. NCM funciona en `172.16.42.1:22`, pero la contraseña de la rootfs
 física rechaza `phablet/<DEV_PASSWORD>` aunque la rootfs generada contiene un hash válido
-para `<DEV_PASSWORD>`. v0.33 tampoco aceptó la clave; la hipótesis mínima es el único
-elemento nuevo que el instalador no controlaba: el modo del directorio creado
-por TWRP, que puede ser incompatible con `StrictModes`. v0.34 conserva todas las
-imágenes de boot, instala la clave como fichero plano en `/etc/ssh`, carga su
-configuración primero y asegura a `0755` el directorio padre de cada fichero
-del overlay. Una vez validado el acceso se iniciará el bisect acumulativo de
-módulos y después se retomará WCN7850:
+para `<DEV_PASSWORD>`. v0.33 y v0.34 tampoco aceptan la clave; v0.34 usa un fichero plano
+en `/etc/ssh`, carga su configuración primero y asegura a `0755` los
+directorios del overlay, por lo que queda refutada la hipótesis de que bastaba
+corregir la carpeta creada por TWRP. El siguiente paso obligatorio es extraer
+ficheros, modos, propietarios, shadow y logs reales antes de modificar de
+nuevo la imagen. Una vez validado el acceso se iniciará el bisect acumulativo
+de módulos y después se retomará WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1129,14 +1129,19 @@ lado del workspace.
   `aa92d42f62f5922a0a9713f9eccd8d15e3740942fcb27f170d19f661f8f49fa6`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
   flash manual; el asistente no flasheó ninguna partición.
+- La prueba física v0.34 conserva la red USB (`172.16.42.2/24` en el host),
+  ping a `172.16.42.1` en 1 ms y OpenSSH 10.3 escuchando en el puerto 22, pero
+  vuelve a rechazar la clave ofrecida. Esto refuta que el único bloqueo fuese
+  el modo de `/etc/ssh/authorized_keys`. Antes de otra build se inspeccionará
+  desde TWRP la rootfs física y el estado real de la cuenta.
 
 ## Lo que no ha funcionado / no repetir
 
-- No crear rutas sensibles de OpenSSH desde el overlay sin fijar el modo de su
-  directorio. TWRP no garantiza un `umask` restrictivo y `StrictModes` rechaza
-  la clave aunque el fichero tenga contenido y modo correctos. El instalador
-  fija ahora `0755` tras cada `mkdir -p`; para la clave se prefiere además un
-  fichero plano dentro del `/etc/ssh` ya existente.
+- No atribuir el rechazo de la clave únicamente al modo del directorio creado
+  por TWRP: v0.34 usa un fichero plano bajo `/etc/ssh`, fija el padre a `0755`
+  y el rechazo persiste. El hardening del instalador se conserva, pero falta
+  auditar cuenta, configuración efectiva y ficheros físicos antes de concluir
+  la causa de autenticación.
 - No usar la presencia de un marcador antiguo del parche Goodix como prueba de
   que el arreglo está completo. El worktree directo puede contener el
   decodificador Samsung sin el forzado PID 6936 ni la prelectura de un solo
