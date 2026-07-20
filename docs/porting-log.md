@@ -1559,3 +1559,72 @@ física.
   de v0.27. Si el servicio confirma que `xrandr` desactivó/reactivó `None-1`,
   se abandona la capa X para este defecto y se instrumenta/corrige la ruta de
   actualización dirty/scanout de simpledrm en el kernel.
+
+## 2026-07-20 — sesión 41: causa raíz encontrada (rpmhpd sync_state) y v0.28
+
+- Desde TWRP se montó `mmcblk1p2` como `ro,noload` y se extrajo el journal
+  completo de v0.27 (boot `2cbe9bc2f5fd4beda28cceaaeb934e9b`, reconstruido a
+  partir de `system.journal` más los rotados) a
+  `work/v027-rootfs-logs-20260720/`, junto con `Xorg.0.log`, ambos logs de
+  LightDM y la nueva captura `gts9uwifi-fb0-after-x.raw`.
+- El servicio de handoff v0.27 se ejecutó íntegro: `active-before=1`,
+  `active-after=7`, ambos `xrandr` sin error y captura a los 32,69 s.
+  `Xorg.0.log` registra el ciclo completo: `xrandr --off` reduce la pantalla a
+  320x200 y produce ~100 `failed to add fb -22` (simpledrm limita
+  min/max_width al modo firmware, EINVAL esperado), y `--mode 2960x1848`
+  reasigna un framebuffer nativo nuevo sin error. Aun así el panel siguió en
+  los pingüinos: la capa X queda definitivamente descartada.
+- La captura fb0 de v0.27 (SHA-256 `dc6c3e70...`) es negra: con el DDX
+  modesetting X dibuja en su dumb buffer, no en la emulación fbdev. Es
+  coherente y no aporta contradicción.
+- Comparando el dmesg de v0.18 (greeter visible) con v0.27 apareció la
+  regresión estructural: los kernels de v0.4–v0.18 eran builds directas con
+  release `7.2.0-rc3-dirty`, de modo que `/lib/modules/7.2.0-rc3` del rootfs
+  nunca casaba y ningún módulo llegó a cargar (el journal v0.18 registra
+  `modprobe: FATAL: Module ext4 not found in directory
+  /lib/modules/7.2.0-rc3-dirty`). Desde v0.19 el boot usa el payload APK con
+  release `7.2.0-rc3` y udev coldplug carga por fin el árbol de módulos.
+- La cadena causal exacta del panel congelado: `sm8550.dtsi` deja `dispcc`,
+  `videocc` y `camcc` habilitados (mdss está `disabled`, `msm.ko` no carga);
+  el rootfs contiene `dispcc-sm8550.ko`, `videocc-sm8550.ko`,
+  `camcc-sm8550.ko` y sus alias casan con los nodos DT. `qcom-rpmhpd`
+  mantiene cada dominio en su corner de arranque hasta `sync_state()`, que
+  dispara cuando TODOS sus consumidores DT han sondeado; el journal muestra
+  `qcom-rpmhpd ... sync_state() pending due to ade0000/aaf0000
+  .clock-controller` justo antes del coldplug. Al cargar esos módulos
+  (~17–20 s), rpmhpd ejecuta sync_state, suelta el voto de arranque de MMCX y
+  el MDSS/DSI se apaga; el panel AMOLED en command-mode retiene el último
+  frame de su GRAM: los ocho pingüinos.
+- La evidencia temporal encaja al milisegundo: la foto v0.21 quedó congelada
+  tras `SM-X910 WCN diag: power sequencer registered` (20,208 s), y su
+  journal sitúa la carga de qcomtee/rtc/clock-controllers justo en esa
+  ventana; en v0.27 esos módulos cargan entre 17 y 20,3 s, antes de que X
+  arranque a los 21,6 s. En v0.11–v0.18 el mismo sync_state quedaba pendiente
+  para siempre y por eso el greeter sí se veía.
+- v0.28 aplica la corrección mínima reproducible: device r12 instala
+  `/usr/lib/modprobe.d/gts9uwifi-display-hold.conf` con `blacklist` de
+  `dispcc_sm8550`, `videocc_sm8550`, `camcc_sm8550` y `gpucc_sm8550`. Sólo
+  bloquea el autoload por modalias; los módulos siguen empaquetados y el
+  fichero debe eliminarse cuando exista el stack DRM/DSI real. No cambia
+  kernel, DTB, cmdline, X ni el aislamiento WCN/PCIe0.
+- Build limpia verificada: device r12, kernel `7.2_rc3-r17`, firmware r1 y
+  kbd; blacklist con los cuatro módulos, los `.ko` conservados en el árbol,
+  configuración X modesetting/sombra intacta, script/unidad/enlace de handoff
+  presentes, cmdline sin `console=tty0` y los tres nodos WCN/PCIe0
+  deshabilitados.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.28-hold-boot-display-sm-x910-twrp.zip`,
+  80.855.122 bytes, SHA-256
+  `a9b169d40400cfa0bea239138194ce36dd428a9e492a52e6e60c590ec5ddfedc`.
+  El manifiesto del overlay transporta
+  `usr/lib/modprobe.d/gts9uwifi-display-hold.conf` con modo `0644`. Se copió a
+  `/sdcard` y la única comparación local/remota coincide; el asistente no
+  flasheó ninguna partición.
+- Próxima prueba: flash manual v0.28 y dejar la tablet arrancada al menos
+  60 s. Si el diagnóstico es correcto, rpmhpd nunca ejecutará sync_state, el
+  scanout del bootloader seguirá vivo y el greeter de LightDM debe sustituir
+  físicamente a los pingüinos (con el parpadeo del rebote VT y del ciclo
+  xrandr por el camino). Si sigue congelado, la siguiente iteración añadirá
+  `console=tty0` para fechar el instante exacto de la congelación con el
+  último printk visible y continuar el bisect de módulos (qcomtee, qcom_ice,
+  icc_bwmon, icc_osm_l3).

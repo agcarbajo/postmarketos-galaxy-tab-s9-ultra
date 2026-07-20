@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20.
+> Última actualización: 2026-07-20 (sesión 41, v0.28).
 
 ## Objetivo
 
@@ -57,21 +57,29 @@ demostrarlo en este dispositivo.
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.26 demuestra que `/dev/fb0` contiene el greeter correcto mientras el panel conserva los pingüinos; v0.27 fuerza daño y reactivación KMS |
+| Escritorio | 🧪 Causa raíz identificada: cargar dispcc/videocc/camcc dispara `sync_state` de rpmhpd y apaga MMCX/MDSS; v0.28 los bloquea con modprobe.d y espera prueba física |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.27 flasheada: el panel sigue en los pingüinos y USB da Code 43; pendiente extraer el resultado de `xrandr` desde TWRP |
+| Imagen/paquete de prueba | 🧪 v0.28 copiada a `/sdcard` y verificada; pendiente de flash manual (blacklist de clock controllers multimedia) |
 
 ## Reto en curso
 
-Extraer desde TWRP el journal de v0.27 y confirmar la respuesta de `xrandr`.
-La prueba física sigue mostrando los pingüinos y Windows vuelve a registrar
-Code 43, sin ADB ni SSH. Si el servicio ejecutó el refresco solicitado, el
-siguiente cambio debe hacerse en la ruta dirty/scanout de simpledrm del kernel,
-no en X, LightDM o las VT; conservar SSH RNDIS y después reintroducir WCN7850:
+Probar físicamente v0.28. El journal v0.27 confirmó que el handoff y ambos
+`xrandr` se ejecutaron sin error (incluido un modeset completo con framebuffer
+nuevo a 2960x1848), descartando definitivamente X/LightDM/VT. La comparación
+v0.18↔v0.27 encontró la regresión real: los kernels v0.4–v0.18 eran builds
+directas `7.2.0-rc3-dirty` que nunca cargaron módulos; desde v0.19 el release
+coincide con `/lib/modules/7.2.0-rc3` y udev carga `dispcc/videocc/camcc
+-sm8550`, con lo que `qcom-rpmhpd` completa su lista de consumidores, ejecuta
+`sync_state()`, suelta el voto de arranque de MMCX y apaga el MDSS: el panel
+command-mode retiene el último frame (los pingüinos). v0.28 (device r12)
+instala `/usr/lib/modprobe.d/gts9uwifi-display-hold.conf` con blacklist de
+`dispcc_sm8550`, `videocc_sm8550`, `camcc_sm8550` y `gpucc_sm8550` para que el
+sync_state quede pendiente como en v0.11–v0.18. Después: conservar SSH RNDIS y
+reintroducir WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -999,8 +1007,31 @@ lado del workspace.
 - La prueba física v0.27 sigue mostrando los ocho pingüinos. Con la tablet
   arrancada, Windows sólo enumera `Dispositivo USB desconocido (Error de
   solicitud de descriptor de dispositivo)`, Code 43; no hay ADB ni respuesta
-  SSH en `172.16.42.1:22`. Falta extraer desde TWRP el journal persistente para
-  verificar el resultado exacto del `xrandr` antes de modificar simpledrm.
+  SSH en `172.16.42.1:22`.
+- El journal v0.27 extraído en sólo lectura (boot
+  `2cbe9bc2f5fd4beda28cceaaeb934e9b`) demuestra que el handoff completo se
+  ejecutó: VT1→VT7, ambos `xrandr` sin error y captura fb0 a los 32,69 s.
+  `Xorg.0.log` registra el apagado a 320x200 (con los `failed to add fb -22`
+  esperables, simpledrm fija min/max al modo firmware) y la reactivación con
+  un framebuffer nativo nuevo. La capa X queda definitivamente descartada.
+- La comparación de dmesg v0.18↔v0.27 identifica la causa raíz del panel
+  congelado: los kernels arrancados en v0.4–v0.18 eran builds directas con
+  release `-dirty` que jamás cargaron módulos (`modprobe: FATAL ...
+  7.2.0-rc3-dirty` en el journal), mientras que desde v0.19 udev coldplug sí
+  carga `dispcc/videocc/camcc-sm8550.ko`. Con esos consumidores sondeados,
+  `qcom-rpmhpd` ejecuta `sync_state()` y suelta el voto de arranque de MMCX;
+  el MDSS se apaga y el panel retiene el último frame en su GRAM. La foto
+  v0.21 (congelada tras `power sequencer registered`, 20,208 s) coincide al
+  milisegundo con esa ventana de coldplug.
+- v0.28 (device r12) aplica la corrección mínima:
+  `/usr/lib/modprobe.d/gts9uwifi-display-hold.conf` bloquea el autoload de
+  `dispcc_sm8550`, `videocc_sm8550`, `camcc_sm8550` y `gpucc_sm8550`. ZIP:
+  `postmarketos-edge-xfce-mainline-v0.28-hold-boot-display-sm-x910-twrp.zip`,
+  80.855.122 bytes, SHA-256
+  `a9b169d40400cfa0bea239138194ce36dd428a9e492a52e6e60c590ec5ddfedc`, copiado
+  a `/sdcard` con la única comparación local/remota coincidente. Pendiente de
+  flash manual; si el greeter aparece, el fichero se retirará cuando exista el
+  stack DRM/DSI nativo.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1043,8 +1074,20 @@ lado del workspace.
   servicio corregido ejecuta `chvt 1`/`chvt 7` y `fgconsole` confirma VT7. El
   DDX fbdev abre `/dev/fb0` y v0.26 demuestra con una captura completa que el
   greeter correcto ya está en sus 21.880.320 bytes mientras el panel conserva
-  los pingüinos. El defecto pendiente es la propagación/scanout de simpledrm;
-  v0.27 prueba daño y reactivación completa del plano KMS.
+  los pingüinos. v0.27 ejecutó además un ciclo completo de apagado y
+  reactivación KMS sin efecto físico: no queda nada que corregir en X ni en
+  las VT.
+- No dejar que udev cargue `dispcc/videocc/camcc/gpucc-sm8550` mientras el
+  scanout dependa del estado que dejó el bootloader: completan la lista de
+  consumidores de `qcom-rpmhpd`, su `sync_state()` suelta el voto de arranque
+  de MMCX y el MDSS se apaga con el panel congelado en su GRAM. v0.28 los
+  bloquea vía `modprobe.d`; retirar ese fichero sólo junto con el driver
+  DRM/DSI nativo que vote sus propios dominios.
+- No comparar sólo configuraciones y DTS al buscar regresiones entre builds:
+  verificar también el release del kernel arrancado frente a
+  `/lib/modules/`. v0.4–v0.18 corrían `7.2.0-rc3-dirty` sin ningún módulo y
+  eso ocultaba efectos que sólo aparecen cuando el árbol de módulos casa
+  (v0.19+).
 - Asumir que `fastboot boot` existe por tratarse de un dispositivo Android;
   Samsung suele exponer Download Mode/Odin, no fastboot estándar.
 - Capturar recursivamente todo `/sys/firmware/devicetree/base` por SSH tardó
