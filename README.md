@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.31 construida y validada; pendiente volver a TWRP para copiarla y probar kernel/DTS actuales sin módulos |
+| Imagen/paquete de prueba | 🧪 v0.31 copiada a `/sdcard` y verificada; pendiente flash manual para probar kernel/DTS actuales sin módulos |
 
 ## Reto en curso
 
@@ -1065,7 +1065,8 @@ lado del workspace.
   `postmarketos-edge-xfce-mainline-v0.31-current-kernel-no-modules-sm-x910-twrp.zip`,
   22.008.887 bytes, SHA-256
   `be37c78307d00dc065ed368ec4e35ecac434d7a11beead7b010e924ae1406d0e`.
-  Pendiente volver a TWRP para copiar y verificar el archivo.
+  Copiado a `/sdcard`; la comparación local/remota coincide. v0.30 permanece
+  también en la tarjeta como retorno inmediato a la base visible.
 
 ## Lo que no ha funcionado / no repetir
 

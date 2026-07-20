@@ -1743,8 +1743,9 @@ física.
   `postmarketos-edge-xfce-mainline-v0.31-current-kernel-no-modules-sm-x910-twrp.zip`,
   22.008.887 bytes, SHA-256
   `be37c78307d00dc065ed368ec4e35ecac434d7a11beead7b010e924ae1406d0e`.
-  Está validado localmente y pendiente de copiar a `/sdcard` cuando la tablet
-  vuelva a TWRP; el asistente no flasheó ninguna partición.
+  Se copió a `/sdcard` desde TWRP y la única comparación local/remota coincide.
+  v0.30 permanece en la tarjeta como rollback visible; el asistente no flasheó
+  ninguna partición.
 - Interpretación prevista: si v0.31 muestra el escritorio, el culpable es uno
   de los módulos que empezaron a cargar en v0.19; si muestra pingüinos, debe
   bisectarse kernel/DTS/initramfs entre v0.18 y la base actual.
