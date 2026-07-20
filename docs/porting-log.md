@@ -1918,3 +1918,30 @@ física.
 - Próximo paso: flash manual v0.35, arrancar y probar la clave. Si se acepta,
   PAM era la barrera y se podrá depurar en vivo; si se rechaza, extraer el
   journal DEBUG3 sin otra build intermedia.
+
+## 2026-07-20 — sesión 50: el NCM accesible era otro pmOS, no la X910
+
+- La usuaria flasheó v0.35 y arrancó. El host volvió a mostrar un NCM en
+  `172.16.42.2/24` y un servidor en `172.16.42.1:22`; la clave fue rechazada y
+  el servidor seguía ofreciendo métodos interactivos, contradictorio con la
+  configuración v0.35.
+- La contradicción se resolvió comparando identidades criptográficas. La host
+  key Ed25519 extraída de la microSD X910 es
+  `SHA256:1N9kAKdfusq7wxZmypG2PsCpqwhhDu5An+HC3SJAu0E`. El endpoint vivo
+  presenta `SHA256:jPYjoVxDTlJ6jh50x+qfOlpHkFLqcEVMhJScmQgLuoM`, banner
+  OpenSSH 10.3 y Windows lo resuelve como `daisy.local`. La rootfs X910 usa
+  OpenSSH 10.4. No son el mismo sistema.
+- Windows enumera simultáneamente dos USB: `UsbNcm Host Device #7`, parent
+  `USB\\VID_18D1&PID_D001\\postmarketOS`, está funcional y pertenece al otro
+  pmOS; otro dispositivo en un puerto/hub distinto figura como
+  `USB\\VID_0000&PID_0002...` con error de solicitud de descriptor. Este
+  último es compatible con el fallo físico externo ya observado en la X910.
+- Por tanto las pruebas de contraseña/clave sobre `172.16.42.1` de
+  v0.30–v0.35 no prueban nada sobre la autenticación de la tablet. Se conservan
+  como válidas la prueba visual/táctil y la evidencia offline: los journals de
+  la X910 demuestran que internamente configfs, `usb0`, DHCP y sshd arrancan.
+- v0.35 ya está flasheada, pero su acceso key-only todavía no se ha probado
+  contra la X910 real. Próximo paso: desconectar o aislar el USB del otro pmOS,
+  reconectar físicamente la tablet y comprobar enumeración/host key. Si la
+  X910 sigue como Code 43, retomar el defecto de descriptor desde la cadena
+  DWC3/EP0 ya instrumentada, sin mezclarlo con autenticación.

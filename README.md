@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 49, v0.35 preparada).
+> Última actualización: 2026-07-20 (sesión 50, identidad USB corregida).
 
 ## Objetivo
 
@@ -59,28 +59,27 @@ demostrarlo en este dispositivo.
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
-| SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
+| SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.35 copiada y verificada; SSH sólo por clave y sin PAM sobre la base v0.32, pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.35 flasheada; LightDM/táctil conservados, prueba SSH pendiente porque el USB externo de la X910 no enumera |
 
 ## Reto en curso
 
-Probar v0.35 para aislar PAM de la autenticación SSH. v0.32 confirma
-físicamente que el kernel/DTS/initramfs actuales,
+Recuperar la enumeración USB externa real de la X910 y probar entonces v0.35.
+v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
 manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
 LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
 pingüinos en pantalla desde v0.19 pertenece exclusivamente a algún módulo
-autocargado. NCM funciona en `172.16.42.1:22`, pero la contraseña de la rootfs
-física rechaza `phablet/<DEV_PASSWORD>` aunque la rootfs generada contiene un hash válido
-para `<DEV_PASSWORD>`. La auditoría offline de v0.34 confirma que clave, fingerprint,
+autocargado. La auditoría offline de v0.34 confirma que clave, fingerprint,
 drop-in, configuración efectiva, permisos, propietarios y shadow físicos son
-correctos; fallan a la vez clave y contraseña. v0.35 cambia únicamente la fase
-común restante: `UsePAM no`, autenticación sólo por clave y `LogLevel DEBUG3`,
-conservando `StrictModes yes`. Si entra, se iniciará el bisect acumulativo de
-módulos y después se retomará WCN7850; si no, el log detallado identificará la
-comprobación interna exacta:
+correctos. Sin embargo, todas las conexiones externas anteriores iban al otro
+pmOS: su host key es distinta y responde OpenSSH 10.3, mientras la microSD
+X910 contiene OpenSSH 10.4. Windows muestra simultáneamente ese NCM funcional
+y la X910 como dispositivo desconocido por error de descriptor. v0.35 queda
+sin validar en red hasta enumerar el USB correcto; después se iniciará el
+bisect acumulativo de módulos y se retomará WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1159,9 +1158,29 @@ lado del workspace.
   `7a1de9353d6614130f545f9cdb337818ec24746c00ecdad29ef15a39894ef537`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
   flash manual; el asistente no flasheó ninguna partición.
+- La prueba externa posterior no era contra la X910. La host key extraída de
+  su microSD es
+  `SHA256:1N9kAKdfusq7wxZmypG2PsCpqwhhDu5An+HC3SJAu0E`; el servidor en
+  `172.16.42.1` presenta
+  `SHA256:jPYjoVxDTlJ6jh50x+qfOlpHkFLqcEVMhJScmQgLuoM`, banner OpenSSH 10.3 y
+  resolución `daisy.local`. Es el otro dispositivo pmOS conocido, no la
+  tablet.
+- Windows confirma dos dispositivos simultáneos: el NCM ajeno es
+  `USB\\VID_18D1&PID_D001...`, mientras la X910 aparece como
+  `USB\\VID_0000&PID_0002...` con error de solicitud de descriptor en otro
+  puerto/hub. Se retiran como falsas todas las conclusiones de autenticación
+  externa v0.30–v0.35; siguen válidos los journals offline que demuestran
+  `usb0`, DHCP y sshd internos. v0.35 está flasheada, pero su clave no ha sido
+  probada contra la tablet real.
 
 ## Lo que no ha funcionado / no repetir
 
+- No identificar un endpoint SSH sólo por `172.16.42.1`: varios dispositivos
+  pmOS reutilizan esa subred USB. Antes de atribuir cualquier resultado a la
+  X910 hay que comparar su host key física
+  `SHA256:1N9kAKdfusq7wxZmypG2PsCpqwhhDu5An+HC3SJAu0E` y el banner OpenSSH
+  10.4. `daisy.local`, OpenSSH 10.3 y fingerprint `jPYjoVxD...` pertenecen al
+  otro dispositivo.
 - No atribuir el rechazo de la clave únicamente al modo del directorio creado
   por TWRP: v0.34 usa un fichero plano bajo `/etc/ssh`, fija el padre a `0755`
   y el rechazo persiste. El hardening del instalador se conserva, pero falta
