@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 51, v0.36 preparada).
+> Última actualización: 2026-07-20 (sesión 52, v0.36 probada).
 
 ## Objetivo
 
@@ -63,11 +63,11 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.36 copiada a `/sdcard` y verificada; elimina los logs DWC3 del hot path, pendiente flash manual |
+| Imagen/paquete de prueba | ⚠️ v0.36 mantiene LightDM/táctil pero USB sigue en Code 43; pendiente extraer el journal limpio desde TWRP |
 
 ## Reto en curso
 
-Probar v0.36 para recuperar la enumeración USB externa real de la X910.
+Extraer y comparar el journal DWC3 de v0.36 desde TWRP.
 v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
 manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
 LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
@@ -82,8 +82,10 @@ conectada mediante un hub Genesys `05e3:0608`; reconectarla no cambia la ruta
 ni el Code 43. El journal v0.31 demuestra que DWC3 responde descriptores, pero
 los `dev_info` temporales añadidos en v0.18 introducen pausas de 20–21 ms en
 cada IRQ/EP0 mientras Windows reintenta. v0.36 retira únicamente esos logs del
-hot path y conserva los tracepoints y diagnósticos únicos de pull-up. Después
-se probará la host key X910, se iniciará el
+hot path y conserva los tracepoints y diagnósticos únicos de pull-up, pero la
+prueba física sigue en Code 43. Esto refuta que el logging fuese la causa
+suficiente; el journal limpio debe mostrar ahora la última transición real de
+EP0 antes de otro cambio. Después se probará la host key X910, se iniciará el
 bisect acumulativo de módulos y se retomará WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
@@ -1200,6 +1202,11 @@ lado del workspace.
   `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
   Copiado a `/sdcard`; la única comparación local/remota coincide. Pendiente
   flash manual; el asistente no flasheó ninguna partición.
+- La prueba física v0.36 sigue mostrando en Windows únicamente
+  `USB\\VID_0000&PID_0002...` con error de solicitud de descriptor; no aparece
+  NCM ni dirección `172.16.*`. Retirar los `printk` del hot path no basta para
+  resolver la enumeración. Se mantiene el cleanup y se extraerá el journal
+  nuevo antes de modificar de nuevo DWC3, gadget o PHY.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1207,6 +1214,9 @@ lado del workspace.
   `dwc3_ep0_interrupt()` ni el parser SETUP: la traza ya cumplió su propósito y
   el coste síncrono coincide con los reintentos/timeout del host. Usar los
   tracepoints existentes para futuros diagnósticos de alta frecuencia.
+- No asumir que retirar esos `dev_info` resuelve por sí solo Code 43: v0.36
+  elimina las cadenas del binario y el fallo externo persiste. Hace falta
+  comparar el journal limpio y la secuencia efectiva del host.
 - No identificar un endpoint SSH sólo por `172.16.42.1`: varios dispositivos
   pmOS reutilizan esa subred USB. Antes de atribuir cualquier resultado a la
   X910 hay que comparar su host key física

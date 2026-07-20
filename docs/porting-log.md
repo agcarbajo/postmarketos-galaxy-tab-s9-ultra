@@ -1994,3 +1994,17 @@ física.
   local/remota coincide en
   `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
   Queda pendiente el flash manual; el asistente no escribió particiones.
+
+## 2026-07-20 — sesión 52: v0.36 mantiene Code 43
+
+- La usuaria flasheó v0.36 y arrancó manteniendo desconectado el otro pmOS.
+  Windows no crea ningún adaptador NCM ni dirección `172.16.*`.
+- La X910 continúa como `USB\\VID_0000&PID_0002...`, dispositivo desconocido
+  por error de solicitud de descriptor. Por tanto los `printk` por evento/EP0
+  agravaban el timing y debían retirarse, pero no eran la causa suficiente del
+  fallo externo.
+- El cleanup DWC3 se conserva: evita interferencia en IRQ/EP0 y deja los
+  tracepoints upstream disponibles. No se reintroducirá el logging síncrono.
+- Próximo paso: volver a TWRP y extraer el journal/kernel log de v0.36. Sin los
+  mensajes hot-path, comparar pull-up, reset/conexión, PTN3222 y cualquier
+  error no enmascarado con v0.31 antes de cambiar gadget, PHY o DWC3.
