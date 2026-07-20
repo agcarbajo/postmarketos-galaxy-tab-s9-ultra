@@ -1679,3 +1679,43 @@ física.
   el hito de escritorio queda alcanzado. Si sigue en pingüinos, la teoría TZ se
   descarta y la siguiente build restaura `console=tty0` para fechar visualmente
   el instante exacto de la congelación (técnica ya validada en v0.21).
+
+## 2026-07-20 — sesión 43: auditoría v0.19 y baseline recuperable v0.30
+
+- Se revisaron los cambios y la documentación dejados por el agente anterior.
+  v0.27 descarta correctamente X/LightDM/VT; v0.28 bloqueó los clock
+  controllers multimedia, el journal confirmó que el blacklist funcionaba y
+  la prueba física refutó que MMCX/rpmhpd fuese por sí solo la causa.
+- v0.29 añade `qcomtee` y `qcom_ice` por correlación temporal con 18,59–18,62 s,
+  pero no se considera aún una solución demostrada. La transición v0.19 no
+  activó sólo esos dos módulos: cambió del kernel directo
+  `7.2.0-rc3-dirty`, sin directorio de módulos coincidente, al kernel APK
+  `7.2.0-rc3` con coldplug completo, además de añadir WCN/RNDIS y modificar el
+  DT. Hace falta un control total antes del bisect.
+- El Xorg log físicamente funcional de v0.18 usa modesetting simpledrm por
+  defecto, rechaza glamor/llvmpipe, deja `ShadowFB` deshabilitado y activa
+  2960x1848 en VT7. Las configuraciones forzadas y el servicio de rebote
+  VT/xrandr son posteriores y se neutralizan para el control.
+- v0.30 reutiliza byte por byte las cinco imágenes de boot del ZIP v0.18:
+  `boot.img=f5307277...`, `init_boot.img=bedcad22...`,
+  `vendor_boot.img=a5ce2203...`, `dtbo.img=c17418be...` y
+  `vbmeta.img=b95e5ef9...`. Esa combinación ya mostró físicamente LightDM y
+  conserva el táctil corregido.
+- El ZIP se regenera con el instalador TWRP actual para aceptar
+  `ID="postmarketos"`, validar el overlay y manejar vbmeta read-only. El
+  overlay deja `20-gts9uwifi-fbdev.conf` sin secciones Xorg y reemplaza el
+  script de handoff por un no-op, reproduciendo el comportamiento gráfico
+  anterior a v0.19 sobre el rootfs actual.
+- Se añadieron `scripts/package-v018-display-baseline.sh` y
+  `configs/display-baseline/` para que la build de recuperación sea
+  reproducible y no un parche manual de la instalación.
+- ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.30-known-good-v018-display-sm-x910-twrp.zip`,
+  22.018.867 bytes, SHA-256
+  `4f4797b29559496aa678f70e2f2a51bbb510b58258a49d62f4b3355b6735c83b`.
+  Se copió a `/sdcard` y la comparación local/remota coincide; el asistente no
+  flasheó ninguna partición.
+- Próxima prueba: flash manual v0.30 y esperar al menos 60 s. Si vuelve el
+  greeter, conservar la tablet sobre esta base usable y hacer un bisect por
+  grupos de los módulos que empezaron a cargar en v0.19, trasladando al kernel
+  r17 únicamente la exclusión causal mínima.

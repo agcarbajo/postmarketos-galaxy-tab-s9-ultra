@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+# LightDM/Xorg performs the handoff itself in the physically working baseline.
+echo "SM-X910 display handoff: disabled for pre-v0.19 known-good baseline"

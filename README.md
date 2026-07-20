@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 41, v0.28).
+> Última actualización: 2026-07-20 (sesión 43, v0.30).
 
 ## Objetivo
 
@@ -52,35 +52,34 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.27 conserva Linux 7.2-rc3 r17 con RNDIS y WCN/PCIe0 aislado; v0.25 permanece estable más de 15 minutos |
+| Kernel mainline SM8550 | ✅ v0.30 recupera como control el boot `7.2.0-rc3-dirty` físicamente funcional de v0.18; la rama reproducible r17 se conserva para el bisect posterior |
 | DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
 | Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | 🧪 v0.28 refutó la teoría MMCX (módulos bloqueados, rpmhpd retenido, aún pingüinos); scanout muere ~18–20 s en las llamadas SCM de qcom-ice/qcomtee; v0.29 los bloquea y espera prueba |
+| Escritorio | 🧪 La regresión comienza en v0.19 al activar el kernel APK y todos sus módulos; v0.30 reproduce íntegramente el boot/X de v0.18 para recuperar primero una interfaz usable |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
 | SSH | ✅ v0.23 aislada levanta RNDIS, carrier, `usb0=172.16.42.1`, NetworkManager y OpenSSH sin la carrera WCN |
 | Táctil | ✅ v0.17 validada físicamente: orientación y posición correctas con `inverted-x` + `swapped-x-y` |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.29 copiada a `/sdcard` y verificada; pendiente de flash manual (blacklist de qcomtee/qcom_ice + mm clocks) |
+| Imagen/paquete de prueba | 🧪 v0.30 copiada a `/sdcard` y verificada; pendiente de flash manual del baseline v0.18 conocido |
 
 ## Reto en curso
 
-Probar físicamente v0.29. La v0.28 refutó la teoría MMCX: con
-`dispcc/videocc/camcc` bloqueados el journal confirma que NO cargan y que
-`qcom-rpmhpd ... sync_state() pending` sigue reteniendo los dominios igual que
-en v0.11–v0.18, pero el panel sigue en los pingüinos. La lectura decisiva es
-que el scanout muere ~18–20 s (en v0.21 con `console=tty0` el panel se congeló
-a 20,2 s), mucho antes de X. En esa ventana v0.28 ejecuta dos drivers nuevos
-desde v0.19 que hacen llamadas SCM a TrustZone: `qcom-ice 1d88000.crypto`
-(18,59 s) y `qcomtee` (18,62 s); en este XBL Samsung la TZ suele ser dueña del
-splash y una SCM puede desmontar el pipeline del bootloader. v0.29 (device r13)
-los añade al blacklist (seguro: la raíz es la microSD `sdhc_2`/`8804000`; el
-ICE `1d88000` es de la UFS interna que no usamos). Si el greeter aparece,
-`qcomtee`/`qcom_ice` eran la causa; si no, se restaura `console=tty0` para
-fechar visualmente la congelación. Después: conservar SSH RNDIS y reintroducir
-WCN7850:
+Probar físicamente v0.30 para recuperar primero una tablet usable y establecer
+un control exacto. La auditoría confirma que v0.19 mezcló dos cambios: añadió
+WCN/RNDIS al DT/config y sustituyó el kernel directo `7.2.0-rc3-dirty` por el
+kernel APK `7.2.0-rc3`, haciendo que udev cargase por primera vez todo el árbol
+de módulos. v0.28 sólo bloqueó cuatro controladores multimedia y quedó
+refutada; v0.29 bloquea además dos módulos SCM, pero sigue siendo un bisect
+parcial no validado. v0.30 reutiliza byte por byte las cinco imágenes de boot
+de v0.18 —pantalla y táctil físicamente funcionales— con el instalador actual,
+restaura el Xorg modesetting por defecto (`ShadowFB=false`) y neutraliza el
+rebote VT/xrandr posterior. Si reaparece LightDM, se mantiene esta base usable
+y se bisectan por grupos los módulos hasta identificar el consumidor exacto;
+después se traslada la exclusión mínima al kernel reproducible r17. Después:
+conservar SSH RNDIS y reintroducir WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1033,6 +1032,25 @@ lado del workspace.
   a `/sdcard` con la única comparación local/remota coincidente. Pendiente de
   flash manual; si el greeter aparece, el fichero se retirará cuando exista el
   stack DRM/DSI nativo.
+- La auditoría posterior no acepta v0.29 como solución confirmada: el cambio
+  v0.19 activó todo el árbol de módulos, no sólo `qcomtee` y `qcom_ice`, y la
+  correlación temporal no demuestra todavía que una llamada SCM apague el
+  scanout. Para evitar más iteraciones ciegas, v0.30 vuelve al control exacto
+  de v0.18 y recupera primero la interfaz físicamente conocida.
+- v0.30 contiene las mismas imágenes `boot/init_boot/vendor_boot/dtbo/vbmeta`
+  y los mismos hashes internos que v0.18, pero usa el instalador actual, que
+  reconoce `ID="postmarketos"`, conserva vbmeta read-only correctamente y
+  valida el overlay. El overlay sustituye la configuración X forzada por un
+  fichero neutro y convierte el handoff posterior en un no-op; LightDM vuelve
+  a usar modesetting simpledrm por defecto como en el Xorg log de v0.18.
+- El empaquetado queda reproducible mediante
+  `scripts/package-v018-display-baseline.sh` y los dos ficheros de
+  `configs/display-baseline/`. ZIP TWRP:
+  `postmarketos-edge-xfce-mainline-v0.30-known-good-v018-display-sm-x910-twrp.zip`,
+  22.018.867 bytes, SHA-256
+  `4f4797b29559496aa678f70e2f2a51bbb510b58258a49d62f4b3355b6735c83b`.
+  Copiado a `/sdcard`; la comparación local/remota coincide. El asistente no
+  flasheó ninguna partición.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1090,6 +1108,11 @@ lado del workspace.
   builds `-dirty` que mostraban el greeter. En XBL Samsung la TZ suele ser
   dueña del splash. v0.29 las bloquea; si no arregla, `console=tty0` fechará el
   punto exacto.
+- No aceptar todavía la hipótesis SCM de v0.29 como causa raíz: que
+  `qcom_ice`/`qcomtee` aparezcan cerca de la ventana de congelación es una
+  correlación, y v0.19 activó simultáneamente todo el árbol de módulos. v0.30
+  recupera primero el control pre-v0.19 exacto; sólo después se hará un bisect
+  acumulativo de módulos desde una imagen físicamente visible.
 - No usar `Set-Content`/`Out-File` de PowerShell para scripts que ejecuta bash
   en WSL: escriben CRLF y `set -euo pipefail` falla con `invalid option name`.
   Usar la herramienta Write (LF) o `dos2unix`.
