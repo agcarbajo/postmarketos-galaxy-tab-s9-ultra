@@ -83,6 +83,16 @@ if ! grep -q 'SM-X910 WCN diag: power sequencer registered' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/diagnose-wcn7850-power-sequence.patch"
 fi
+if ! grep -q 'WLAN_EN cold reset value' \
+	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/cold-reset-wcn7850-before-pcie-probe.patch"
+fi
+if ! grep -q 'default y if ARCH_QCOM' \
+	"$kernel_tree/drivers/pci/pwrctrl/Kconfig"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/build-wcn-pcie-providers-in.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \
@@ -99,6 +109,11 @@ while IFS= read -r setting; do
 			"$kernel_tree/scripts/config" --file "$build_dir/.config" \
 				--enable "${symbol#CONFIG_}"
 			;;
+		CONFIG_*=m)
+			symbol=${setting%%=*}
+			"$kernel_tree/scripts/config" --file "$build_dir/.config" \
+				--module "${symbol#CONFIG_}"
+			;;
 		'# CONFIG_'*' is not set')
 			symbol=${setting#\# CONFIG_}
 			symbol=${symbol% is not set}
@@ -111,6 +126,39 @@ done < "$package/config-gts9uwifi.fragment"
 make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 olddefconfig
 make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 -j"$(nproc)" \
 	Image.gz qcom/sm8550-samsung-gts9uwifi.dtb
+
+if [ "${BUILD_WIFI_MODULES:-0}" = 1 ]; then
+	modules_root="$out_dir/modules-root"
+	case "$modules_root" in
+		"$base"/out/*/modules-root) rm -rf -- "$modules_root" ;;
+		*) echo "unsafe modules output path: $modules_root" >&2; exit 1 ;;
+	esac
+
+	# Building Image produces the complete built-in export table as
+	# vmlinux.symvers.  An isolated in-tree M= build expects the same table
+	# under the external-module name before it can resolve core symbols.
+	cp "$build_dir/vmlinux.symvers" "$build_dir/Module.symvers"
+	make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 -j"$(nproc)" \
+		M=drivers/net/wireless/ath/ath12k modules
+	make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 \
+		M=drivers/net/wireless/ath/ath12k \
+		INSTALL_MOD_PATH="$modules_root" INSTALL_MOD_STRIP=1 \
+		DEPMOD=true modules_install
+
+	release=$(make -s -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 kernelrelease)
+	release_dir="$modules_root/lib/modules/$release"
+	install -m 0644 "$build_dir/modules.builtin" \
+		"$release_dir/modules.builtin"
+	install -m 0644 "$build_dir/modules.builtin.modinfo" \
+		"$release_dir/modules.builtin.modinfo"
+	find "$release_dir/updates" -type f -name '*.ko*' -printf '%P\n' \
+		| sed 's#^#updates/#' | sort > "$release_dir/modules.order"
+	depmod -b "$modules_root" "$release"
+	mkdir -p "$modules_root/usr/lib"
+	mv "$modules_root/lib/modules" "$modules_root/usr/lib/modules"
+	rmdir "$modules_root/lib"
+	printf '%s\n' "$release" > "$out_dir/kernel.release"
+fi
 
 install -m 0644 "$build_dir/arch/arm64/boot/Image.gz" "$out_dir/Image.gz"
 install -m 0644 \

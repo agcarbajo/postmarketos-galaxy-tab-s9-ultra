@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=18
+pkgrel=19
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -52,6 +52,8 @@ source="
 	diagnose-dwc3-ep0-enumeration.patch
 	remove-dwc3-hotpath-diagnostics.patch
 	diagnose-wcn7850-power-sequence.patch
+	cold-reset-wcn7850-before-pcie-probe.patch
+	build-wcn-pcie-providers-in.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 "
@@ -106,6 +108,8 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 3fe40500a8d19a1c86ce575644ed22797c1cfb66267b9844dc897d0c5ccff9697d8234e364f114e8fe5b11f17491a5b5f7f1d746a80e613b07b2bdd6e22c8c4d  diagnose-dwc3-ep0-enumeration.patch
 97e4a4fe91a229bbdc68eeb81ae0a98efc22678821c9a85896d36f0ff2fb262e89df3770a624baf32ffafc13c737aaeda7207b85a6a88c989a778f440d10b696  remove-dwc3-hotpath-diagnostics.patch
 d8854ef8cb67c77b638d3f7a3052471af501ca5e4190083f535ff9cc96473cbe6f73b2974d712f3e7e890fba19082d8d21f4a0ef49922bb0c8d739582ba4265e  diagnose-wcn7850-power-sequence.patch
-2e30e327401a23aca5cc86bb3d142683dc9c42ed64b716e5fe914b9e38eab2a9baae19fa732fe55c909d82a62067ccbb117101d61ad0a5eec70732638cc31851  config-gts9uwifi.fragment
-9fa557181c5776d18d10b916db5c6d03bf04e25480e9f8c2c851cbb039b9f3a9e38c0051ede30020c6182b8d5b1acb4876bf0b50e241409ee4042d4b6dc48c70  sm8550-samsung-gts9uwifi.dts
+34a38da2aa9d40fed50afa98bcb782c49e5c6d0a08cc84e05cb1cb39a74bac47438fdc0035e22c1e8905af9e89eeb6ac6c1c0dfc4691804cf362e6858d540b1b  cold-reset-wcn7850-before-pcie-probe.patch
+d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
+99c864c84936b3e1ea6001d3c79663608f45af62aaca62c649dac7f2e105c8abb376ee291a209b5054da249e0060e3e850bb901f1ab9c24483b9e864f231b108  config-gts9uwifi.fragment
+a31d241dd7683aa4f981854b17dd0dbc562acc1e21591a7f951fce4770c59ba2a4937bd53c02db7ac8f304b33bda9aba8751f2c5e66194df5ed6ce71164cd754  sm8550-samsung-gts9uwifi.dts
 "

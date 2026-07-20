@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 52, v0.36 probada).
+> Última actualización: 2026-07-20 (sesión 53, v0.37 Wi-Fi preparada).
 
 ## Objetivo
 
@@ -52,41 +52,40 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | ✅ v0.32 valida físicamente kernel/DTS actuales, LightDM y táctil sin módulos; la regresión de los pingüinos queda aislada a un módulo |
-| DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
+| Kernel mainline SM8550 | 🧪 v0.37 conserva el release estable `7.2.0-rc3-dirty`, integra proveedores WCN/PCIe en el kernel y deja sólo los dos módulos ath12k aislados; pendiente prueba física |
+| DTS `gts9uwifi` | 🧪 v0.37 reactiva PMU WCN, PCIe0 y PHY, añade L3G 1,2 V sin padre espurio y conserva el resto de la base visible/táctil |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Kernel r18 retira los `printk` por evento DWC3/EP0; device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r19 añade cold-reset WCN7850 y proveedores PCIe/WCN built-in; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
+| Wi-Fi | 🧪 v0.37 preparada: rails completos, pulso bajo→alto de WLAN_EN, PCIe/pwrseq built-in, firmware stock y sólo `ath12k`/`ath12k_wifi7` cargables; falta validar el endpoint `17cb:1107` |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ⚠️ v0.36 mantiene LightDM/táctil pero USB sigue en Code 43; pendiente extraer el journal limpio desde TWRP |
+| Imagen/paquete de prueba | 🧪 v0.37 validada estáticamente y copiada a `/sdcard`; SHA-256 local/tablet `b3552240…af5a`; pendiente flash manual |
 
 ## Reto en curso
 
-Extraer y comparar el journal DWC3 de v0.36 desde TWRP.
-v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
-manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
-LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
-pingüinos en pantalla desde v0.19 pertenece exclusivamente a algún módulo
-autocargado. La auditoría offline de v0.34 confirma que clave, fingerprint,
-drop-in, configuración efectiva, permisos, propietarios y shadow físicos son
-correctos. Sin embargo, todas las conexiones externas anteriores iban al otro
-pmOS: su host key es distinta y responde OpenSSH 10.3, mientras la microSD
-X910 contiene OpenSSH 10.4. Tras desconectar el otro pmOS, el NCM desaparece y
-sólo permanece la X910 como `VID_0000/PID_0002` por error de descriptor. Está
-conectada mediante un hub Genesys `05e3:0608`; reconectarla no cambia la ruta
-ni el Code 43. El journal v0.31 demuestra que DWC3 responde descriptores, pero
-los `dev_info` temporales añadidos en v0.18 introducen pausas de 20–21 ms en
-cada IRQ/EP0 mientras Windows reintenta. v0.36 retira únicamente esos logs del
-hot path y conserva los tracepoints y diagnósticos únicos de pull-up, pero la
-prueba física sigue en Code 43. Esto refuta que el logging fuese la causa
-suficiente; el journal limpio debe mostrar ahora la última transición real de
-EP0 antes de otro cambio. Después se probará la host key X910, se iniciará el
-bisect acumulativo de módulos y se retomará WCN7850:
+Flashear manualmente v0.37 y comprobar que conserva LightDM y el táctil antes
+de evaluar Wi-Fi. Esta build no recupera el árbol completo de módulos que
+provocó la regresión visual desde v0.19: PCIe PHY, pwrctrl/pwrseq, QRTR, MHI,
+cfg80211 y mac80211 están integrados en el kernel; el overlay contiene sólo
+`ath12k.ko.zst` y `ath12k_wifi7.ko.zst`, cargados tras montar la rootfs real.
+La hipótesis concreta es que el bootloader dejaba GPIO80/WLAN_EN alto y el
+pwrseq upstream preservaba ese estado, por lo que el WCN7850 nunca recibía el
+reset bajo→alto necesario. v0.37 fuerza exclusivamente para WCN7850 un pulso
+bajo de 5–10 ms antes de la secuencia normal. También declara el rail real
+L3G 1,2 V directamente, como los DTS upstream SM8550, sin el
+`vdd-l3-supply` incorrecto que causó el ciclo de v0.20.
+
+Tras el arranque se volverá a TWRP para extraer el journal persistente y buscar,
+en este orden: `WLAN_EN cold reset value=0`, una única secuencia del host
+PCIe0, endpoint Kiwi `17cb:1107`, carga de firmware ath12k y aparición de una
+interfaz en NetworkManager. Si el endpoint aparece, el siguiente paso será
+conectar desde la GUI y usar Wi-Fi para SSH; si no aparece, se instrumentarán
+PERST/LTSSM/PHY sin volver a cambiar rails a ciegas. El USB Code 43 queda
+aplazado mientras Wi-Fi pueda proporcionar el canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
@@ -1208,6 +1207,38 @@ lado del workspace.
   resolver la enumeración. Se mantiene el cleanup y se extraerá el journal
   nuevo antes de modificar de nuevo DWC3, gadget o PHY.
 
+- La auditoría Wi-Fi posterior identifica una diferencia concreta frente al
+  FDT stock. WCN7850/Kiwi v2 es `17cb:1107`, usa GPIO80 como WLAN_EN y necesita
+  siete rails; el séptimo es L3G 1,2 V. Los DTS upstream SM8550 declaran ese
+  LDO3 directamente bajo PM8550VS-G, sin el `vdd-l3-supply` que introdujo el
+  ciclo de dependencias de v0.20.
+- El journal v0.21 ya demostraba que los siete rails se habilitaban y que
+  WLAN_EN empezaba y permanecía alto, pero no que existiera un reset. El
+  pwrseq upstream conserva deliberadamente un enable heredado. v0.37 limita al
+  compatible WCN7850 un cold-reset: solicita WLAN_EN bajo, espera 5–10 ms y
+  después ejecuta la subida normal antes del probe PCIe.
+- Para no repetir la regresión de los pingüinos de v0.19, v0.37 integra en el
+  kernel PHY QMP PCIe, pwrctrl/pwrseq, QRTR, MHI, rfkill, cfg80211 y mac80211.
+  Sólo construye e instala `ath12k.ko.zst` y
+  `wifi7/ath12k_wifi7.ko.zst`; `modules.dep` contiene únicamente esa relación
+  y `modules.alias` mapea `17cb:1107` al driver Wi-Fi 7.
+- La build incremental v0.37 superó dos fallos de herramienta antes de ser
+  aceptada: el primer parche manual tenía conteos de hunk inválidos y el build
+  `M=` aislado necesitaba copiar `vmlinux.symvers` a `Module.symvers`. Además,
+  dos símbolos Kconfig ocultos volvían a `m`; un parche mínimo les da default
+  built-in en `ARCH_QCOM`. No se aceptó ninguno de esos intentos parciales.
+- El resultado usa release `7.2.0-rc3-dirty`. La validación final confirma el
+  DTB (PMU/PCIe0/PHY/L3G), todos los proveedores built-in, exactamente dos
+  módulos con vermagic correcto, orden de carga y cadena de dependencias. El
+  ZIP supera CRC, manifiestos de imágenes/overlay, modos POSIX, tamaños de las
+  cinco imágenes, firmware y alias PCI.
+- ZIP TWRP preparado:
+  `postmarketos-edge-xfce-mainline-v0.37-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.179.256 bytes, SHA-256
+  `b35522406582727052ea768c564ab8c7623891726c1b5b0700cfc5d0d011af5a`.
+  Se copió a `/sdcard` y la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición; queda pendiente el flash manual.
+
 ## Lo que no ha funcionado / no repetir
 
 - No dejar `dev_info` por evento dentro de `dwc3_process_event_entry()`,
@@ -1253,11 +1284,11 @@ lado del workspace.
   `DISABLE_RUNTIME_DTBO=0`: ABL vuelve a su fork ufdt, rechaza el DTB base y
   entra en Odin antes de Linux. Desde v0.19.2 ambos valores seguros son los
   defaults del script y cualquier experimento debe quedar explícito.
-- No volver a declarar PM8550VS-G LDO3 como `vddio1p2-supply` del WCN7850 ni
-  forzar GPIO80 con `output-high` en esta topología: v0.20 introduce un ciclo
-  de reguladores y un bloqueo reproducible a los 18,987144 s. El dummy rail de
-  v0.19.2 permite completar el arranque; v0.21 aísla primero la transición de
-  WLAN_EN con trazas antes de asignar otro rail real.
+- No volver a declarar `vdd-l3-supply = <&vreg_s4g...>` en el contenedor de
+  reguladores PM8550VS-G ni sustituir el reset por un `output-high` estático:
+  esa combinación de v0.20 crea el ciclo y el bloqueo a 18,987144 s. LDO3 sí
+  es el rail real de 1,2 V, pero debe declararse directamente como hacen los
+  DTS upstream SM8550; WLAN_EN necesita una transición baja→alta controlada.
 - No mantener PCIe0/WCN habilitado mientras se valida el primer hito estable:
   v0.21 completa una vez la secuencia, pero boots posteriores v0.21/v0.22 se
   detienen intermitentemente antes de LightDM durante los probes repetidos.

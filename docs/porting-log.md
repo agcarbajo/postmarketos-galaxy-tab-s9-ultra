@@ -2008,3 +2008,49 @@ física.
 - Próximo paso: volver a TWRP y extraer el journal/kernel log de v0.36. Sin los
   mensajes hot-path, comparar pull-up, reset/conexión, PTN3222 y cualquier
   error no enmascarado con v0.31 antes de cambiar gadget, PHY o DWC3.
+
+## 2026-07-20 — sesión 53: v0.37 aísla el bring-up WCN7850
+
+- Se prioriza Wi-Fi como canal de control y se deja el USB Code 43 en segundo
+  plano. La base física aceptada sigue siendo v0.36: LightDM y táctil correctos
+  con release `7.2.0-rc3-dirty` y sin un árbol de módulos coincidente.
+- La comparación del FDT stock, los journals v0.19.2/v0.21 y los DTS upstream
+  SM8550 confirma WCN7850/Kiwi v2 `17cb:1107`, PCIe0, WLAN_EN GPIO80 y siete
+  rails. El rail que faltaba en v0.19.2 es PM8550VS-G LDO3 a 1,2 V. El fallo
+  de v0.20 no demuestra que L3G sea incorrecto: lo causó asignar al bloque de
+  reguladores el padre espurio `vdd-l3-supply = <&vreg_s4g...>`. v0.37 declara
+  LDO3 directamente, como los diseños upstream MTP/Q5Q.
+- v0.21 registró habilitación satisfactoria de los siete inputs y WLAN_EN alto
+  antes y después de la secuencia, pero nunca una transición de reset. El
+  driver pwrseq preserva por diseño un GPIO heredado alto. Se añade
+  `cold-reset-wcn7850-before-pcie-probe.patch`: sólo WCN7850 solicita WLAN_EN
+  inicialmente bajo, lo mantiene 5–10 ms y continúa con el power-up normal.
+- Para eliminar el factor que introdujo los pingüinos desde v0.19, PHY QMP
+  PCIe, PCI pwrctrl/pwrseq, WCN pwrseq, MHI, QRTR, rfkill, cfg80211, mac80211,
+  QMI y dependencias criptográficas quedan built-in. `ATH12K=m`; se construyen
+  de forma aislada sólo `ath12k.ko.zst` y `ath12k_wifi7.ko.zst`, que se cargan
+  desde la rootfs tras el arranque. Un parche Kconfig mínimo fija built-in los
+  proveedores ocultos que `olddefconfig` devolvía a módulo.
+- Hubo tres intentos parciales no aceptados: un hunk del parche cold-reset con
+  conteos inválidos; un modpost `M=` sin `Module.symvers`; y símbolos ocultos
+  que aún resolvían como módulos. Se corrigieron respectivamente regenerando
+  el parche, copiando `vmlinux.symvers` para el build aislado y aplicando los
+  defaults QCOM built-in. La cuarta build terminó correctamente.
+- Validación final del kernel/DTB: PCIe0 y PHY `okay`, L3G directo, referencia
+  `vddio1p2`, ausencia del padre erróneo, todos los proveedores requeridos en
+  `=y`, exactamente dos módulos con vermagic `7.2.0-rc3-dirty`, dependencia
+  `ath12k_wifi7 -> ath12k` y alias PCI `17cb:1107`.
+- El overlay incluye los cuatro blobs stock exactos como `amss.bin`, `m3.bin`,
+  `board.bin` y `regdb.bin`, configuración de carga tardía, control SSH y el
+  handoff de display conocido. El ZIP final superó CRC, hashes internos,
+  permisos POSIX, tamaños de las cinco imágenes y manifiesto del overlay.
+- Artefacto:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.37-wcn7850-pcie-cold-reset-sm-x910-twrp.zip`,
+  27.179.256 bytes, SHA-256
+  `b35522406582727052ea768c564ab8c7623891726c1b5b0700cfc5d0d011af5a`.
+  Se copió a `/sdcard`; la única comparación local/tablet coincide. El
+  asistente no flasheó particiones.
+- Próximo paso: flash manual, comprobar primero LightDM/táctil y volver a TWRP
+  para extraer el journal. Buscar el cold-reset GPIO, una sola secuencia PCIe,
+  endpoint `17cb:1107`, MHI/firmware ath12k e interfaz NetworkManager. Si no
+  aparece el endpoint, instrumentar PERST/LTSSM/PHY sin cambiar rails a ciegas.

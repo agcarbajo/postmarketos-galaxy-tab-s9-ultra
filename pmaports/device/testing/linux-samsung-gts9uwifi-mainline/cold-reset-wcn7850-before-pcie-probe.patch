@@ -1,0 +1,57 @@
+diff --git a/drivers/power/sequencing/pwrseq-qcom-wcn.c b/drivers/power/sequencing/pwrseq-qcom-wcn.c
+index 95583cf6ef55..f0f6251d0f85 100644
+--- a/drivers/power/sequencing/pwrseq-qcom-wcn.c
++++ b/drivers/power/sequencing/pwrseq-qcom-wcn.c
+@@ -25,5 +25,6 @@ struct pwrseq_qcom_wcn_pdata {
+ 	const struct pwrseq_target_data **targets;
+ 	bool has_vddio; /* separate VDD IO regulator */
++	bool cold_reset_wlan;
+ 	int (*match)(struct pwrseq_device *pwrseq, struct device *dev);
+ };
+ 
+@@ -409,6 +410,7 @@ static const struct pwrseq_qcom_wcn_pdata pwrseq_wcn7850_of_data = {
+ 	.num_vregs = ARRAY_SIZE(pwrseq_wcn7850_vregs),
+ 	.pwup_delay_ms = 50,
+ 	.targets = pwrseq_qcom_wcn_targets,
++	.cold_reset_wlan = true,
+ };
+ 
+ static int pwrseq_qcom_wcn_match_regulator(struct pwrseq_device *pwrseq,
+@@ -513,7 +515,8 @@ static int pwrseq_qcom_wcn_probe(struct platform_device *pdev)
+ 	 * the link down handling is implemented in the controller driver.
+ 	 */
+ 	ctx->wlan_gpio = devm_gpiod_get_optional(dev, "wlan-enable",
+-						 GPIOD_ASIS);
++						 ctx->pdata->cold_reset_wlan ?
++						 GPIOD_OUT_LOW : GPIOD_ASIS);
+ 	if (IS_ERR(ctx->wlan_gpio))
+ 		return dev_err_probe(dev, PTR_ERR(ctx->wlan_gpio),
+ 				     "Failed to get the WLAN enable GPIO\n");
+@@ -521,11 +524,22 @@ static int pwrseq_qcom_wcn_probe(struct platform_device *pdev)
+ 	/*
+ 	 * Set direction to output but keep the current value in order to not
+ 	 * disable the WLAN module accidentally if it's already powered on.
++	 *
++	 * Samsung's WCN7850 sleep state explicitly drives WLAN_EN low.  ABL and
++	 * recovery can instead hand Linux an already-high pin while the PMU rails
++	 * are not sequenced.  Pulse it low before the initial PCIe power-on so the
++	 * normal regulator -> clock -> WLAN_EN sequence starts from a known state.
+ 	 */
+-	ret = gpiod_get_value_cansleep(ctx->wlan_gpio);
+-	dev_info(dev, "SM-X910 WCN diag: WLAN_EN initial=%d\n", ret);
+-	ret = gpiod_direction_output(ctx->wlan_gpio, ret > 0);
+-	dev_info(dev, "SM-X910 WCN diag: WLAN_EN direction result=%d value=%d\n",
+-		 ret, gpiod_get_value_cansleep(ctx->wlan_gpio));
++	if (ctx->pdata->cold_reset_wlan) {
++		usleep_range(5000, 10000);
++		dev_info(dev, "SM-X910 WCN diag: WLAN_EN cold reset value=%d\n",
++			 gpiod_get_value_cansleep(ctx->wlan_gpio));
++	} else {
++		ret = gpiod_get_value_cansleep(ctx->wlan_gpio);
++		dev_info(dev, "SM-X910 WCN diag: WLAN_EN initial=%d\n", ret);
++		ret = gpiod_direction_output(ctx->wlan_gpio, ret > 0);
++		dev_info(dev, "SM-X910 WCN diag: WLAN_EN direction result=%d value=%d\n",
++			 ret, gpiod_get_value_cansleep(ctx->wlan_gpio));
++	}
+ 
+ 	ctx->clk = devm_clk_get_optional(dev, NULL);
