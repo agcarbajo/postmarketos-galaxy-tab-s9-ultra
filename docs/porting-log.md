@@ -2475,3 +2475,49 @@ física.
   pero el enlace sigue en Detect, el siguiente sospechoso es que el registro
   vuelva a aparcarse por hardware al no recibir el pipe clock del serdes, lo
   que movería el foco a la puesta en marcha del serdes de la PHY.
+
+## 2026-07-21 — sesión 62: ¡enlace PCIe arriba! El bloqueo pasa al firmware; v0.46
+
+- La usuaria flasheó v0.45 (hashes físicos `f5dbc100…3341` /
+  `0f35ae5f…bb05`). Journal del boot `c9aa4d98acf745e0a3202c9f285f5015`
+  extraído a `work/v045-wifi-boot-20260720/`; rootfs desmontada.
+- **El des-aparcado funciona y derriba la barrera de tres días**:
+  `pipe mux unpark ret=0`, el clk_summary pasa a mostrar
+  `gcc_pcie_0_pipe_clk_src` en la fuente PHY (ULONG_MAX), y a los 6,99 s
+  aparece `qcom-pcie 1c00000.pcie: PCIe Gen.2 x2 link up`. El endpoint
+  **`17cb:1107` enumera** como `0000:01:00.0`, `ath12k_wifi7_pci` se enlaza,
+  MHI entra en Mission mode y QMI lee `chip_id 0x2 chip_family 0x4
+  board_id 0xff soc_id 0x40170200` y `fw_version 0x2036001f` (build
+  2025-03-12): el amss stock arranca. La causa raíz del mux PIPE queda
+  validada físicamente.
+- El fallo restante es de la capa firmware: `failed to receive wmi unified
+  ready event: -110` → `failed to start core: -110` tras las descargas QMI.
+  Dos errores de mapeo de firmware nuestros lo explican:
+  1. `board.bin` era el `bdwlan.elf` COMPLETO. ath12k envía `board.bin`
+     literal como BDF (`fetch_board_data_api_1`), así que el firmware recibía
+     una cabecera ELF ARM en lugar de board data. El ELF tiene un único
+     segmento PT_LOAD en offset 0x400, tamaño 0x15400: el payload real.
+  2. `m3.bin` era `phy_ucode20.elf` (microcódigo PHY, otro tipo de imagen QMI
+     downstream). Para `wcn7850 hw2.0` ath12k usa `m3_loader_driver` y el
+     m3.bin es obligatorio; el kiwi de Samsung no trae m3 (sólo amss20,
+     bdwlan, phy_ucode, regdb), y estábamos inyectando 299 KB de microcódigo
+     PHY como M3.
+- v0.46 corrige ambos sin tocar el kernel (Image.gz idéntico a v0.45):
+  `stage-stock-wifi-firmware.sh` extrae `bdwlan-payload.bin` (parseando el
+  program header del ELF; SHA-256 `191ac306…c16d`) y descarga el `m3.bin`
+  canónico de linux-firmware para WCN7850 hw2.0 (SHA-256 `0e72f44d…1055`,
+  verificado byte a byte contra git.kernel.org). El overlay instala
+  `board.bin` = payload y `m3.bin` = oficial; el APKBUILD del firmware sube a
+  r2 con el mismo mapeo. `phy_ucode20.elf` deja de usarse (mainline no tiene
+  su canal QMI).
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.46-wcn7850-real-bdf-m3-sm-x910-twrp.zip`,
+  27.177.636 bytes, SHA-256
+  `8a28e2416814e6406235221682a87c2cc1f1ec5b1afd37c580b8bcda88e7b4e7`.
+  Overlay verificado (hashes de amss/m3/board/regdb) y copiado a `/sdcard`
+  con la única comparación local/tablet coincidente. El asistente no flasheó
+  ninguna partición.
+- Próximo paso: flash manual v0.46. Éxito esperado: BDF y M3 correctos →
+  `wmi unified ready`, registro mac80211 y `wlan0` en NetworkManager. Si el
+  BDF de Samsung aún fallara, el plan B es `board-2.bin` genérica de
+  linux-firmware (menos óptima en RF pero válida para validar la pila).

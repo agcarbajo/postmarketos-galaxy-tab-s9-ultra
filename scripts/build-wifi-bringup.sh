@@ -37,9 +37,13 @@ install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
 	"$overlay/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 install -m 0644 "$firmware/amss20.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/amss.bin"
-install -m 0644 "$firmware/phy_ucode20.elf" \
+# Canonical linux-firmware M3 image; Samsung ships no m3 for kiwi and the
+# earlier phy_ucode20.elf mapping fed the chip PHY microcode as M3.
+install -m 0644 "$firmware/m3.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/m3.bin"
-install -m 0644 "$firmware/bdwlan.elf" \
+# Raw BDF payload extracted from Samsung's single-PT_LOAD bdwlan.elf; ath12k
+# transfers board.bin verbatim, so the ELF wrapper must not be shipped.
+install -m 0644 "$firmware/bdwlan-payload.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/board.bin"
 install -m 0644 "$firmware/regdb.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/regdb.bin"

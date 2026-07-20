@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 61, des-aparcado del mux PIPE v0.45).
+> Última actualización: 2026-07-21 (sesión 62, enlace PCIe arriba; firmware corregido en v0.46).
 
 ## Objetivo
 
@@ -52,37 +52,36 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 Causa raíz del enlace hallada en v0.44: el mux PIPE de PCIe0 está aparcado en XO por el boot chain Samsung y mainline no lo des-aparca; v0.45 lo conmuta |
-| DTS `gts9uwifi` | ✅ Sin cambios en v0.45; conserva SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
+| Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
+| DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r26 añade `unpark-pcie0-pipe-mux.patch` (`clk_set_rate(pipe, ULONG_MAX)` en el power_on de la QMP); device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r26 sin cambios; firmware r2 corrige el mapeo: `board.bin` = payload BDF del bdwlan.elf y `m3.bin` = oficial de linux-firmware |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.44: módulo power-good (SW_CTRL=1) y aun así sin receptores porque el PIPE está muerto (mux GCC aparcado en XO); v0.45 des-aparca el mux, pendiente de prueba |
+| Wi-Fi | 🧪 v0.45: **enlace PCIe arriba y `17cb:1107` enumerado**; MHI/QMI leen chip y fw_version; falta `wmi ready` por firmware mal mapeado (BDF con cabecera ELF y phy_ucode como M3), corregido en v0.46 |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.45 validada y copiada a `/sdcard`; SHA-256 local/tablet `4d9703f2…b3fee`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.46 validada y copiada a `/sdcard`; SHA-256 local/tablet `8a28e241…7b4e7`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.45. La v0.44 cerró el diagnóstico: el módulo señala
-power-good (`SW_CTRL wlan=1 bt=1` desde t+0 hasta t+600 ms tras WLAN_EN), el
-retraso extra de PERST no cambia nada y el rescan PCI tardío tampoco. La causa
-del enlace muerto está en el SoC pero fuera de la PHY: `clk_summary` muestra
-`gcc_pcie_0_pipe_clk_src` a 19,2 MHz, y en `clk-regmap-phy-mux.c` esa cifra
-sólo aparece cuando el registro hardware del mux (0x6b070) lee
-`PHY_MUX_REF_SRC`: **el mux PIPE de PCIe0 está aparcado en el XO**. En
-7.2-rc3 los ops del mux no incluyen `.enable`, nadie llama a
-`clk_set_rate(pipe, ULONG_MAX)` y no hay `assigned-clocks`: mainline asume el
-valor de reset (fuente PHY), pero la cadena de arranque Samsung lo deja
-aparcado y nunca se des-aparca. Con el PIPE muerto, el MAC no puede ordenar
-receiver-detect y el LTSSM queda en `Detect.Active` para siempre, ignorando
-un módulo encendido. v0.45 (kernel r26) ejecuta el des-aparcado con la API
-prevista (`clk_set_rate(pipe, ULONG_MAX)` en `qmp_pcie_power_on`, regmap GCC,
-sin MMIO crudo) y registra `pipe mux unpark ret=`. El USB Code 43 continúa
-aplazado mientras Wi-Fi pueda proporcionar el canal de control:
+Flashear manualmente v0.46. La v0.45 validó físicamente la causa raíz del
+enlace: con el mux PIPE des-aparcado (`pipe mux unpark ret=0`), el LTSSM sale
+de Detect, aparece `PCIe Gen.2 x2 link up`, **`17cb:1107` enumera** y
+`ath12k_wifi7_pci` se enlaza; MHI llega a Mission mode y QMI lee `chip_id
+0x2`, `board_id 0xff` y `fw_version 0x2036001f` — el amss stock arranca. El
+bloqueo restante es `failed to receive wmi unified ready event: -110`, y
+tiene dos causas de mapeo de firmware demostradas: enviábamos `bdwlan.elf`
+completo (cabecera ELF incluida) como `board.bin` cuando ath12k lo transfiere
+literal como BDF, y `phy_ucode20.elf` como `m3.bin` cuando `wcn7850 hw2.0`
+exige el M3 real (`m3_loader_driver`; el kiwi de Samsung no trae m3). v0.46
+instala `board.bin` = payload PT_LOAD del bdwlan.elf (offset 0x400,
+0x15400 bytes) y `m3.bin` = canónico de linux-firmware, sin tocar el kernel.
+Si el BDF Samsung aún fallara, plan B: `board-2.bin` genérica de
+linux-firmware. El USB Code 43 continúa aplazado mientras Wi-Fi pueda
+proporcionar el canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el

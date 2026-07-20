@@ -23,10 +23,35 @@ for file in amss20.bin phy_ucode20.elf bdwlan.elf regdb.bin; do
 	install -m 0644 "$extracted/firmware/kiwi/$file" "$target/$file"
 done
 
+# ath12k sends board.bin verbatim as the BDF; Samsung wraps the board data in
+# a single-PT_LOAD ELF, so extract the payload instead of shipping the ELF.
+python3 - "$target/bdwlan.elf" "$target/bdwlan-payload.bin" <<'PYEOF'
+import struct
+import sys
+
+elf = open(sys.argv[1], 'rb').read()
+assert elf[:4] == b'\x7fELF' and elf[4] == 1
+e_phoff, = struct.unpack_from('<I', elf, 0x1c)
+e_phentsize, e_phnum = struct.unpack_from('<HH', elf, 0x2a)
+assert e_phnum == 1, e_phnum
+p_type, p_offset, _, _, p_filesz = struct.unpack_from('<IIIII', elf, e_phoff)
+assert p_type == 1
+open(sys.argv[2], 'wb').write(elf[p_offset:p_offset + p_filesz])
+PYEOF
+
+# WCN7850 hw2.0 uses ath12k_m3_fw_loader_driver, so m3.bin is mandatory.
+# Samsung's kiwi directory ships no m3; use the canonical linux-firmware one.
+if [ ! -f "$target/m3.bin" ]; then
+	curl -fL --retry 3 -o "$target/m3.bin" \
+		'https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/ath12k/WCN7850/hw2.0/m3.bin'
+fi
+
 cd "$target"
 sha256sum -c <<'EOF'
 4529e42c3e6798db7060e16c646f6f81ecf463e44552115c6a91656cf4bf7915  amss20.bin
 67396ffa89db6a1378c0d1d41362d33831dd6163d96849a4bcbd865b7cecda19  phy_ucode20.elf
 9cade90ae22d7df1c44850bf55c6231bf99b4303f406eca9775d920bb6d4313e  bdwlan.elf
+191ac306aa56e016ace5f0d3406376c6078e92c850644cd1c1d69753e4d3c16d  bdwlan-payload.bin
+0e72f44df7defc269fe92dcea25d4d409046c04b77d41c510c52879b3dfc1055  m3.bin
 75cc107536d3bd03fa2e29f369a4e6d997d2cf090c50620424a9ab1a749c7546  regdb.bin
 EOF
