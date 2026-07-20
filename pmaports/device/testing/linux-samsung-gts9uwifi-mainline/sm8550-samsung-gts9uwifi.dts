@@ -172,6 +172,15 @@
 		bt-enable-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
 
 		/*
+		 * Read-only power-good indicators from the module, sampled by
+		 * stock cnss2: GPIO83 mirrors the WLAN PMU state and GPIO82
+		 * the BT one (qcom,wlan-sw-ctrl-gpio / qcom,bt-sw-ctrl-gpio
+		 * in the live FDT).
+		 */
+		wlan-sw-ctrl-gpios = <&tlmm 83 GPIO_ACTIVE_HIGH>;
+		bt-sw-ctrl-gpios = <&tlmm 82 GPIO_ACTIVE_HIGH>;
+
+		/*
 		 * Stock cnss2 sends this exact qcom,pdc_init_table (chip_cfg@1,
 		 * device 0x1107, live X910 FDT) to the AOP through the QMP
 		 * mailbox before the first WLAN power-on.  It enables the

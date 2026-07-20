@@ -35,10 +35,21 @@ for file in /sys/kernel/debug/pinctrl/*/pinmux-pins; do
 done
 # Enumerated PCI devices: 17cb:0113 is only the root port; success means a
 # second entry with vendor/device 17cb:1107 and ath12k bound to it.
-for dev in /sys/bus/pci/devices/*; do
-	[ -e "$dev" ] || continue
-	driver=none
-	[ -L "$dev/driver" ] && driver=$(basename "$(readlink "$dev/driver")")
-	logger -t "$tag" -- "pci $(basename "$dev") id=$(cat "$dev/vendor" 2>/dev/null):$(cat "$dev/device" 2>/dev/null) driver=$driver"
-done
+list_pci() {
+	for dev in /sys/bus/pci/devices/*; do
+		[ -e "$dev" ] || continue
+		driver=none
+		[ -L "$dev/driver" ] && driver=$(basename "$(readlink "$dev/driver")")
+		logger -t "$tag" -- "pci $1 $(basename "$dev") id=$(cat "$dev/vendor" 2>/dev/null):$(cat "$dev/device" 2>/dev/null) driver=$driver"
+	done
+}
+list_pci initial
+# The LTSSM keeps polling Detect after the probe-time "Device not found".
+# If the endpoint became electrically ready later, the link trains silently;
+# a rescan this late would then enumerate 17cb:1107 without a reboot.
+if [ -w /sys/bus/pci/rescan ]; then
+	echo 1 > /sys/bus/pci/rescan 2>/dev/null || true
+	sleep 2
+	list_pci after-rescan
+fi
 logger -t "$tag" "end userspace PCIe/WCN snapshot"

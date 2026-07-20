@@ -103,6 +103,11 @@ if ! grep -q 'SM-X910 WCN diag: AOP pdc' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/program-wcn7850-wlan-pdc-aop.patch"
 fi
+if ! grep -q 'SW_CTRL wlan=' \
+	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/read-wcn7850-sw-ctrl-after-enable.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

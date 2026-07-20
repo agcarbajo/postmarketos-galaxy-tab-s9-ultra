@@ -2364,3 +2364,57 @@ física.
   el endpoint sigue ausente, la siguiente variable es el orden temporal
   (enviar la tabla también inmediatamente antes del deassert de PERST) o el
   wake handshake GPIO96.
+
+## 2026-07-20 — sesión 60: el AOP acepta la tabla PDC; sondas SW_CTRL v0.44
+
+- La usuaria flasheó v0.43 (hashes físicos confirmados: `boot`
+  `6cab3ea1…3436`, `vendor_boot` `37124fae…2ad2`) y sigue sin Wi-Fi. El
+  journal del boot `453d3291408f4b0f934d1d4961c9c674` se extrajo en sólo
+  lectura a `work/v043-wifi-boot-20260720/` y la rootfs quedó desmontada.
+- Resultado central: **el AOP aceptó los 13 mensajes** (`AOP pdc ... ret=0`
+  para cada uno, incluido `{class: wlan_pdc, ss: bb, res: pdc, enable: 1}`)
+  a los 1,6–1,77 s, antes del power-on (rails 2,1–5,8 s, WLAN_EN 5,81 s,
+  PERST liberado 5,98 s). El mailbox QMP funciona y la programación PDC stock
+  está aplicada; aun así el LTSSM permanece en `Detect.Active`
+  (`DEBUG0=0x71ec01`) hasta `Device not found` y el snapshot PCI sólo lista
+  el root port `17cb:0113`. La hipótesis AOP queda aplicada pero no
+  suficiente por sí sola.
+- Con la programación del SoC agotada, la siguiente evidencia debe venir del
+  propio módulo. El chip expone indicadores hardware de su PMU interno:
+  SW_CTRL WLAN en GPIO83 y SW_CTRL BT en GPIO82 (`qcom,wlan-sw-ctrl-gpio` /
+  `qcom,bt-sw-ctrl-gpio` del FDT vivo), que cnss2 muestrea como entradas.
+  Nuestro pinmux los tenía sin reclamar. Si tras WLAN_EN suben a 1, el módulo
+  completa su secuencia interna y el fallo está en el enlace (refclk/lanes);
+  si permanecen a 0, el PMU del módulo nunca arranca y el problema sigue
+  siendo de alimentación/handshake.
+- v0.44 (kernel r25) añade `read-wcn7850-sw-ctrl-after-enable.patch`: el
+  pwrseq adquiere ambos pines como entradas (`wlan-sw-ctrl-gpios`/
+  `bt-sw-ctrl-gpios`, nuevos en el DTS) y, tras subir WLAN_EN, registra sus
+  valores a t+0/100/300/600 ms. Los sleeps retrasan además el deassert de
+  PERST en 600 ms, cubriendo de paso la hipótesis de arranque lento del
+  módulo. Sin las propiedades DT el código es un no-op.
+- El diagnóstico userspace añade un `echo 1 > /sys/bus/pci/rescan` seguido de
+  un segundo listado PCI: el LTSSM sigue sondeando Detect tras el
+  `Device not found` del probe, de modo que un chip que tarde en presentar
+  receptores entrenaría el enlace en silencio y aparecería en el rescan de
+  los ~16 s sin reiniciar.
+- Build v0.44: `boot.img`
+  `fa96297815e7c04c6d7264c501e1334553f9e092188816fc5716408b1ab79cdf`;
+  `vendor_boot.img`
+  `0f35ae5ffdd9bdbfe7f589a9d9b2ea7cf56d48e5f0e7565cdd35655ba07bbb05`;
+  DTB `dd4ef65d0f1970954bee860ae0fb3d7c7390b24daef8f2f44a3d737c6be3b3bc`;
+  config sin cambios. Validado: trazas `SW_CTRL wlan=` y `AOP pdc` en el
+  binario, `wlan-sw-ctrl-gpios`=83 y `bt-sw-ctrl-gpios`=82 más las 13 cadenas
+  en el DTB, nodos PCIe0/PHY activos y rescan presente en el overlay.
+- ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.44-wcn7850-sw-ctrl-probe-sm-x910-twrp.zip`,
+  27.182.347 bytes, SHA-256
+  `c19a833a625453e8d2fab3f521438765e571b53eaebcc2775d5aa7d3e6d0facf`.
+  Copiado a `/sdcard`; la única comparación local/tablet coincide. El
+  asistente no flasheó ninguna partición.
+- Próximo paso: flash manual v0.44. El journal decidirá la rama: SW_CTRL=1
+  tras WLAN_EN acota el fallo al enlace PCIe (refclk hacia el módulo, lanes,
+  PHY); SW_CTRL=0 mantiene el problema en la alimentación o el handshake
+  interno del módulo (candidatos: orden AOP↔power-on, BT_EN, delay). Si el
+  rescan tardío enumera `17cb:1107`, el problema era sólo de tiempo y se
+  corrige con un retraso/retry reproducible en el kernel.

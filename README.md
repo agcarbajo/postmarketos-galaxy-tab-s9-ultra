@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 59, AOP/PDC v0.43 preparada).
+> Última actualización: 2026-07-20 (sesión 60, sondas SW_CTRL v0.44).
 
 ## Objetivo
 
@@ -52,37 +52,36 @@ demostrarlo en este dispositivo.
 | Baseline Ubuntu Touch | 📚 Fuentes intactas; boot físico ya reemplazado en la prueba mainline |
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
-| Kernel mainline SM8550 | 🧪 v0.42 validada físicamente (escritorio/táctil estables, snapshot userspace completo); v0.43 añade la programación AOP/PDC de WLAN vía QMP |
-| DTS `gts9uwifi` | 🧪 v0.43 añade `qcom,qmp` y las 13 cadenas `wlan_pdc` stock de `0x1107` al PMU; conserva rails, PMU/PCIe0/PHY/L3G y la secuencia eléctrica |
+| Kernel mainline SM8550 | 🧪 v0.43 validada físicamente: el AOP acepta los 13 mensajes PDC (`ret=0`) pero el endpoint sigue ausente; v0.44 añade las sondas SW_CTRL del módulo |
+| DTS `gts9uwifi` | 🧪 v0.44 añade `wlan-sw-ctrl-gpios` (83) y `bt-sw-ctrl-gpios` (82) como entradas de solo lectura; conserva AOP/PDC, rails y secuencia eléctrica |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r24 añade `program-wcn7850-wlan-pdc-aop.patch` (qmp_send en pwrseq, sin MMIO); device r11 y firmware WCN7850 r1 |
+| Paquetes pmaports | 🧪 Kernel r25 añade `read-wcn7850-sw-ctrl-after-enable.patch` (GPIO de entrada + logging, sin MMIO); device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
-| Wi-Fi | 🧪 v0.42 verifica clocks/refclk/CLKREQ/pinmux correctos y descarta el lado SoC; v0.43 replica la programación AOP/PDC stock (`bb pdc enable: 1`) pendiente de prueba física |
+| Wi-Fi | 🧪 v0.43 demuestra que el AOP acepta la tabla PDC stock y el endpoint sigue sin receptores; v0.44 lee SW_CTRL (power-good del módulo) y reescanea PCI tardíamente |
 | SSH | ⚠️ Internamente levanta `usb0=172.16.42.1`, DHCP y OpenSSH; externamente la X910 sigue en error de descriptor. El NCM accesible era otro pmOS (`daisy`) |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.43 validada y copiada a `/sdcard`; SHA-256 local/tablet `b4f06bcd…8bd7c`; pendiente flash manual |
+| Imagen/paquete de prueba | 🧪 v0.44 validada y copiada a `/sdcard`; SHA-256 local/tablet `c19a833a…0facf`; pendiente flash manual |
 
 ## Reto en curso
 
-Flashear manualmente v0.43 y comprobar si `17cb:1107` enumera. El snapshot
-userspace de v0.42 (boot `a5686404…`, sesión estable de 28 min) cerró el lado
-SoC: todos los clocks `gcc_pcie_0_*` activos, `tcsr_pcie_0_clkref_en`
-habilitado a 38,4 MHz, GPIO95 en función `pcie0_clk_req_n`, GPIO80/81
-reclamados por el PMU, GPIO82/83 sin reclamar, PERST liberado, los siete
-rails a tensión stock y LTSSM otra vez en `Detect.Active` (`DEBUG0=0x8a6901`)
-hasta `Device not found`. Con toda la cadena eléctrica SoC verificada, la
-única diferencia estructural restante frente a stock es la programación
-AOP/PDC: el nodo cnss de `0x1107` envía por el mailbox QMP 13 mensajes
-`wlan_pdc` que habilitan el recurso PDC de banda base y programan los votos
-RF; sin ellos el PMU del WCN7850 no completa su handshake hardware y nunca
-presenta receptores. v0.43 (kernel r24) replica ese paso con la API mainline
-`qmp_get()/qmp_send()` desde el probe de `pwrseq-qcom-wcn`, gated por
-`qcom,qmp` + `qcom,wlan-pdc-init` en el DT, sin MMIO nuevo. El diagnóstico
-userspace lista además `/sys/bus/pci/devices`. El USB Code 43 continúa
-aplazado mientras Wi-Fi pueda proporcionar el canal de control:
+Flashear manualmente v0.44 y leer las sondas SW_CTRL. v0.43 demostró que el
+mailbox QMP funciona y que **el AOP acepta los 13 mensajes `wlan_pdc` stock
+(`ret=0`, incluido `bb pdc enable: 1`)** enviados a los 1,6–1,77 s, antes del
+power-on; aun así el LTSSM sigue en `Detect.Active` (`DEBUG0=0x71ec01`) y el
+snapshot PCI sólo lista el root port. Todo el lado SoC (clocks, refclk 38,4
+MHz, CLKREQ, PERST, rails, WLAN_EN, PDC) está verificado o aplicado; la
+siguiente evidencia debe venir del propio módulo. v0.44 (kernel r25) lee los
+indicadores hardware de power-good del módulo — SW_CTRL WLAN GPIO83 y SW_CTRL
+BT GPIO82, que cnss2 muestrea como entradas — a t+0/100/300/600 ms tras
+WLAN_EN (los sleeps retrasan además PERST 600 ms, cubriendo el arranque
+lento), y el diagnóstico userspace reescanea el bus PCI a los ~16 s por si el
+enlace entrenó tarde en silencio. SW_CTRL=1 acota el fallo al enlace
+(refclk/lanes); SW_CTRL=0 lo acota a la alimentación/handshake interno del
+módulo. El USB Code 43 continúa aplazado mientras Wi-Fi pueda proporcionar el
+canal de control:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
