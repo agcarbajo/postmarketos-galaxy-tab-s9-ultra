@@ -1855,3 +1855,8 @@ física.
 - Próximo paso: regresar a TWRP, copiar/verificar v0.34 y flashearla. Si la
   clave siguiera rechazada, extraer desde TWRP los ficheros instalados, sus
   modos/propietarios y el journal SSH antes de otra hipótesis.
+- La usuaria regresó a TWRP. v0.34 se copió a `/sdcard` y la única comparación
+  local/remota coincide en
+  `aa92d42f62f5922a0a9713f9eccd8d15e3740942fcb27f170d19f661f8f49fa6`.
+  Queda pendiente el flash manual y el arranque; el asistente no escribió
+  ninguna partición.
