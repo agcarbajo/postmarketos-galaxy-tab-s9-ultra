@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-20 (sesión 50, identidad USB corregida).
+> Última actualización: 2026-07-20 (sesión 51, v0.36 preparada).
 
 ## Objetivo
 
@@ -55,7 +55,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.32 valida físicamente kernel/DTS actuales, LightDM y táctil sin módulos; la regresión de los pingüinos queda aislada a un módulo |
 | DTS `gts9uwifi` | 🧪 v0.27 conserva táctil/pantalla/SD/USB y mantiene deshabilitados PMU WCN, PCIe0 y su PHY durante el hito SSH |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v0.27 reproducible: device r11, kernel r17 y firmware WCN7850 r1; modesetting con sombra software y refresco KMS |
+| Paquetes pmaports | ✅ Kernel r18 retira los `printk` por evento DWC3/EP0; device r11 y firmware WCN7850 r1 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ⏸️ Aislado temporalmente en v0.23; v0.21 ejecuta rails/WLAN_EN pero el endpoint `17cb:1107` da `Device not found` |
@@ -63,11 +63,11 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.35 flasheada; LightDM/táctil conservados, prueba SSH pendiente porque el USB externo de la X910 no enumera |
+| Imagen/paquete de prueba | 🧪 v0.36 generada y validada; elimina los logs DWC3 que bloquean el hot path, pendiente copiar desde TWRP |
 
 ## Reto en curso
 
-Recuperar la enumeración USB externa real de la X910 y probar entonces v0.35.
+Probar v0.36 para recuperar la enumeración USB externa real de la X910.
 v0.32 confirma físicamente que el kernel/DTS/initramfs actuales,
 manteniendo WCN/PCIe0/PHY deshabilitados y sin módulos cargables, llegan a
 LightDM y proporcionan táctil correcto; por tanto la regresión que deja los
@@ -78,9 +78,12 @@ correctos. Sin embargo, todas las conexiones externas anteriores iban al otro
 pmOS: su host key es distinta y responde OpenSSH 10.3, mientras la microSD
 X910 contiene OpenSSH 10.4. Tras desconectar el otro pmOS, el NCM desaparece y
 sólo permanece la X910 como `VID_0000/PID_0002` por error de descriptor. Está
-conectada mediante un hub Genesys `05e3:0608`; falta probar un puerto directo
-antes de cambiar software. v0.35 queda sin validar en red hasta enumerar el
-USB correcto; después se iniciará el
+conectada mediante un hub Genesys `05e3:0608`; reconectarla no cambia la ruta
+ni el Code 43. El journal v0.31 demuestra que DWC3 responde descriptores, pero
+los `dev_info` temporales añadidos en v0.18 introducen pausas de 20–21 ms en
+cada IRQ/EP0 mientras Windows reintenta. v0.36 retira únicamente esos logs del
+hot path y conserva los tracepoints y diagnósticos únicos de pull-up. Después
+se probará la host key X910, se iniciará el
 bisect acumulativo de módulos y se retomará WCN7850:
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
@@ -1183,9 +1186,26 @@ lado del workspace.
   queda `USB\\VID_0000&PID_0002...` con Code 43: queda demostrado que ésa es
   la X910. Su parent es un hub Genesys `USB\\VID_05E3&PID_0608...`, puerto 4;
   la próxima prueba física es conexión directa al PC, sin ese hub.
+- La reconexión posterior no cambia instancia, parent ni ubicación PnP y la
+  X910 sigue en Code 43. La instrumentación v0.18 aún imprime cada evento
+  DWC3, transición EP0 y SETUP mediante `dev_info`; el journal v0.31 muestra
+  huecos repetidos de unos 20–21 ms y reintentos de los mismos descriptores.
+- v0.36 añade `remove-dwc3-hotpath-diagnostics.patch`: elimina 18 líneas de
+  `printk` en IRQ/EP0, mantiene los dos mensajes de pull-up y los tracepoints
+  DWC3. La ruta directa aplica el cleanup a worktrees ya parcheados y el
+  paquete pmaports sube a kernel r18. El binario conserva el arreglo Goodix y
+  no contiene ya `SM-X910 diag event/ep0/setup`. ZIP preparado:
+  `postmarketos-edge-xfce-mainline-v0.36-usb-hotpath-clean-no-modules-sm-x910-twrp.zip`,
+  22.007.155 bytes, SHA-256 previo a copia
+  `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
+  Pendiente volver a TWRP, copiar y comparar una sola vez antes del flash.
 
 ## Lo que no ha funcionado / no repetir
 
+- No dejar `dev_info` por evento dentro de `dwc3_process_event_entry()`,
+  `dwc3_ep0_interrupt()` ni el parser SETUP: la traza ya cumplió su propósito y
+  el coste síncrono coincide con los reintentos/timeout del host. Usar los
+  tracepoints existentes para futuros diagnósticos de alta frecuencia.
 - No identificar un endpoint SSH sólo por `172.16.42.1`: varios dispositivos
   pmOS reutilizan esa subred USB. Antes de atribuir cualquier resultado a la
   X910 hay que comparar su host key física

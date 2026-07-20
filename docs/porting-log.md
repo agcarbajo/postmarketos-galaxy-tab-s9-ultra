@@ -1958,3 +1958,35 @@ física.
   `USB\\VID_05E3&PID_0608...`, `Port_#0004.Hub_#0003`. Antes de cambiar kernel,
   PHY o gadget se probará un puerto USB directo del PC y, si es posible, otro
   cable, manteniendo el sistema arrancado.
+
+## 2026-07-20 — sesión 51: retirada del logging DWC3 hot-path en v0.36
+
+- Tras la nueva reconexión Windows conserva exactamente
+  `USB\\VID_0000&PID_0002\\6&375DEBFF&0&4`, parent Genesys `05e3:0608` y
+  `Port_#0004.Hub_#0003`; no aparece adaptador NCM ni dirección `172.16.*`.
+  La reconexión/cable no resolvió la enumeración.
+- La revisión del journal v0.31 aporta una causa software concreta. DWC3
+  recibe `GET_DESCRIPTOR`, `SET_ADDRESS` y descriptores device/config/string,
+  pero el parche temporal de v0.18 ejecuta `dev_info` para cada evento bruto,
+  cada transición EP0 y cada SETUP. Las marcas temporales muestran pausas
+  repetidas de ~20–21 ms entre líneas mientras Windows reintenta los mismos
+  descriptores hasta Code 43.
+- Esa instrumentación está en IRQ/control hot-path y ya no es necesaria: la
+  cadena física, IRQ y EP0 quedaron demostradas. Los tracepoints upstream
+  `trace_dwc3_event` y `trace_dwc3_ctrl_req` siguen disponibles sin imprimir
+  sincrónicamente cada paquete.
+- Se añadió `remove-dwc3-hotpath-diagnostics.patch`, aplicado después del
+  parche diagnóstico. Elimina sólo los tres bloques de alta frecuencia y
+  conserva las dos lecturas de estado alrededor del pull-up. El build directo
+  actualiza también worktrees parciales si encuentra `SM-X910 diag event raw`.
+- El paquete kernel sube de r17 a r18 y su `source=`/`sha512sums` incluyen el
+  cleanup. La build directa recompiló únicamente `gadget.o`, `ep0.o` y el
+  enlace final. El binario v0.36 contiene el mensaje de Goodix PID 6936 y el
+  diagnóstico de pull-up, pero no las cadenas `diag event`, `diag ep0` ni
+  `diag setup`.
+- ZIP TWRP preparado:
+  `postmarketos-edge-xfce-mainline-v0.36-usb-hotpath-clean-no-modules-sm-x910-twrp.zip`,
+  22.007.155 bytes, SHA-256 previo a copia
+  `00ad7fb3064124e7f49d49749b44ff148b96f42b9b5d8b55308dfeda1993a387`.
+- Próximo paso: volver a TWRP, copiar/verificar v0.36 y flashearla. Mantener el
+  otro pmOS desconectado; aceptar SSH sólo si la host key es `1N9kAKdf...`.

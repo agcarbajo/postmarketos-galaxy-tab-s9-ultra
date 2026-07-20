@@ -73,6 +73,11 @@ if ! grep -q 'SM-X910 diag pullup request' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/diagnose-dwc3-ep0-enumeration.patch"
 fi
+if grep -q 'SM-X910 diag event raw' \
+	"$kernel_tree/drivers/usb/dwc3/gadget.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/remove-dwc3-hotpath-diagnostics.patch"
+fi
 if ! grep -q 'SM-X910 WCN diag: power sequencer registered' \
 	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
 	patch -d "$kernel_tree" -p1 \
