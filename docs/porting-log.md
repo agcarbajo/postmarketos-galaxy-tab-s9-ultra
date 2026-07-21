@@ -2787,3 +2787,20 @@ física.
   seguir igual. Requiere flash (cambios built-in). Próximo paso: TWRP para
   copiar el ZIP y flash manual; después verificación EN VIVO por SSH de
   Wi-Fi, táctil y escritorio, y de que el dmesg está limpio de `SM-X910`.
+- FLASH Y VALIDACIÓN FÍSICA (2026-07-21): la usuaria autorizó al asistente a
+  reiniciar y flashear él mismo mientras el conjunto de particiones fuera el
+  de siempre. El reinicio-a-recovery programático NO funciona en este Samsung
+  (`systemctl --reboot-argument=recovery` escribe el reboot-mode nvmem de
+  mainline, pero el bootloader Samsung no lo honra y arrancó de nuevo pmOS);
+  la usuaria puso TWRP manualmente. `adb reboot sideload` deja TWRP en
+  `recovery`, no en `sideload`, así que se usó la CLI de TWRP: `adb push` del
+  ZIP a `/sdcard` (hash `bd4110d1…` verificado en el dispositivo) + `twrp
+  install /sdcard/v0.50.zip` (mismo instalador que el flasheo por UI). El
+  instalador escribió sólo `boot/init_boot/vendor_boot/dtbo` (+`vbmeta`
+  condicional) y el overlay a `mmcblk1p2`; ninguna partición nueva.
+- Verificación EN VIVO por SSH tras el arranque: kernel v0.50 corriendo
+  (`#22 ... Tue Jul 21 12:26`), `dmesg`/journal con CERO ocurrencias de
+  `SM-X910` y `boot using board name`, `wlan0` asociada a la red, táctil
+  Goodix en `event0`, Xorg en VT7 y LightDM activos. **Tarea 2 cerrada:
+  debug de bring-up retirado sin regresión alguna.** Base limpia lista para
+  la Tarea 3 (GPU/DRM).

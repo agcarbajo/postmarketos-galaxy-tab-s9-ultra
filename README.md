@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🧪 v0.50 (build limpia sin debug) validada estáticamente y copiada; pendiente flash manual. v0.49 sigue siendo la última validada físicamente |
+| Imagen/paquete de prueba | ✅ v0.50 flasheada (por sideload/`twrp install`) y validada físicamente: kernel limpio (dmesg sin `SM-X910`), Wi-Fi + táctil + escritorio OK |
 
 ## Reto en curso
 
@@ -82,12 +82,13 @@ Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
    prueba en vivo (con rollback autónomo) demostró que la BDF Samsung se
    encuentra y descarga bien, pero el amss oficial HMT.1.1 **crashea (MHI
    RDDM)** al parsear la board data HMT.2.0. La QRD queda como BDF final.
-2. Retirar el debug de bring-up — **HECHO en fuente (v0.50, kernel r28)**:
-   dropeados los parches de diagnóstico y `CONFIG_ATH12K_DEBUG`, consolidados
-   los arreglos WCN en `wcn7850-pwrseq-cold-reset-aop.patch` funcional-only;
-   binario verificado sin ninguna traza `SM-X910`. Pendiente flash + prueba
-   física para confirmar que Wi-Fi/táctil/escritorio siguen igual.
-3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — siguiente hito.
+2. Retirar el debug de bring-up — **✅ HECHO Y VALIDADO FÍSICAMENTE (v0.50,
+   kernel r28)**: dropeados los parches de diagnóstico y `CONFIG_ATH12K_DEBUG`,
+   consolidados los arreglos WCN en `wcn7850-pwrseq-cold-reset-aop.patch`
+   funcional-only. Flasheado por `twrp install`; en vivo el kernel corre
+   limpio (dmesg sin `SM-X910`) con Wi-Fi, táctil y escritorio intactos.
+3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO**,
+   sobre la base limpia v0.50.
 
 Pendientes posteriores: Bluetooth (mismo PMU WCN7850, `bt-enable` GPIO81), el
 USB Code 43 como canal secundario, audio y sensores.
