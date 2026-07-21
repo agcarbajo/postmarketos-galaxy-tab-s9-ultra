@@ -2915,5 +2915,40 @@ física.
   `SCSI_UFS_QCOM` (+ nodo UFS y sus reguladores en el DTS), pero es un
   subsistema nuevo en el arranque y se deja fuera de la iteración de GPU para
   no arriesgar una base que funciona.
-- **Pendiente.** Flashear v0.52 desde TWRP y comprobar en vivo que el `-110`
-  desaparece, que GMU/zap arrancan y que aparece el render node para Turnip.
+- **v0.52 VALIDADA EN VIVO: el `-110` DESAPARECE.** Flasheada por `twrp install`
+  (el instalador escribió boot/init_boot/vendor_boot/dtbo y preservó el vbmeta
+  de sólo lectura con AVB flags 2; overlay verificado; ninguna partición nueva).
+  Kernel `#26`. Resultados: `arm-smmu 3da0000.iommu` **sondea bien**
+  (`SMMUv2`, stage-1, 24 grupos de stream matching, 22 context banks);
+  `3d90000.clock-controller` **ligado a `gpu_cc-sm8550`** con 21 relojes
+  `gpu_cc` registrados; `3d00000.gpu` **ligado a `adreno`**; dominios
+  `gpu_cc_gx_gdsc`/`gpu_cc_cx_gdsc` presentes; los seis blobs de firmware GPU
+  verificados en el dispositivo; `simpledrm` y `wlan0` intactos. Nada en
+  `devices_deferred` salvo un `cpufreq`/icc ajeno.
+- **SEGUNDO BLOQUEO (estructural, no eléctrico): sin render node.** `3d6a000.gmu`
+  aparece «unbound», lo cual es NORMAL (msm toma el GMU desde el probe de la GPU,
+  no con un driver propio). El problema real está en `adreno_probe()`:
+
+      if (of_device_is_compatible(..., "amd,imageon") || msm_gpu_no_components())
+              return msm_gpu_probe(pdev, &a3xx_ops);   /* DRM propio */
+      return component_add(&pdev->dev, &a3xx_ops);     /* espera un master */
+
+  y `msm_gpu_no_components()` sólo devuelve el **parámetro de módulo
+  `separate_gpu_kms`**, que por defecto es *false*. Así que `adreno` se registra
+  como *componente* y espera un component master que **únicamente crea el
+  display (mdss) vía `msm_drv_probe`**. Como el mdss está deshabilitado a
+  propósito para no tocar `simpledrm`, ese master no existe nunca y la GPU se
+  queda ligada pero inerte. Deshabilitar KMS NO lo arregla: el parámetro es el
+  único interruptor, y al ser `0400` sólo puede fijarse en el arranque.
+- **v0.53: `msm.separate_gpu_kms=1`.** Añadido a
+  `configs/vendor_boot/cmdline.txt` (que el bundle pasa como `--vendor_cmdline`),
+  para tomar la vía `msm_gpu_probe()` y dar a la GPU su propio dispositivo DRM:
+  justo el montaje headless render-only que buscamos, con `simpledrm` conservando
+  la pantalla. Verificado dentro de `vendor_boot.img`; config del kernel idéntica
+  a v0.52 (`50106199…`), sólo cambian `boot.img` (`7db68510…`) y `vendor_boot.img`
+  (`99723719…`). ZIP
+  `artifacts/postmarketos-edge-xfce-mainline-v0.53-adreno740-separate-gpu-kms-sm-x910-twrp.zip`,
+  28.037.746 bytes, SHA-256
+  `8df8e9f4dde7209204ae107ffe84922a68e61349f0c9584ddf9ed790e18b12e9`.
+- **Pendiente.** Flashear v0.53 desde TWRP y comprobar que aparece
+  `/dev/dri/renderD128` y que Turnip ve el Adreno 740.

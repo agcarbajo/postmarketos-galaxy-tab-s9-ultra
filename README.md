@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 70, v0.51 flasheada: msm built-in arranca seguro; causa raíz del -110 = gpucc ausente; v0.52 lo corrige).
+> Última actualización: 2026-07-21 (sesión 70, v0.52 elimina el -110 en vivo; v0.53 añade msm.separate_gpu_kms=1 para el render node).
 
 ## Objetivo
 
@@ -88,18 +88,24 @@ Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
    funcional-only. Flasheado por `twrp install`; en vivo el kernel corre
    limpio (dmesg sin `SM-X910`) con Wi-Fi, táctil y escritorio intactos.
 3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO
-   (v0.52 construida, pendiente de flash)**. v0.51 se flasheó y validó a medias:
-   `DRM_MSM=y` headless **arranca seguro** (kernel `#25`, `simpledrm` y Wi-Fi
-   intactos, `adreno` ligado a `3d00000.gpu`), pero la GPU no subía: `-110` en
-   `3da0000.iommu` y sin render node. Causa raíz hallada en vivo: **el gpucc no
-   tenía driver** porque `CONFIG_GPUCC_SM8550` *no existe*; el símbolo real es
-   **`CONFIG_SM_GPUCC_8550`** y además venía en `=m` (este port no autocarga
-   módulos). v0.52 lo pone `=y`. Detalle previo que sigue aplicando: `DRM_MSM`
-   no sube a `=y` mientras `QCOM_LLCC/OCMEM` sean `=m` (un tristate no supera una
-   dependencia `=m`) → `QCOM_LLCC=y` + `QCOM_OCMEM=n`. La build ahora **falla**
-   si un símbolo del fragment es desconocido o queda deshabilitado, para que este
-   fallo no pueda repetirse. El reinicio-a-recovery por software sigue sin
-   funcionar en este Samsung: cada flash necesita TWRP puesto a mano.
+   (v0.53 construida, pendiente de flash)**. Dos bloqueos encontrados y
+   resueltos, ambos validados en vivo:
+   - **`-110` (resuelto en v0.52)**: el gpucc no tenía driver porque
+     `CONFIG_GPUCC_SM8550` *no existe* — el símbolo real es
+     **`CONFIG_SM_GPUCC_8550`**, y además venía en `=m` (este port no autocarga
+     módulos). Con `=y`, en vivo: `3da0000.iommu` sondea (`SMMUv2`, 22 context
+     banks), `gpu_cc-sm8550` ligado con 21 relojes, `adreno` ligado a
+     `3d00000.gpu`. La build ahora **falla** si un símbolo del fragment es
+     desconocido o queda deshabilitado, para que no se repita.
+   - **Sin render node (v0.53)**: `adreno_probe()` sólo crea su propio DRM si
+     `msm_gpu_no_components()`, que devuelve el parámetro de módulo
+     `separate_gpu_kms` (false por defecto); si no, hace `component_add()` y
+     espera un component master que **sólo crea el mdss**, deshabilitado aquí a
+     propósito. Solución: `msm.separate_gpu_kms=1` en la cmdline.
+   Sigue aplicando: `DRM_MSM` no sube a `=y` mientras `QCOM_LLCC/OCMEM` sean `=m`
+   (un tristate no supera una dependencia `=m`) → `QCOM_LLCC=y` + `QCOM_OCMEM=n`.
+   El reinicio-a-recovery por software no funciona en este Samsung y **el kernel
+   mainline no ve el UFS interno**, así que cada flash necesita TWRP a mano.
 
 Pendientes posteriores: Bluetooth (mismo PMU WCN7850, `bt-enable` GPIO81), el
 USB Code 43 como canal secundario, audio y sensores.
