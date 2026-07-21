@@ -2985,5 +2985,48 @@ física.
     a7xx; (b) limitar la frecuencia máxima de GPU para comprobar si es un
     problema de DCVS/voltaje del GMU; (c) analizar el **devcoredump** (`devcd1`)
     que ya se generó y contiene los registros exactos del cuelgue.
-- **Pendiente.** Resolver el cuelgue bajo carga y, después, plantear el paso
-  grande: pasar la pantalla de `simpledrm` a DRM/KMS nativo (DSI + DPU).
+- **Investigación del cuelgue (sesión 70, en vivo).**
+  - **Turnip instalado**: `apk add mesa-vulkan-freedreno vulkan-tools mesa-demos`
+    → `libvulkan_freedreno.so` + `freedreno_icd.aarch64.json`. Turnip **carga**
+    (sus mensajes MESA aparecen), pero `vkcube` no puede presentar:
+    `No DRI3 support detected - required for presentation` (consecuencia de haber
+    desactivado la aceleración de X). `vulkaninfo` aborta en
+    `vkGetPhysicalDeviceDisplayPlanePropertiesKHR` (bug de la herramienta con la
+    extensión de display, no de Turnip).
+  - **La GPU renderiza bien fuera de X**: `eglinfo` por **GBM** da
+    `vendor: freedreno`, `renderer: FD740`, `OpenGL 4.6 (Core) Mesa 26.1.1`,
+    `direct rendering: Yes`, sin ningún cuelgue.
+  - **CORRECCIÓN IMPORTANTE**: se probó capar `max_freq` a 220 MHz y pareció
+    eliminar los cuelgues, pero **esa conclusión era falsa**. `cur_freq` se
+    quedaba en 220 MHz y los benchmarks nunca llegaron a ejecutarse (glmark2
+    salía por timeout sin renderizar), así que **no hubo carga**: la aparente
+    estabilidad era ausencia de trabajo, no un arreglo. La frecuencia **no**
+    está demostrada como causa.
+  - **Lo que sí ocurre al reactivar glamor**: Xorg **muere**:
+    `(EE) Segmentation fault at address 0xaaaa00000010` /
+    `Caught signal 11 ... Server aborting`, ~1 s después de
+    `glamor X acceleration enabled on FD740`. O sea, la ruta glamor falla de dos
+    maneras (hangcheck de GPU al arrancar y segfault de Xorg después).
+  - **Estado dejado estable**: `10-no-glamor.conf` (`AccelMethod "none"`)
+    reinstalado, `max_freq` de vuelta a 680 MHz, lightdm reiniciado, Xorg vivo
+    sin segfault, GPU limpia (`rbbm-status: 0x0`) y `renderD128` disponible.
+- **Por qué glamor sobre simpledrm es un callejón sin salida.** glamor renderiza
+  con la GPU y luego **copia** a un framebuffer lineal y tonto que posee
+  `simpledrm`; es una ruta cruzada entre dos dispositivos DRM con formatos/tiling
+  distintos. Lo correcto es que la pantalla la lleve el propio msm (DPU+DSI), con
+  la GPU pintando directamente en buffers de scanout.
+- **Viabilidad de DRM/KMS nativo (evaluada).** El lado SoC está completo en
+  mainline: `mdss@ae00000`, `dpu`, `mdss_dsi0@ae94000` y `mdss_dsi0_phy@ae95000`
+  existen en `sm8550.dtsi`. **Lo que falta es el panel**: el display es
+  `GTS9U_ANA38407_AMSA46AS02` (DDIC ANA38407, 2960x1848) y **no hay driver
+  upstream** (`drivers/gpu/drm/panel/` no tiene nada que case con ANA38407 ni
+  AMSA46). Haría falta escribir `panel-samsung-ana38407.c` con la secuencia de
+  comandos DCS de inicialización, que vive en el kernel downstream de Samsung —
+  y ese código **no está descargado** en el workspace (`sources/` sólo tiene
+  abl-mirror, abl-tianocore-edk2, libufdt, mkinitfs).
+- **Pendiente / bifurcación.** (A) Ruta corta: compositor **Wayland** rindiendo
+  con la GPU por GBM y presentando en `simpledrm` — la GPU ya demuestra GL 4.6
+  por GBM, es reversible y no toca el arranque. (B) Ruta correcta y larga:
+  bajar el fuente downstream de Samsung, extraer la secuencia del panel, escribir
+  el driver DSI y habilitar mdss/DPU — es el objetivo final, pero con riesgo real
+  de pantalla negra (recuperable por TWRP).
