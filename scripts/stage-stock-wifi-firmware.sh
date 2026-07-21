@@ -23,8 +23,9 @@ for file in amss20.bin phy_ucode20.elf bdwlan.elf regdb.bin; do
 	install -m 0644 "$extracted/firmware/kiwi/$file" "$target/$file"
 done
 
-# ath12k sends board.bin verbatim as the BDF; Samsung wraps the board data in
-# a single-PT_LOAD ELF, so extract the payload instead of shipping the ELF.
+# Keep the old payload extraction for historical comparison only. The
+# official amss requires the complete ELF wrapper and hangs on the final QMI
+# segment when it receives this stripped payload as bdf_type 0.
 python3 - "$target/bdwlan.elf" "$target/bdwlan-payload.bin" <<'PYEOF'
 import struct
 import sys
@@ -38,6 +39,13 @@ p_type, p_offset, _, _, p_filesz = struct.unpack_from('<IIIII', elf, e_phoff)
 assert p_type == 1
 open(sys.argv[2], 'wb').write(elf[p_offset:p_offset + p_filesz])
 PYEOF
+
+# Build an API-2 container for the exact PCI/QMI identity reported by the
+# physical X910. The BDF remains the complete Samsung ELF so ath12k selects
+# the ELF QMI bdf_type. qrd-board.bin remains the independent API-1 fallback.
+x910_board_name='bus=pci,vendor=17cb,device=1107,subsystem-vendor=17cb,subsystem-device=1107,qmi-chip-id=2,qmi-board-id=255'
+python3 "$project/scripts/make-ath12k-board2.py" \
+	"$x910_board_name" "$target/bdwlan.elf" "$target/samsung-board-2.bin"
 
 # WCN7850 hw2.0 uses ath12k_m3_fw_loader_driver, so m3.bin is mandatory.
 # Samsung's kiwi directory ships no m3; use the canonical linux-firmware one.
@@ -99,6 +107,7 @@ sha256sum -c <<'EOF'
 0e72f44df7defc269fe92dcea25d4d409046c04b77d41c510c52879b3dfc1055  m3.bin
 43aadfd3df887f27de74020273aee484bac6a31dd53068f91baf2a9b094d6a68  official-amss.bin
 1abee7132dbccb523cca44a8de4e8968aa7bf5a5fcc032c338f687f94ea5bf4e  official-board-2.bin
+9886957c549c1dfa8d48ec80f23a0af0d524389054a74aeb85fd21de4ce4fb70  samsung-board-2.bin
 0ef5f6f3cb124f33c6de52371819ccd7c13763ceb86d476a178fd56e4cdc26a3  qrd-board.bin
 75cc107536d3bd03fa2e29f369a4e6d997d2cf090c50620424a9ab1a749c7546  regdb.bin
 EOF

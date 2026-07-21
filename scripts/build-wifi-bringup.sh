@@ -47,10 +47,9 @@ install -m 0644 "$firmware/official-amss.bin" \
 # earlier phy_ucode20.elf mapping fed the chip PHY microcode as M3.
 install -m 0644 "$firmware/m3.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/m3.bin"
-# Official board container tried first (API 2, no X910 entry today); the QRD
-# ELF BDF extracted from it is the API-1 fallback the official amss parses.
-# The stripped Samsung payload (bdf_type 0) made the official firmware hang
-# on the final download segment; WCN7850 BDFs must stay in their ELF wrapper.
+# Keep the official container first while the X910-specific Samsung BDF is
+# being validated. It has no matching X910/board-id 255 entry, so ath12k falls
+# back to the proven QRD ELF in board.bin.
 install -m 0644 "$firmware/official-board-2.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/board-2.bin"
 install -m 0644 "$firmware/qrd-board.bin" \

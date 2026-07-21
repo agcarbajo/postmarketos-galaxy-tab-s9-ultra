@@ -2664,3 +2664,39 @@ física.
   retirar `debug_mask` y las trazas de bring-up, reintentar `board-2.bin`
   con entrada propia, Bluetooth (mismo PMU), el USB Code 43 aplazado y el
   resto del hardware (audio, sensores, GPU/Turnip).
+
+## 2026-07-21 — sesión 67: contenedor BDF Samsung correcto; reprobe en caliente no concluyente
+
+- Se leyó de nuevo el README completo, las sesiones 55–66 y los doce commits
+  recientes antes de intervenir. La tablet v0.49 estaba accesible como
+  `<TABLET_IP>`, con host key física verificada, kernel
+  `7.2.0-rc3-dirty`, `wlan0` asociada y sólo los dos módulos ath12k aislados.
+- La inspección estructural del `board-2.bin` oficial fijó el formato exacto:
+  magia `QCA-ATH12K-BOARD`, IEs little-endian alineados a cuatro bytes,
+  boardname sin NUL y BDF ELF completa como IE DATA. Se añadió el generador
+  determinista `scripts/make-ath12k-board2.py`.
+- La candidata `samsung-board-2.bin` mide 88.912 bytes, SHA-256
+  `9886957c549c1dfa8d48ec80f23a0af0d524389054a74aeb85fd21de4ce4fb70`.
+  Contiene una sola entrada con el nombre exacto
+  `bus=pci,vendor=17cb,device=1107,subsystem-vendor=17cb,subsystem-device=1107,qmi-chip-id=2,qmi-board-id=255`
+  y los 88.760 bytes del `bdwlan.elf` Samsung, conservando la magia ELF.
+- Para no perder el canal de control se lanzó una prueba desacoplada mediante
+  unbind/bind de `0000:01:00.0`, con copia previa del `board-2.bin` oficial y
+  rollback automático. La red no reapareció durante la ventana de 90 s con la
+  candidata; después el servicio restauró el fichero anterior y reintentó el
+  bind, pero tampoco volvió SSH. Windows sigue viendo sólo el USB Code 43.
+- El resultado es **inconcluso respecto a la compatibilidad RF**: demuestra
+  que el endpoint WCN7850 no recupera operación mediante este reprobe en
+  caliente, incluso tras restaurar la combinación QRD conocida, pero no separa
+  un límite del reset/rebind PCI de un rechazo de la BDF HMT.2.0. La fuente de
+  build continúa instalando el `board-2.bin` oficial sin entrada X910 y la QRD
+  ELF probada como `board.bin`; no se promueve la candidata sin evidencia.
+- `firmware-samsung-gts9uwifi` sube en fuente a r4 para corregir una deriva
+  reproducible: el APKBUILD todavía instalaba el payload Samsung plano de una
+  iteración anterior, mientras v0.49 realmente usa la QRD ELF. r4 declara
+  `official-board-2.bin` + `qrd-board.bin`, con checksums fijados.
+- Siguiente paso: reinicio físico de la tablet. El watchdog ya debió restaurar
+  el fichero estable; al volver `wlan0`, leer el resultado y journal de
+  `gts9uwifi-native-bdf-test`. Si el reprobe no permite concluir, preparar una
+  prueba de arranque limpio con rollback autónomo a QRD y segundo reinicio,
+  sin empaquetar todavía la BDF Samsung en un ZIP.

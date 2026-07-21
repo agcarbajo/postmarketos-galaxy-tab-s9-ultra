@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 66, ✅ Wi-Fi funcional y SSH en vivo por WLAN).
+> Última actualización: 2026-07-21 (sesión 67, prueba reversible de BDF Samsung pendiente de reinicio).
 
 ## Objetivo
 
@@ -55,7 +55,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware r3: amss.bin y board-2.bin oficiales + BDF Samsung fallback + m3 oficial |
+| Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware fuente r4 alinea el paquete reproducible con v0.49 (amss/board-2 oficiales + QRD ELF fallback) y genera aparte la candidata BDF Samsung API-2 |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada a la red (señal 65, 270 Mbit/s); RF con calibración QRD pendiente de la BDF Samsung |
@@ -82,6 +82,15 @@ con la entrada `subsystem 17cb:1107, board-id 255` para calibración RF
 nativa; retirar `debug_mask` y las trazas de bring-up de kernel; Bluetooth
 (mismo PMU WCN7850, `bt-enable` GPIO81); reabordar el USB Code 43 como canal
 secundario; y continuar con audio, sensores y GPU/Turnip:
+
+- sesión 67 construye de forma determinista `samsung-board-2.bin` con el
+  boardname exacto X910 y el `bdwlan.elf` completo. Su estructura API-2 se
+  validó contra el contenedor oficial. La primera prueba por unbind/rebind
+  PCI en vivo no recuperó `wlan0`; el watchdog restauró el fichero estable,
+  pero el reenlace en caliente tampoco devolvió SSH. Esto no demuestra aún
+  incompatibilidad de la BDF: el WCN7850 puede no admitir reprobe sin un
+  power-cycle limpio. Hace falta reiniciar, recuperar SSH con la QRD y leer
+  `gts9uwifi-native-bdf-test` antes de decidir una prueba de arranque limpio;
 
 - v0.11 queda validada físicamente: ejecuta `/init`, monta `pmOS_boot` y
   `pmOS_root`, arranca systemd, LightDM y XFCE4, y conserva correctamente el
