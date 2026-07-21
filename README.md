@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 70, v0.52 elimina el -110 en vivo; v0.53 añade msm.separate_gpu_kms=1 para el render node).
+> Última actualización: 2026-07-21 (sesión 70, ✅ GPU Adreno 740 arrancada en v0.53: render node + Mesa FD740 GL 4.6; pendiente cuelgue bajo carga).
 
 ## Objetivo
 
@@ -63,7 +63,8 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ v0.50 flasheada (por sideload/`twrp install`) y validada físicamente: kernel limpio (dmesg sin `SM-X910`), Wi-Fi + táctil + escritorio OK |
+| Imagen/paquete de prueba | ✅ v0.53 flasheada y validada físicamente: GPU Adreno 740 arrancada (render node + Mesa FD740 OpenGL 4.6); Wi-Fi + táctil + escritorio OK |
+| GPU Adreno 740 | 🧪 **v0.53: arranca de verdad** — `renderD128`, GMU fw v4.1.9, `gpu-initialized: 1`, y Mesa/freedreno da contexto GL 4.6. Pendiente: cuelga bajo carga sostenida de glamor (`hangcheck rb 2`), mitigado desactivando la aceleración de Xorg |
 
 ## Reto en curso
 

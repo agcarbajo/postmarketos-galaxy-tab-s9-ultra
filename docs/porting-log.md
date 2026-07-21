@@ -2950,5 +2950,40 @@ física.
   `artifacts/postmarketos-edge-xfce-mainline-v0.53-adreno740-separate-gpu-kms-sm-x910-twrp.zip`,
   28.037.746 bytes, SHA-256
   `8df8e9f4dde7209204ae107ffe84922a68e61349f0c9584ddf9ed790e18b12e9`.
-- **Pendiente.** Flashear v0.53 desde TWRP y comprobar que aparece
-  `/dev/dri/renderD128` y que Turnip ve el Adreno 740.
+- **✅ v0.53 VALIDADA: LA GPU ADRENO 740 ARRANCA.** Flasheada por `twrp install`
+  (mismo conjunto de particiones; overlay verificado). Kernel `#27`. En vivo:
+  - `[drm] Initialized msm 1.13.0 for 3d00000.gpu on minor 1` → **existe
+    `/dev/dri/card1` y `/dev/dri/renderD128`** (render node), con
+    `DRIVER=adreno` en ambos.
+  - Firmware cargado: `qcom/a740_sqe.fw`, `qcom/gmu_gen70200.bin` y
+    **`[drm] Loaded GMU firmware v4.1.9`**.
+  - `debugfs dri/1/gpu`: `gpu-initialized: 1`, `revision: 43050a01`,
+    ringbuffers con fences retirándose.
+  - **Mesa/freedreno YA FUNCIONA**: Xorg levantó
+    `glamor X acceleration enabled on FD740` con **contexto OpenGL 4.6**. El
+    stack de userspace (msm_dri.so) está operativo sin tocar nada.
+  - `simpledrm` (card0) conserva la pantalla y el Wi-Fi sigue conectado.
+- **NUEVO PROBLEMA: cuelgues bajo carga sostenida.** Con glamor activo la GPU
+  entra en bucle `hangcheck detected gpu lockup rb 2` → `hangcheck recover!`,
+  tarea culpable `Xorg`, ~1 cada 3 s (64 cuelgues). El GPU se recupera siempre
+  (el sistema sigue vivo: lightdm activo, SSH, Wi-Fi), pero el escritorio queda
+  degradado.
+  - **Mitigación en vivo aplicada**: `/etc/X11/xorg.conf.d/10-no-glamor.conf`
+    con `Option "AccelMethod" "none"` sobre `card0` → `glamor disabled`; el
+    contador de cuelgues se congela en 64 y el escritorio vuelve a ser estable.
+    El render node sigue disponible para pruebas controladas. En reposo la GPU
+    queda sana (`gpu-initialized: 1`, `rbbm-status: 0x00000000`).
+  - Descartado: el DT no está incompleto. El nodo `gpu@3d00000` upstream de
+    `sm8550.dtsi` **tampoco** define `nvmem-cells`/`speed_bin` ni
+    `power-domains` (el GMU gestiona los raíles), así que la ausencia de
+    speedbin es el comportamiento normal de upstream, no una regresión nuestra.
+    `interconnects`, `operating-points-v2`, `qcom,gmu` y `zap-shader` sí están
+    presentes en el DT vivo, y no hay ningún fallo de iommu/SMMU ni error de
+    zap en el log.
+  - Hipótesis pendientes para la siguiente iteración: (a) probar **Turnip
+    (Vulkan)** en vez del camino GL/glamor, que suele estar más maduro para
+    a7xx; (b) limitar la frecuencia máxima de GPU para comprobar si es un
+    problema de DCVS/voltaje del GMU; (c) analizar el **devcoredump** (`devcd1`)
+    que ya se generó y contiene los registros exactos del cuelgue.
+- **Pendiente.** Resolver el cuelgue bajo carga y, después, plantear el paso
+  grande: pasar la pantalla de `simpledrm` a DRM/KMS nativo (DSI + DPU).
