@@ -2899,5 +2899,21 @@ física.
   porque un `select` no puede darlo built-in, se avisa. La guarda detectó de
   inmediato el caso benigno `ATH_COMMON=y`, que bajo `ATH12K=m` sólo puede ser
   `=m` (Wi-Fi funciona igual).
-- **Pendiente.** Flashear v0.52 y comprobar en vivo que el `-110` desaparece,
-  que GMU/zap arrancan y que aparece el render node para Turnip.
+- **Flashear desde pmOS es IMPOSIBLE (comprobado, sólo lectura).** Se evaluó
+  escribir `boot.img` por SSH con `dd` para evitar el viaje a TWRP en cada
+  iteración. No se puede: **el kernel mainline no enumera el almacenamiento
+  interno UFS**. En la tablet sólo existe la microSD (`mmcblk1`: p1 `/boot`,
+  p2 `/`), no hay ningún `/dev/sd*` ni controlador UFS en el log (sólo
+  `sdhci_msm`), y `/dev/disk/by-partlabel/` contiene únicamente `primary` (la
+  GPT de la propia SD) — no existen nodos `boot`, `init_boot`, `dtbo` ni
+  `vbmeta`. Las particiones que flasheamos viven en ese UFS interno, así que
+  **TWRP (kernel Android con driver UFS) es la única vía**. Dato de referencia
+  del instalador: escribe por `/dev/block/by-name/<part>` (sin sufijo de slot;
+  este dispositivo NO es A/B) y exige `boot` = 100.663.296 B, que es
+  exactamente el tamaño de nuestro `boot.img` (escritura 1:1).
+  Vía futura opcional para desbloquear el flasheo autónomo: habilitar
+  `SCSI_UFS_QCOM` (+ nodo UFS y sus reguladores en el DTS), pero es un
+  subsistema nuevo en el arranque y se deja fuera de la iteración de GPU para
+  no arriesgar una base que funciona.
+- **Pendiente.** Flashear v0.52 desde TWRP y comprobar en vivo que el `-110`
+  desaparece, que GMU/zap arrancan y que aparece el render node para Turnip.
