@@ -2700,3 +2700,41 @@ física.
   `gts9uwifi-native-bdf-test`. Si el reprobe no permite concluir, preparar una
   prueba de arranque limpio con rollback autónomo a QRD y segundo reinicio,
   sin empaquetar todavía la BDF Samsung en un ZIP.
+
+## 2026-07-21 — sesión 68: BDF Samsung RECHAZADA por firmware (RDDM); QRD es final
+
+- Tras el reinicio físico la tablet volvió con la QRD (Wi-Fi OK). Se confirmó
+  la lección de la sesión 67: el reprobe PCI en caliente (unbind/bind) NO
+  puede probar una BDF porque el WCN7850 sólo hace su cold-reset (WLAN_EN
+  0→1 en `pwrseq-qcom-wcn`) en un arranque real; por eso aquel test quedó
+  inconcluso. La rootfs vive en la microSD y es escribible por SSH, así que
+  se montó una prueba de arranque limpio en vivo, sin flashear.
+- Método: por SSH se instaló `samsung-board-2.bin` como `board-2.bin`, con la
+  QRD respaldada, y un guard systemd oneshot autónomo
+  (`gts9uwifi-bdf-trial`) que espera hasta 90 s la asociación de `wlan0` y,
+  si falla, restaura la QRD y reinicia. Se armó el marcador y se reinició.
+- Resultado DEFINITIVO (journal del boot de trial
+  `8d88fb41580d47229930239c9fd2c832`): el contenedor era correcto. ath12k
+  registra `boot found match board data for name '…board-id=255'`,
+  `boot found board data`, `using board api 2` y descarga la BDF Samsung como
+  `qmi bdf_type 1`. A falta de 2.744 de 82.616 bytes el firmware emite
+  **`MHI_CB_EE_RDDM`** (RAM Dump Debug Mode = crash), seguido de
+  `qmi failed to load bdf file` y `-110`. El `regdb` cayó correctamente a
+  `regdb.bin` (`fetched regdb`), descartando ese como problema.
+- Conclusión: la BDF Samsung es de la rama downstream **HMT.2.0** y el amss
+  oficial de linux-firmware es **HMT.1.1**; el firmware oficial **crashea al
+  parsear la board data Samsung**. La calibración RF nativa NO es alcanzable
+  con el amss oficial. La única vía sería el amss Samsung, que exige
+  `phy_ucode20.elf` por un canal QMI que sólo implementa cnss2 (no mainline):
+  callejón cerrado por ahora. **La QRD queda como la BDF final**; el Wi-Fi
+  funciona con calibración genérica y buena señal/tasa.
+- El guard autónomo cumplió: restauró la QRD y reinició sin intervención; la
+  tablet nunca perdió Wi-Fi de forma permanente. Los artefactos del trial se
+  eliminaron por SSH; estado v0.49 prístino verificado por hash
+  (`board-2.bin` `1abee713…`, `board.bin` QRD `0ef5f6f3…`, amss `43aadfd3…`,
+  m3 `0e72f44d…`).
+- La fuente reproducible ya instala la combinación QRD (sin cambios). El
+  generador `make-ath12k-board2.py` y la candidata se conservan documentados
+  por si en el futuro se resuelve el amss Samsung. Tarea 1 (RF nativo)
+  cerrada como negativa concluyente; se pasa a la Tarea 2 (limpieza del
+  debug de bring-up) antes de la GPU.
