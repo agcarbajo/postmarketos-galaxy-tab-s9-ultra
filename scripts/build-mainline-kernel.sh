@@ -85,6 +85,27 @@ if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 		"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"
 fi
 
+# ANA38407 (gts9u) DSI panel driver.  Ship the .c into the pristine panel dir and
+# register it in Kconfig/Makefile, mirroring how the board DTS is supplied.
+panel_dir="$kernel_tree/drivers/gpu/drm/panel"
+install -m 0644 "$package/panel-samsung-ana38407.c" \
+	"$panel_dir/panel-samsung-ana38407.c"
+if ! grep -q 'DRM_PANEL_SAMSUNG_ANA38407' "$panel_dir/Kconfig"; then
+	sed -i '/^endmenu$/i \
+config DRM_PANEL_SAMSUNG_ANA38407\
+\ttristate "Samsung ANA38407 AMSA46AS02 (gts9u) DSI command-mode panel"\
+\tdepends on OF\
+\tdepends on DRM_MIPI_DSI\
+\tdepends on BACKLIGHT_CLASS_DEVICE\
+\thelp\
+\t  DSC command-mode DSI panel on the Galaxy Tab S9 Ultra Wi-Fi (SM-X910).\
+' "$panel_dir/Kconfig"
+fi
+if ! grep -q 'panel-samsung-ana38407.o' "$panel_dir/Makefile"; then
+	printf 'obj-$(CONFIG_DRM_PANEL_SAMSUNG_ANA38407) += panel-samsung-ana38407.o\n' \
+		>> "$panel_dir/Makefile"
+fi
+
 cp "$base/pmaports/device/main/linux-postmarketos-mainline/config-mainline.aarch64" \
 	"$build_dir/.config"
 

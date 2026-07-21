@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=30
+pkgrel=31
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -52,6 +52,7 @@ source="
 	unpark-pcie0-pipe-mux.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
+	panel-samsung-ana38407.c
 "
 builddir="$srcdir/linux-$_kernelver"
 
@@ -60,6 +61,22 @@ prepare() {
 
 	cp "$srcdir/sm8550-samsung-gts9uwifi.dts" \
 		arch/arm64/boot/dts/qcom/
+
+	# ANA38407 (gts9u) DSI panel driver: drop the source in and register it.
+	cp "$srcdir/panel-samsung-ana38407.c" drivers/gpu/drm/panel/
+	if ! grep -q 'DRM_PANEL_SAMSUNG_ANA38407' drivers/gpu/drm/panel/Kconfig; then
+		sed -i '/^endmenu$/i \
+config DRM_PANEL_SAMSUNG_ANA38407\
+\ttristate "Samsung ANA38407 AMSA46AS02 (gts9u) DSI command-mode panel"\
+\tdepends on OF\
+\tdepends on DRM_MIPI_DSI\
+\tdepends on BACKLIGHT_CLASS_DEVICE\
+' drivers/gpu/drm/panel/Kconfig
+	fi
+	grep -q 'panel-samsung-ana38407.o' drivers/gpu/drm/panel/Makefile || \
+		echo 'obj-$(CONFIG_DRM_PANEL_SAMSUNG_ANA38407) += panel-samsung-ana38407.o' \
+			>> drivers/gpu/drm/panel/Makefile
+
 	cp "$srcdir/config-mainline.aarch64" .config
 
 	unset LDFLAGS
@@ -102,6 +119,7 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 4d021337148ece0741c1914a968955e230242b2d5a9d1d842332b5d62d84610e03aeb737c14d4b068921e75372d02f9138027c251e99ee0f472e4bcbbf69c0bf  wcn7850-pwrseq-cold-reset-aop.patch
 d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
-26910c36b9d0bb4f736cd775e303e29a45347588142e9d1f00186e619a1143d886cc6cb16b5f97ab75e72050e8c3ed7cde449fda5957bbd69e0365d05bbc2811  config-gts9uwifi.fragment
+a7734d4fd84215e4bd1338fdf2201db2f9444dace609a26a95eb3998d3b3a6985b7ea619cc5151e446371690712ed7b8b3b4f296044caa595bea56affc94dfc6  config-gts9uwifi.fragment
 e14dc580a75b4765e0b547efbf3ca067c1254aaf387ff9696a3e3fae39ce6f4aa3340f76881213522289776e82c4ba73c73edaa1bad81c124f1f0dd874951c57  sm8550-samsung-gts9uwifi.dts
+fe9f5fae05939fac23891647f786abc52612515861f76d267ef3086c348548b05286acab5ae44caf19b696df61935ebb7ca3e5d075e719f55358af8a1a9cb12f  panel-samsung-ana38407.c
 "

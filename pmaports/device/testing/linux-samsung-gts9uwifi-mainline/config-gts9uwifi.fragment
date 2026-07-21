@@ -102,6 +102,13 @@ CONFIG_QCOM_LLCC=y
 CONFIG_SM_GPUCC_8550=y
 CONFIG_DRM_MSM=y
 
+# Native display: the DPU + DSI come in with DRM_MSM=y, but the display clock
+# controller defaults to =m (like gpucc did) and this port never autoloads
+# modules, so force it built-in or the mdss/dsi never get their clocks.
+CONFIG_SM_DISPCC_8550=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
+CONFIG_DRM_PANEL_SAMSUNG_ANA38407=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set

@@ -42,19 +42,12 @@
 	};
 
 	chosen {
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
 		stdout-path = "serial0:115200n8";
-
-		framebuffer: framebuffer@b8000000 {
-			compatible = "simple-framebuffer";
-			reg = <0x0 0xb8000000 0x0 0x2b00000>;
-			width = <2960>;
-			height = <1848>;
-			stride = <(2960 * 4)>;
-			format = "a8r8g8b8";
-		};
+		/*
+		 * The simple-framebuffer is intentionally gone: the native msm
+		 * DPU + DSI pipeline (below) owns the panel now.  If the panel
+		 * bring-up regresses, recover over SSH (Wi-Fi) or reflash v0.53.
+		 */
 	};
 
 	reserved-memory {
@@ -293,10 +286,26 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		/* Display panel VDD (1.2 V digital core). */
+		vreg_l11b_1p2: ldo11 {
+			regulator-name = "vreg_l11b_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
 		vreg_l12b_1p8: ldo12 {
 			regulator-name = "vreg_l12b_1p8";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* Display panel VCI (3.0 V analog). */
+		vreg_l13b_3p0: ldo13 {
+			regulator-name = "vreg_l13b_3p0";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -407,7 +416,8 @@
 };
 
 &dispcc {
-	status = "disabled";
+	/* Needed for the native display pipeline (mdss/dpu/dsi clocks). */
+	status = "okay";
 };
 
 &pm8550_gpios {
@@ -610,4 +620,59 @@
 
 &xo_board {
 	clock-frequency = <76800000>;
+};
+
+/* ANA38407 AMSA46AS02 native display pipeline. */
+
+/ {
+	/*
+	 * AMOLED ELVDD (~5.5 V) behind a GPIO load switch (tlmm 202,
+	 * enable-active-high); the stock DTS models this as display_panel_avdd.
+	 */
+	display_avdd: regulator-display-avdd {
+		compatible = "regulator-fixed";
+		regulator-name = "display_panel_avdd";
+		regulator-min-microvolt = <5500000>;
+		regulator-max-microvolt = <5500000>;
+		gpio = <&tlmm 202 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+	};
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+
+	panel@0 {
+		compatible = "samsung,ana38407-amsa46as02";
+		reg = <0>;
+
+		vddio-supply = <&vreg_l12b_1p8>;
+		vdd-supply = <&vreg_l11b_1p2>;
+		vci-supply = <&vreg_l13b_3p0>;
+		avdd-supply = <&display_avdd>;
+
+		reset-gpios = <&tlmm 125 GPIO_ACTIVE_HIGH>;
+
+		port {
+			panel0_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel0_in>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1e_0p88>;
+	status = "okay";
 };

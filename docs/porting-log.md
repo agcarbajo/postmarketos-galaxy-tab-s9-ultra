@@ -3107,3 +3107,31 @@ quiere SU PPS exacto), level-keys `0xF0/0xF1 0x5A 0x5A`.
   por Wi-Fi (independiente del display) y una build de rollback a v0.53 lista.
   El overlay del panel puede ir en una fase intermedia con simpledrm todavía
   presente para comparar, aunque lo natural es sustituirlo.
+
+## Display nativo escrito (v0.55, primera-luz pendiente de flash)
+
+- **`panel-samsung-ana38407.c` (nuevo, mainline)**: drm_panel + mipi_dsi,
+  `compatible = "samsung,ana38407-amsa46as02"`. 5 modos (120/60/30 Hz), init/exit
+  DCS transcritos del PDF, **DSC** desde `drm_dsc_config` (PPS decodificado:
+  DSC 1.1, 2960x1848, slice 1480x77, 8bpc, 8.0bpp, 2 slices, block-pred),
+  backlight DCS 0x51 (12-bit), 4 supplies (vddio/vdd/vci/avdd) + reset.
+  API 7.2-rc3: `devm_drm_panel_alloc` + `devm_regulator_bulk_get_const` (el viejo
+  `drm_panel_init` ya no existe — el primer build v0.55 falló por eso y se
+  corrigió; el objeto compila con `COMPILE_EXIT=0`).
+- **DTS**: `&dispcc` okay; `&mdss`/`&mdss_dsi0`/`&mdss_dsi0_phy` okay; nodo
+  `panel@0` bajo dsi0 con `reset-gpios = <&tlmm 125 GPIO_ACTIVE_HIGH>`,
+  `data-lanes = <0 1 2 3>` y port a `mdss_dsi0_out`; `vdda`=l3e_1p2,
+  `vdds`(phy)=l1e_0p88. Añadidos **dos rails PMIC que faltaban** en pm8550b:
+  `vreg_l11b_1p2` (vdd) y `vreg_l13b_3p0` (vci); vddio=l12b_1p8 ya existía.
+  Regulador `display_avdd` = fixed 5.5 V por `<&tlmm 202>` (ELVDD).
+  **Quitado el `simple-framebuffer`** para que msm controle la pantalla. El DTB
+  compila limpio (phandles/reguladores resuelven).
+- **Config**: `SM_DISPCC_8550=y` (mismo caso que gpucc: venía `=m` y este port no
+  autocarga módulos), `DRM_PANEL_SAMSUNG_ANA38407=y`, `BACKLIGHT_CLASS_DEVICE=y`.
+- **Integración reproducible**: `build-mainline-kernel.sh` copia el `.c` y
+  registra Kconfig/Makefile; APKBUILD r31 con el `.c` en source + checksums.
+- **Pendiente**: flashear v0.55 desde TWRP y comprobar primera luz. Puntos
+  frágiles esperables en la 1ª iteración: los RC params del DSC (relleno parcial
+  de `drm_dsc_config`), el rail exacto de `vdd`, la polaridad/tiempos del reset,
+  y que el DPU acepte el modo comando + DSC. Depuración por SSH (Wi-Fi), rollback
+  a v0.53 por TWRP.
