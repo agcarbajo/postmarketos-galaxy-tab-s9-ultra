@@ -3024,9 +3024,57 @@ física.
   comandos DCS de inicialización, que vive en el kernel downstream de Samsung —
   y ese código **no está descargado** en el workspace (`sources/` sólo tiene
   abl-mirror, abl-tianocore-edk2, libufdt, mkinitfs).
-- **Pendiente / bifurcación.** (A) Ruta corta: compositor **Wayland** rindiendo
-  con la GPU por GBM y presentando en `simpledrm` — la GPU ya demuestra GL 4.6
-  por GBM, es reversible y no toca el arranque. (B) Ruta correcta y larga:
-  bajar el fuente downstream de Samsung, extraer la secuencia del panel, escribir
-  el driver DSI y habilitar mdss/DPU — es el objetivo final, pero con riesgo real
-  de pantalla negra (recuperable por TWRP).
+- **DECISIÓN: se va a por DRM/KMS nativo** (la usuaria eligió la ruta larga).
+
+## Panel `GTS9U_ANA38407_AMSA46AS02`: datos extraídos del DTBO stock
+
+Hallazgo importante: **no hace falta el kernel downstream para casi nada**. El
+DTBO stock ya decompilado (`work/stock-dtbo-entries/entry-0.dts`, línea 8368,
+nodo bajo `/fragment@24/__overlay__/qcom,mdss_mdp@ae00000/`) contiene el nodo
+completo del panel. Extraído a `work/panel-ana38407.dts` (293 líneas).
+
+- **Identidad**: fabricante SDC, DDIC **Anapass ANA38407**, modelo AMSA46AS02.
+  `samsung,anapass-power-seq`, `samsung,esc-clk-128M`.
+- **Modo**: `dsi_cmd_mode` (**modo comando**, no vídeo), 4 carriles, 24 bpp,
+  `rgb_swap_rgb`, TE por pin (`te-pin-select=1`, `te-dcs-command=1`),
+  `rx-eot-ignore` + `tx-eot-append`, ULPS habilitado.
+- **Resolución**: 0xb90 x 0x738 = **2960 x 1848** (coincide con el framebuffer
+  de simpledrm). Físico: 313 x 196 mm.
+- **DSC**: `compression-mode = "dsc"`, 2 encoders, slice 1480 x 77,
+  8 bit/componente, 8 bit/pixel, block-prediction; `lm-split = <1480 1480>`,
+  topología `<2 2 1>`. OJO: `samsung,no_qcom_pps` (PPS propio, no el de QCOM).
+- **Timings 120 Hz (wqxga120hs)**: hpw 36, hbp 30, hfp 16; vpw 32, vbp 32,
+  vfp 16; framerate 120; clockrate 1.524 GHz;
+  phy-timings `[00 35 0d 0d 1f 27 0d 0d 0c 02 04 00 2a 12]`;
+  t-clk-pre 0x28, t-clk-post 0x11; transfer-time 7533 us.
+  Hay 5 modos: wqxga120hs / wqxga60hs / wqxga60phs / wqxga30hs / wqxga30phs.
+- **GPIOs**: reset = 125, TE = 86, ub-con-det = 67, tcon-rdy = 88,
+  esd-irq1 = 186. Secuencia de reset `<0 10 1 1>`.
+- **Backlight**: `bl_ctrl_dcs`, min 1, por defecto 0xff, con tablas de candela.
+- **Formato de comandos**: DSL legible, p.ej. `W 0xF0 0x5A 0x5A`, `Delay 20ms`,
+  `R 0xC1 0x01` (visible entero en `samsung,ddi_fw_id_rx_cmds_revA`), y llaves
+  de nivel `level0/level1 key` = `0xF0 0x5A 0x5A` / `0xF1 0x5A 0x5A`.
+
+**LO QUE FALTA (único bloqueo)**: la secuencia DCS de encendido. La propiedad
+`samsung,mdss_dsi_on_tx_cmds_revA` es una **plantilla con macros**:
+
+    W 0x11 / Delay 120ms / ${VBP_SETTING_FOR_SDC_IP} / ${MX_IP_ENABLE} /
+    ${TCON_INTR_SETTING} / ${TE_ON} / ${TSP_SYNC_ON} / ${DSC_SETTING} /
+    ${DIA_SETTING} / ${BRIGHTNESS_SETTING} / ${SP_SETTING} / Delay 100ms /
+    ${VRR_SETTING}
+
+y cada macro aparece **una sola vez** en todo el overlay (sólo la referencia):
+Samsung las resuelve en su toolchain, así que los bytes reales están en el
+driver downstream (`ss_dsi_panel_ANA38407_AMSA46AS02.c`). Hace falta el fuente
+de `opensource.samsung.com` para SM-X910; no hay mirror público en GitHub
+(buscado: sólo existen mirrors de otros modelos y kernels NinjaSU compilados).
+
+**Herramienta útil localizada**: `msm8916-mainline/linux-mdss-dsi-panel-driver-generator`
+genera un driver DRM de panel mainline a partir precisamente de un device tree
+MDSS DSI de Qualcomm — el formato que ya tenemos extraído.
+
+- **Siguiente paso.** Conseguir el fuente downstream (descarga manual desde
+  opensource.samsung.com), sacar las macros del driver del panel, generar/escribir
+  `panel-samsung-ana38407.c`, y habilitar `mdss`/`dpu`/`mdss_dsi0` + PHY en el
+  DTS quitando el `simple-framebuffer`. Riesgo asumido: pantalla negra,
+  recuperable por TWRP con el ZIP anterior.
