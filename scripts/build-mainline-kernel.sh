@@ -110,6 +110,39 @@ while IFS= read -r setting; do
 done < "$package/config-gts9uwifi.fragment"
 
 make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 olddefconfig
+
+# A fragment line naming a symbol that does not exist (typo, or the wrong
+# vendor naming convention) is dropped by olddefconfig without a word: that is
+# how the GPU once shipped with no clock controller.  Assert every requested
+# setting survived.  A =m promoted to =y by some select is fine; anything else
+# missing is a build error.
+# An unknown or disabled symbol is fatal; a =y that a `select` could only
+# satisfy as =m (e.g. ATH_COMMON under ATH12K=m) is normal and only warned about.
+missing=
+downgraded=
+while IFS= read -r setting; do
+	case "$setting" in
+		CONFIG_*=y|CONFIG_*=m)
+			symbol=${setting%%=*}
+			want=${setting##*=}
+			if grep -qxF "$symbol=y" "$build_dir/.config"; then
+				:
+			elif grep -qxF "$symbol=m" "$build_dir/.config"; then
+				[ "$want" = y ] && downgraded="$downgraded $symbol"
+			else
+				missing="$missing $symbol"
+			fi
+			;;
+	esac
+done < "$package/config-gts9uwifi.fragment"
+if [ -n "$downgraded" ]; then
+	echo "warning: fragment asked =y, kconfig could only give =m:$downgraded" >&2
+fi
+if [ -n "$missing" ]; then
+	echo "config fragment symbols unknown or disabled:$missing" >&2
+	exit 1
+fi
+
 make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 -j"$(nproc)" \
 	Image.gz qcom/sm8550-samsung-gts9uwifi.dtb
 

@@ -2861,7 +2861,43 @@ física.
   bootloader Samsung ignora el reboot-mode nvmem de mainline y arrancó pmOS de
   nuevo en ~30 s (`up 0 min`, kernel `#22`, Wi-Fi OK). No puedo llevar la tablet
   a TWRP por software; requiere que la usuaria la ponga en TWRP a mano.
-- **Pendiente.** Flashear v0.51 desde TWRP (adb sideload, USB al PC) y validar
-  EN VIVO la GPU: que desaparezca el `-110` de `3da0000`, que GMU/zap inicien,
-  que aparezca el render node (`/dev/dri/renderD128`) y que Turnip vea el Adreno,
-  sin perder `simpledrm` ni Wi-Fi.
+- **FLASH Y VALIDACIÓN DE v0.51.** La usuaria puso TWRP a mano; flasheado por
+  `adb push` + `twrp install /sdcard/v051.zip` (sha256 `5b567e2e…` verificado en
+  el dispositivo). Nota operativa: adb se cae durante `twrp install` («no
+  devices/emulators found» al pedir reboot), pero la instalación **sí termina**;
+  la tablet arrancó sola. Resultado: **kernel `#25` arrancado, sin colgarse**,
+  `simpledrm` (card0) y `wlan0` intactos, y el driver `adreno` YA presente y
+  ligado a `3d00000.gpu`. Es decir, msm built-in headless es seguro para el
+  arranque. Pero la GPU **no** subió: `3da0000.iommu` sigue con `deferred probe
+  timeout … error -110`, `3d6a000.gmu` sin ligar y **sin render node**
+  (solo `card0` de simpledrm).
+- **CAUSA RAÍZ del `-110` (encontrada en vivo).** El diagnóstico mostró que
+  `3d90000.clock-controller` (el gpucc de la GPU) **no tenía driver ninguno**:
+  en `/sys/bus/platform/drivers` sólo aparecían `sdm845-gpucc`, `sm8150-gpucc` y
+  `sm8250-gpucc`. Motivo: **`CONFIG_GPUCC_SM8550` no existe como símbolo
+  Kconfig**; el nombre real es **`CONFIG_SM_GPUCC_8550`** (convención
+  `SM_GPUCC_<n>` en `drivers/clk/qcom/Kconfig`, `obj-$(CONFIG_SM_GPUCC_8550) +=
+  gpucc-sm8550.o`). `olddefconfig` descartó la línea inventada sin avisar, y
+  además ese símbolo viene por defecto en `=m`, que este port nunca autocarga.
+  Sin gpucc, el SMMU de la GPU y el GMU esperaban relojes que nunca llegaban →
+  deferred probe → `-110`.
+- **v0.52: el arreglo.** `CONFIG_SM_GPUCC_8550=y` en el fragment. Verificado en
+  el binario: `gpucc-sm8550.ko` y `msm.ko` en `modules.builtin`, `SM_GCC_8550=y`,
+  `ARM_SMMU=y`, `QCOM_SCM=y`, `QCOM_MDT_LOADER=y` (carga del zap MDT),
+  `SIMPLEDRM=y`. `Image.gz`
+  `087b222be67385068ceb58d1fa348e3b968d468b7e130df08d594d71b90082f8`; DTB sin
+  cambios (`cd4144b1…`); ZIP
+  `artifacts/postmarketos-edge-xfce-mainline-v0.52-adreno740-gpucc-sm-x910-twrp.zip`,
+  28.039.515 bytes, SHA-256
+  `bd70b9a4e1997ae3b7e16557c5d3b2fbfb88b725d8878fc81778f9fad85ef3f0`. Sólo
+  cambia `boot.img` (`0d878a77…`); dtbo/init_boot/vbmeta/vendor_boot son
+  idénticos a v0.51.
+- **Guarda nueva en `build-mainline-kernel.sh`.** Tras `olddefconfig` se
+  comprueba que cada símbolo del fragment sobrevivió: si un símbolo es
+  desconocido o quedó deshabilitado la build **falla** (es exactamente el fallo
+  que dejó la GPU sin su controlador de relojes); si sólo se degradó a `=m`
+  porque un `select` no puede darlo built-in, se avisa. La guarda detectó de
+  inmediato el caso benigno `ATH_COMMON=y`, que bajo `ATH12K=m` sólo puede ser
+  `=m` (Wi-Fi funciona igual).
+- **Pendiente.** Flashear v0.52 y comprobar en vivo que el `-110` desaparece,
+  que GMU/zap arrancan y que aparece el render node para Turnip.

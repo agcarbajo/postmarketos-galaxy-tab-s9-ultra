@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 70, GPU Adreno 740 built-in v0.51 construida; pendiente flash + validación).
+> Última actualización: 2026-07-21 (sesión 70, v0.51 flasheada: msm built-in arranca seguro; causa raíz del -110 = gpucc ausente; v0.52 lo corrige).
 
 ## Objetivo
 
@@ -88,15 +88,18 @@ Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
    funcional-only. Flasheado por `twrp install`; en vivo el kernel corre
    limpio (dmesg sin `SM-X910`) con Wi-Fi, táctil y escritorio intactos.
 3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO
-   (v0.51 construida, pendiente de flash + validación)**. Sobre la base limpia
-   v0.50 se activó la GPU built-in: `GPUCC_SM8550=y` da reloj al SMMU
-   `3da0000` y al GMU (elimina el `-110`), y `DRM_MSM=y` entra headless con el
-   zap firmado por Samsung (`qcom/a740_zap.mdt`), sin tocar `simpledrm`. Detalle
-   clave: `DRM_MSM` no podía ser `=y` mientras `QCOM_LLCC/OCMEM` eran `=m` (un
-   tristate no supera una dependencia `=m`); se puso `QCOM_LLCC=y` (existe en
-   SM8550) y `QCOM_OCMEM` a `n` (no existe). El reinicio-a-recovery por software
-   sigue sin funcionar en este Samsung, así que el flash de v0.51 requiere poner
-   TWRP a mano; luego validación en vivo por SSH (render node + Turnip).
+   (v0.52 construida, pendiente de flash)**. v0.51 se flasheó y validó a medias:
+   `DRM_MSM=y` headless **arranca seguro** (kernel `#25`, `simpledrm` y Wi-Fi
+   intactos, `adreno` ligado a `3d00000.gpu`), pero la GPU no subía: `-110` en
+   `3da0000.iommu` y sin render node. Causa raíz hallada en vivo: **el gpucc no
+   tenía driver** porque `CONFIG_GPUCC_SM8550` *no existe*; el símbolo real es
+   **`CONFIG_SM_GPUCC_8550`** y además venía en `=m` (este port no autocarga
+   módulos). v0.52 lo pone `=y`. Detalle previo que sigue aplicando: `DRM_MSM`
+   no sube a `=y` mientras `QCOM_LLCC/OCMEM` sean `=m` (un tristate no supera una
+   dependencia `=m`) → `QCOM_LLCC=y` + `QCOM_OCMEM=n`. La build ahora **falla**
+   si un símbolo del fragment es desconocido o queda deshabilitado, para que este
+   fallo no pueda repetirse. El reinicio-a-recovery por software sigue sin
+   funcionar en este Samsung: cada flash necesita TWRP puesto a mano.
 
 Pendientes posteriores: Bluetooth (mismo PMU WCN7850, `bt-enable` GPIO81), el
 USB Code 43 como canal secundario, audio y sensores.

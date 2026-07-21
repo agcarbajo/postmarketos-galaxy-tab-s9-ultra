@@ -93,9 +93,13 @@ CONFIG_PSTORE_PMSG=y
 # dependency, so both must leave their =m default or msm is capped at =m: LLCC is
 # real on SM8550 (the GPU system-cache slice) -> built-in; OCMEM does not exist
 # on SM8550 -> disabled.
+# The GPU clock controller symbol is SM_GPUCC_8550 (not GPUCC_SM8550), and it
+# defaults to =m: this port never autoloads modules, so as a module it simply
+# never bound, 3d90000.clock-controller stayed driverless and the GPU SMMU and
+# GMU timed out waiting for their clocks (the -110).  Built-in is required.
 CONFIG_QCOM_LLCC=y
 # CONFIG_QCOM_OCMEM is not set
-CONFIG_GPUCC_SM8550=y
+CONFIG_SM_GPUCC_8550=y
 CONFIG_DRM_MSM=y
 
 # Rust is not needed for the bring-up kernel and would couple the build to a
