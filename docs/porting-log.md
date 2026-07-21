@@ -3073,8 +3073,37 @@ de `opensource.samsung.com` para SM-X910; no hay mirror público en GitHub
 genera un driver DRM de panel mainline a partir precisamente de un device tree
 MDSS DSI de Qualcomm — el formato que ya tenemos extraído.
 
-- **Siguiente paso.** Conseguir el fuente downstream (descarga manual desde
-  opensource.samsung.com), sacar las macros del driver del panel, generar/escribir
-  `panel-samsung-ana38407.c`, y habilitar `mdss`/`dpu`/`mdss_dsi0` + PHY en el
-  DTS quitando el `simple-framebuffer`. Riesgo asumido: pantalla negra,
-  recuperable por TWRP con el ZIP anterior.
+## ✅ Secuencia DCS del panel RECUPERADA (fuente Samsung obtenido)
+
+La usuaria descargó `SM-X910_EUR_16_Opensource.zip` (640 MB) de
+opensource.samsung.com y lo dejó en la carpeta del proyecto. Estructura:
+`Kernel.tar.gz` + `Platform.tar.gz`. Se extrajeron **sólo** los ficheros del
+panel por streaming del tar anidado (`work/extract-panel-driver.sh`, 18
+ficheros a `/root/pmos-gts9u/samsung-src/...display-drivers/msm/samsung/`):
+`GTS9U_ANA38407_AMSA46AS02_panel.c/.h`, `*_PDF.h` (3.3 MB), `*.dat` (546 KB),
+mdnie, SELF_DISPLAY, FW_UPDATE, `ss_dsi_panel_common.h`.
+
+**El bloqueo está resuelto.** El framework `ss_dsi_panel` es propietario y
+gigante, pero el **Panel Data File** (`*_PDF.h`) codifica las secuencias DCS
+como texto en arrays `0xNN`: decodificando todos los tokens hex del fichero se
+obtiene el DSL con **las macros ya expandidas** (`work/decode-pdf.sh` →
+`PDF-decoded.txt`, 1797 líneas, 34 bloques). Al contrario que el DTBO (donde
+eran `${MACRO}`), aquí están los bytes reales.
+
+Secuencia de encendido reconstruida (sleep-out `0x11` +120ms → VBP/DISPLAY_ON_
+DELAY/MX_IP/TCON_INTR/TE_ON/TSP_SYNC → **PPS DSC** `WT 0x0A 0x11 00 00 89 30 …`
+→ brillo → `Delay 50ms` → display-on `0x29`) y de apagado (`0x28`/`0x10`/100ms)
+documentadas al detalle en **`docs/panel-ana38407-bringup.md`**, con todos los
+payloads DCS. Datos clave: TE **Active Low**, `samsung,no_qcom_pps` (el panel
+quiere SU PPS exacto), level-keys `0xF0/0xF1 0x5A 0x5A`.
+
+- **Siguiente paso.** Escribir `panel-samsung-ana38407.c` mainline (drm_panel +
+  mipi_dsi, DSC vía `drm_dsc_config`, secuencia de primera-luz mínima: reset →
+  0x11 → VBP/MX_IP/TCON_INTR/TE_ON/DSC → 0x29). Luego, en el DTS: quitar
+  `simple-framebuffer`, habilitar `&mdss`/`&mdss_mdp`/`&mdss_dsi0`/`&mdss_dsi0_phy`
+  y el nodo del panel bajo dsi0, con reset-gpio 125 y TE. `DRM_MSM_DPU`/`DSI` ya
+  están `=y`. Riesgo asumido: pantalla negra, recuperable por TWRP.
+- **IMPORTANTE (primera luz)**: para no perder el canal de control, mantener SSH
+  por Wi-Fi (independiente del display) y una build de rollback a v0.53 lista.
+  El overlay del panel puede ir en una fase intermedia con simpledrm todavía
+  presente para comparar, aunque lo natural es sustituirlo.

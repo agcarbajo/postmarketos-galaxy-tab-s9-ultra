@@ -15,3 +15,8 @@ work/*
 *.dtbo
 __pycache__/
 *.pyc
+
+# Samsung open-source drops (huge; downloaded manually from opensource.samsung.com).
+*_Opensource.zip
+Kernel.tar.gz
+Platform.tar.gz
