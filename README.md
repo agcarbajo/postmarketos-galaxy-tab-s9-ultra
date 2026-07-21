@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 67, prueba reversible de BDF Samsung pendiente de reinicio).
+> Última actualización: 2026-07-21 (sesión 69, build limpia sin debug v0.50; Tareas 1 y 2 hechas).
 
 ## Objetivo
 
@@ -55,7 +55,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r27 activa `CONFIG_ATH12K_DEBUG`; firmware fuente r4 alinea el paquete reproducible con v0.49 (amss/board-2 oficiales + QRD ELF fallback) y genera aparte la candidata BDF Samsung API-2 |
+| Paquetes pmaports | 🧪 Kernel r28 (v0.50) retira TODO el debug de bring-up y consolida los arreglos WCN en un parche funcional-only; firmware r4 (QRD final + candidata Samsung documentada) |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -63,7 +63,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ v0.49 flasheada y validada físicamente: escritorio + táctil + Wi-Fi + SSH en vivo |
+| Imagen/paquete de prueba | 🧪 v0.50 (build limpia sin debug) validada estáticamente y copiada; pendiente flash manual. v0.49 sigue siendo la última validada físicamente |
 
 ## Reto en curso
 
@@ -82,8 +82,11 @@ Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
    prueba en vivo (con rollback autónomo) demostró que la BDF Samsung se
    encuentra y descarga bien, pero el amss oficial HMT.1.1 **crashea (MHI
    RDDM)** al parsear la board data HMT.2.0. La QRD queda como BDF final.
-2. Retirar el debug de bring-up (`CONFIG_ATH12K_DEBUG`, `debug_mask`, trazas
-   `SM-X910 diag`) conservando los arreglos funcionales — EN CURSO (v0.50).
+2. Retirar el debug de bring-up — **HECHO en fuente (v0.50, kernel r28)**:
+   dropeados los parches de diagnóstico y `CONFIG_ATH12K_DEBUG`, consolidados
+   los arreglos WCN en `wcn7850-pwrseq-cold-reset-aop.patch` funcional-only;
+   binario verificado sin ninguna traza `SM-X910`. Pendiente flash + prueba
+   física para confirmar que Wi-Fi/táctil/escritorio siguen igual.
 3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — siguiente hito.
 
 Pendientes posteriores: Bluetooth (mismo PMU WCN7850, `bt-enable` GPIO81), el

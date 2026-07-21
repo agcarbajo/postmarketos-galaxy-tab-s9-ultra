@@ -39,9 +39,6 @@ if ! grep -q 'previous_index, index' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/keep-sec-log-previous-index-current.patch"
 fi
-if ! grep -q 'probing %s with driver %s' "$kernel_tree/drivers/base/dd.c"; then
-	patch -d "$kernel_tree" -p1 < "$package/log-probe-entry-before-call.patch"
-fi
 if ! grep -q 'Match Samsung SM8550 sequencing' \
 	"$kernel_tree/drivers/phy/phy-snps-eusb2.c"; then
 	patch -d "$kernel_tree" -p1 \
@@ -63,52 +60,21 @@ if ! grep -q 'PTN3222_MAX_INIT_CELLS' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/configure-nxp-ptn3222-from-dt.patch"
 fi
-if ! grep -q 'delayed link state: reset' \
-	"$kernel_tree/drivers/phy/phy-nxp-ptn3222.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/diagnose-sm8550-eusb2-link.patch"
-fi
-if ! grep -q 'SM-X910 diag pullup request' \
-	"$kernel_tree/drivers/usb/dwc3/gadget.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/diagnose-dwc3-ep0-enumeration.patch"
-fi
-if grep -q 'SM-X910 diag event raw' \
-	"$kernel_tree/drivers/usb/dwc3/gadget.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/remove-dwc3-hotpath-diagnostics.patch"
-fi
-if ! grep -q 'SM-X910 WCN diag: power sequencer registered' \
+# WCN7850 functional fixes: cold-reset WLAN_EN before PCIe probe and program
+# the stock AOP WLAN PDC table over the QMP mailbox.  Bring-up diagnostics were
+# removed; this is the consolidated functional-only patch.
+if ! grep -q 'pwrseq_qcom_wcn_program_wlan_pdc' \
 	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
 	patch -d "$kernel_tree" -p1 \
-		< "$package/diagnose-wcn7850-power-sequence.patch"
-fi
-if ! grep -q 'WLAN_EN cold reset value' \
-	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/cold-reset-wcn7850-before-pcie-probe.patch"
-fi
-if ! grep -q 'rail %s enabled=%d voltage=%d uV' \
-	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/diagnose-wcn7850-pcie-link.patch"
+		< "$package/wcn7850-pwrseq-cold-reset-aop.patch"
 fi
 if ! grep -q 'default y if ARCH_QCOM' \
 	"$kernel_tree/drivers/pci/pwrctrl/Kconfig"; then
 	patch -d "$kernel_tree" -p1 \
 		< "$package/build-wcn-pcie-providers-in.patch"
 fi
-if ! grep -q 'SM-X910 WCN diag: AOP pdc' \
-	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/program-wcn7850-wlan-pdc-aop.patch"
-fi
-if ! grep -q 'SW_CTRL wlan=' \
-	"$kernel_tree/drivers/power/sequencing/pwrseq-qcom-wcn.c"; then
-	patch -d "$kernel_tree" -p1 \
-		< "$package/read-wcn7850-sw-ctrl-after-enable.patch"
-fi
-if ! grep -q 'pipe mux unpark' \
+# Unpark the PCIe0 PIPE clock mux the boot chain left on XO (functional fix).
+if ! grep -q 'clk_set_rate(qmp->pipe_clks\[0\].clk, ULONG_MAX)' \
 	"$kernel_tree/drivers/phy/qualcomm/phy-qcom-qmp-pcie.c"; then
 	patch -d "$kernel_tree" -p1 \
 		< "$package/unpark-pcie0-pipe-mux.patch"

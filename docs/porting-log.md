@@ -2738,3 +2738,52 @@ física.
   por si en el futuro se resuelve el amss Samsung. Tarea 1 (RF nativo)
   cerrada como negativa concluyente; se pasa a la Tarea 2 (limpieza del
   debug de bring-up) antes de la GPU.
+
+## 2026-07-21 — sesión 69: build limpia sin debug de bring-up (v0.50)
+
+- Tarea 2: retirar todo el debug de bring-up de la fuente reproducible,
+  conservando intactos los arreglos funcionales. Inventario del stack de
+  parches vía diff pristino↔worktree: se confirmó que `linux-mainline`
+  on-disk tiene modificados (sin commitear) `phy-nxp-ptn3222.c` y
+  `phy-snps-eusb2.c`, pero el worktree de build se crea desde el HEAD limpio
+  `a13c140cc`; el resto de ficheros tocados estaban limpios.
+- Se DROPEARON los parches puramente de diagnóstico:
+  `log-probe-entry-before-call`, `diagnose-sm8550-eusb2-link`,
+  `diagnose-dwc3-ep0-enumeration`, `remove-dwc3-hotpath-diagnostics`,
+  `diagnose-wcn7850-power-sequence`, `diagnose-wcn7850-pcie-link`,
+  `read-wcn7850-sw-ctrl-after-enable`. Se retiró `CONFIG_ATH12K_DEBUG=y` del
+  fragment, el `configs/wifi/ath12k-debug.conf` y su install, y las props DTS
+  `wlan-sw-ctrl-gpios`/`bt-sw-ctrl-gpios` (ya sin consumidor).
+- Los parches de arreglo independientes se conservan sin tocar
+  (`match-samsung-...eusb2`, `configure-nxp-ptn3222`, goodix, dtb, sec-log,
+  `build-wcn-pcie-providers-in`): se aplican antes que los de diagnóstico, así
+  que dropear estos no altera su contexto.
+- Para los dos ficheros entrelazados se regeneraron parches funcionales-only
+  contra pristino con `work/gen-clean-fix-patches.py`:
+  `wcn7850-pwrseq-cold-reset-aop.patch` (consolida cold-reset WLAN_EN +
+  programación AOP/PDC, reemplaza a `cold-reset-...`, `program-...-aop` y
+  elimina las trazas de `diagnose-power-sequence`/`diagnose-pcie-link`/
+  `read-sw-ctrl`) y `unpark-pcie0-pipe-mux.patch` (regenerado sin el
+  `dev_info`; conserva `clk_set_rate(pipe, ULONG_MAX)`). El AOP mantiene el
+  envío por QMP sin log por mensaje; el cold-reset conserva `OUT_LOW` +
+  `usleep_range(5000,10000)` y la rama else original.
+- Kernel r28. El worktree se recreó desde pristino para que sólo aplicara el
+  set reducido; la build (con `set -e` + guardas) aplicó los nueve parches
+  limpiamente. Validación del binario: **cero** ocurrencias de
+  `SM-X910 * diag`, `delayed link state`, `effective state`, `probing %s`;
+  presentes `pwrseq_qcom_wcn_program_wlan_pdc` y el arreglo Goodix; el módulo
+  `ath12k.ko` ya no contiene cadenas de debug (`boot using board name` = 0).
+  Verificación funcional de `pwrseq`: OUT_LOW+usleep, llamada AOP y unpark
+  intactos, sin ninguna traza. Comportamiento idéntico al v0.49 funcional.
+- Build v0.50: `Image.gz`
+  `49bcb693767be494a416c08f3addee7af0556e9fff26944b64c55754fbdbfa3b`;
+  DTB `641b20ba...` (vuelve al estado v0.43, sin sw-ctrl);
+  `boot.img` `20c1e35f6cce827eeb286e0911c3dc7246f887644458dd1a2568015f8569dce3`;
+  `vendor_boot.img` `37124fae...` (sin cambios). ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.50-clean-no-debug-sm-x910-twrp.zip`,
+  27.252.430 bytes, SHA-256
+  `bd4110d13d524792812fcee585c9917970623fcaece69b9cf54562df5f2e32f6`.
+- La build no toca DTS Wi-Fi/rails ni el firmware QRD, así que el Wi-Fi debe
+  seguir igual. Requiere flash (cambios built-in). Próximo paso: TWRP para
+  copiar el ZIP y flash manual; después verificación EN VIVO por SSH de
+  Wi-Fi, táctil y escritorio, y de que el dmesg está limpio de `SM-X910`.
