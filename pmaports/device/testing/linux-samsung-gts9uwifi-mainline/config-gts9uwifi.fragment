@@ -81,6 +81,23 @@ CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y
 CONFIG_PSTORE_PMSG=y
 
+# Adreno 740 GPU bring-up.  gpucc built-in gives the GPU SMMU (3da0000) and the
+# GMU their clocks so they stop failing probe with -110.  drm/msm is built-in
+# (=y): its DRM helper deps - drm_exec/gpuvm/sched/buddy/display_helper - are
+# invisible symbols selected only by DRM_MSM, so they cannot be forced built-in
+# while msm stays a module; =y pulls the whole set in.  With the mdss display
+# node disabled, msm probes the GPU headless (render-only) and leaves the
+# simpledrm boot scanout untouched.
+#
+# DRM_MSM "depends on QCOM_LLCC/OCMEM || =n", and a tristate cannot exceed a =m
+# dependency, so both must leave their =m default or msm is capped at =m: LLCC is
+# real on SM8550 (the GPU system-cache slice) -> built-in; OCMEM does not exist
+# on SM8550 -> disabled.
+CONFIG_QCOM_LLCC=y
+# CONFIG_QCOM_OCMEM is not set
+CONFIG_GPUCC_SM8550=y
+CONFIG_DRM_MSM=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set

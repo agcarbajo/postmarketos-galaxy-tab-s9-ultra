@@ -2804,3 +2804,64 @@ física.
   Goodix en `event0`, Xorg en VT7 y LightDM activos. **Tarea 2 cerrada:
   debug de bring-up retirado sin regresión alguna.** Base limpia lista para
   la Tarea 3 (GPU/DRM).
+
+## 2026-07-21 — sesión 70: Tarea 3, Adreno 740 built-in (v0.51)
+
+- **Reto.** La GPU (Adreno 740, `gpu@3d00000` + GMU `gmu@3d6a000`) fallaba el
+  probe con `-110` porque su SMMU (`3da0000.iommu`) y el GMU no recibían reloj:
+  faltaba `GPUCC_SM8550`. El objetivo de la sesión es llevar la GPU a una build
+  reproducible sin tocar el arranque ni `simpledrm`.
+- **Primer intento (fallido, módulo aislado).** Se probó `DRM_MSM=m` como módulo
+  aislado (no autocargado, con blacklist) para poder `modprobe msm` en vivo. La
+  build falló en `modpost`: `msm.ko` quedaba con símbolos indefinidos
+  (`drm_exec_init`, `drm_gpuvm_bo_put`, `drm_sched_job_*`, …). Causa: los helpers
+  DRM (`DRM_EXEC/GPUVM/SCHED/DISPLAY_HELPER`) son símbolos **invisibles**
+  seleccionados sólo por `DRM_MSM`; con `DRM_MSM=m` quedan en `=m`, no entran en
+  `vmlinux.symvers` y la build `M=` aislada no los resuelve. No hay ningún `=y`
+  que los seleccione.
+- **Solución: `DRM_MSM=y` built-in.** `=y` arrastra todos los helpers a `=y`
+  automáticamente y no hay módulo que enlazar. Pero `olddefconfig` lo degradaba
+  a `=m`: `DRM_MSM` tiene `depends on QCOM_LLCC/OCMEM || =n` y un tristate no
+  puede superar una dependencia `=m` — con `QCOM_LLCC=m` y `QCOM_OCMEM=m` quedaba
+  topado en `=m`. Fix en el fragment: `CONFIG_QCOM_LLCC=y` (la LLCC sí existe en
+  SM8550, es el *slice* de caché de sistema de la GPU) y `# CONFIG_QCOM_OCMEM is
+  not set` (OCMEM no existe en SM8550). Con eso `DRM_MSM=y` se mantiene y los
+  helpers salen `=y`.
+- **Cambios reproducibles.**
+  - `config-gts9uwifi.fragment`: `+QCOM_LLCC=y`, `-QCOM_OCMEM`, `+GPUCC_SM8550=y`,
+    `+DRM_MSM=y`. (sha512 `bbf6e8c1…`, APKBUILD r29 actualizado.)
+  - `sm8550-samsung-gts9uwifi.dts`: `&gpu { status="okay"; zap-shader {
+    firmware-name = "qcom/a740_zap.mdt"; }; }` (sha512 `e14dc580…`, sin cambios
+    desde el intento previo). `mdss`/DPU siguen `disabled` → msm arranca headless
+    y `simpledrm` conserva el scanout de arranque.
+  - `scripts/stage-gpu-firmware.sh` (nuevo): copia el zap firmado por Samsung
+    (`a740_zap.mdt/.b00/.b01/.b02`), `a740_sqe.fw` y `gmu_gen70200.bin` del vendor
+    a la carpeta de firmware, con sha256 fijados. Blobs en `.gitignore`.
+  - `scripts/build-wifi-bringup.sh`: instala el firmware GPU en
+    `/usr/lib/firmware/qcom` del overlay. Se retiró la maquinaria de módulo msm
+    (blacklist y build `M=`), ya innecesaria al ser built-in.
+- **Verificación del binario.** `.config` final: `DRM_MSM=y`,
+  `DRM_EXEC/GPUVM/SCHED/DISPLAY_HELPER=y`, `GPUCC_SM8550=y`, `SIMPLEDRM=y`.
+  `modules.builtin` lista `drivers/gpu/drm/msm/msm.ko` y `System.map` tiene
+  `msm_drm_init`, `adreno_gpu_init`, `a6xx_gpu_init` → msm enlazado en vmlinux.
+  DTB: `gpu status=okay`, zap `qcom/a740_zap.mdt`, `mdss disabled`.
+- **Build v0.51 (kernel r29).** `Image.gz`
+  `a7dae79d89ef9c9e0f1b595c6973319f7e1682652ef07d344960fa92fd645b29`;
+  DTB `cd4144b137626269987ed7066542c3195d5d5143373dcfdb31331087b0be5992`;
+  `.config` `df7edcab8045c19105b259dac8c915a5776483873085076b4e8291ebc0d172f5`.
+  ZIP TWRP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.51-adreno740-gpu-sm-x910-twrp.zip`,
+  28.040.806 bytes, SHA-256
+  `5b567e2ef2d6521bb077cc8a1a94a707fc48858349c80834a7b3bae9f001d3a7`.
+  Sólo toca las particiones de siempre (boot/init_boot/vendor_boot/dtbo/vbmeta +
+  overlay a `mmcblk1p2`); ninguna nueva.
+- **Reinicio-a-recovery: re-confirmado que NO funciona.** `systemctl reboot
+  recovery` no es sintaxis válida en systemd 261 («Too many arguments», sin
+  reinicio); `systemctl reboot --reboot-argument=recovery` sí reinicia pero el
+  bootloader Samsung ignora el reboot-mode nvmem de mainline y arrancó pmOS de
+  nuevo en ~30 s (`up 0 min`, kernel `#22`, Wi-Fi OK). No puedo llevar la tablet
+  a TWRP por software; requiere que la usuaria la ponga en TWRP a mano.
+- **Pendiente.** Flashear v0.51 desde TWRP (adb sideload, USB al PC) y validar
+  EN VIVO la GPU: que desaparezca el `-110` de `3da0000`, que GMU/zap inicien,
+  que aparezca el render node (`/dev/dri/renderD128`) y que Turnip vea el Adreno,
+  sin perder `simpledrm` ni Wi-Fi.

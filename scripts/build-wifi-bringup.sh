@@ -10,6 +10,8 @@ overlay="$base/out/rootfs-overlay-v$version"
 artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v$version-wcn7850-pcie-cold-reset-sm-x910-twrp.zip"}
 firmware="$project/pmaports/device/testing/firmware-samsung-gts9uwifi"
 
+bash "$project/scripts/stage-gpu-firmware.sh"
+
 KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
 	bash "$project/scripts/build-mainline-kernel.sh"
 
@@ -22,12 +24,17 @@ mkdir -p \
 	"$overlay/etc/modprobe.d" \
 	"$overlay/etc/ssh/sshd_config.d" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
+	"$overlay/usr/lib/firmware/qcom" \
 	"$overlay/usr/libexec" \
 	"$overlay/usr/share/X11/xorg.conf.d"
 
 cp -a "$kernel/modules-root/." "$overlay/"
 install -m 0644 "$project/configs/wifi/ath12k.conf" \
 	"$overlay/etc/modules-load.d/ath12k.conf"
+# Adreno 740 GPU firmware under /lib/firmware/qcom (msm is built-in).
+for f in a740_zap.mdt a740_zap.b00 a740_zap.b01 a740_zap.b02 a740_sqe.fw gmu_gen70200.bin; do
+	install -m 0644 "$firmware/$f" "$overlay/usr/lib/firmware/qcom/$f"
+done
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \

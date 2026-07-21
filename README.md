@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 69, build limpia sin debug v0.50; Tareas 1 y 2 hechas).
+> Última actualización: 2026-07-21 (sesión 70, GPU Adreno 740 built-in v0.51 construida; pendiente flash + validación).
 
 ## Objetivo
 
@@ -55,7 +55,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r28 (v0.50) retira TODO el debug de bring-up y consolida los arreglos WCN en un parche funcional-only; firmware r4 (QRD final + candidata Samsung documentada) |
+| Paquetes pmaports | 🧪 Kernel r29 (v0.51) añade la GPU Adreno 740 built-in (`DRM_MSM=y`, `GPUCC_SM8550=y`, `QCOM_LLCC=y`) headless sobre la base limpia r28; firmware r5 (QRD Wi-Fi + zap/GMU Adreno firmados por Samsung) |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -87,8 +87,16 @@ Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
    consolidados los arreglos WCN en `wcn7850-pwrseq-cold-reset-aop.patch`
    funcional-only. Flasheado por `twrp install`; en vivo el kernel corre
    limpio (dmesg sin `SM-X910`) con Wi-Fi, táctil y escritorio intactos.
-3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO**,
-   sobre la base limpia v0.50.
+3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO
+   (v0.51 construida, pendiente de flash + validación)**. Sobre la base limpia
+   v0.50 se activó la GPU built-in: `GPUCC_SM8550=y` da reloj al SMMU
+   `3da0000` y al GMU (elimina el `-110`), y `DRM_MSM=y` entra headless con el
+   zap firmado por Samsung (`qcom/a740_zap.mdt`), sin tocar `simpledrm`. Detalle
+   clave: `DRM_MSM` no podía ser `=y` mientras `QCOM_LLCC/OCMEM` eran `=m` (un
+   tristate no supera una dependencia `=m`); se puso `QCOM_LLCC=y` (existe en
+   SM8550) y `QCOM_OCMEM` a `n` (no existe). El reinicio-a-recovery por software
+   sigue sin funcionar en este Samsung, así que el flash de v0.51 requiere poner
+   TWRP a mano; luego validación en vivo por SSH (render node + Turnip).
 
 Pendientes posteriores: Bluetooth (mismo PMU WCN7850, `bt-enable` GPIO81), el
 USB Code 43 como canal secundario, audio y sensores.

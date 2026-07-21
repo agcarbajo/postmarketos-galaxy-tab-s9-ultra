@@ -548,6 +548,20 @@
 	status = "okay";
 };
 
+/*
+ * Adreno 740 GPU.  gpucc, the GMU and the adreno SMMU are enabled by default in
+ * sm8550.dtsi; only the GPU node itself ships disabled.  The zap shader must be
+ * signed for this device's TrustZone, so point it at Samsung's stock MDT
+ * (a740_zap.mdt + a740_zap.b0N) staged under /lib/firmware/qcom.
+ */
+&gpu {
+	status = "okay";
+
+	zap-shader {
+		firmware-name = "qcom/a740_zap.mdt";
+	};
+};
+
 &pcieport0 {
 	wifi@0 {
 		compatible = "pci17cb,1107";
