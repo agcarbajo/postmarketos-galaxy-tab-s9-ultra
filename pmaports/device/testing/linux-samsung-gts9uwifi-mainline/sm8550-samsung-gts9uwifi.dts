@@ -468,6 +468,14 @@
 	 */
 	gpio-reserved-ranges = <36 4>;
 
+	/* Panel tear-effect (TE) line routed to the MDP vsync input. */
+	sde_te: sde-te-state {
+		pins = "gpio86";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
 	bt_default: bt-default-state {
 		bt-en-pins {
 			pins = "gpio81";
@@ -658,6 +666,10 @@
 		avdd-supply = <&display_avdd>;
 
 		reset-gpios = <&tlmm 125 GPIO_ACTIVE_HIGH>;
+		te-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&sde_te>;
+		pinctrl-names = "default";
 
 		port {
 			panel0_in: endpoint {

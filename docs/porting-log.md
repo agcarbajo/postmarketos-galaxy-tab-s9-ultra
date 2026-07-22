@@ -3135,3 +3135,56 @@ quiere SU PPS exacto), level-keys `0xF0/0xF1 0x5A 0x5A`.
   de `drm_dsc_config`), el rail exacto de `vdd`, la polaridad/tiempos del reset,
   y que el DPU acepte el modo comando + DSC. Depuración por SSH (Wi-Fi), rollback
   a v0.53 por TWRP.
+
+## Primera luz: el PIPELINE nativo funciona, falta emisión del panel (v0.55–v0.57)
+
+Tres flasheos de primera luz. En los tres el sistema arranca sano por SSH pero
+**la pantalla queda NEGRA desde el primer instante** (ni pingüinos de arranque,
+porque se quitó `simple-framebuffer`). Diagnóstico incremental:
+
+- **v0.55**: toda la cadena arriba — `dispcc`→`msm_dpu`→`dsi`→panel driver
+  ligado, conector `DSI-1: connected`, CRTC escaneando 2960x1848, Xorg y lightdm
+  encima. **Todos los reguladores a voltaje** (incl. ELVDD 5.5V). Pero negra.
+  Bug de X: la config `10-no-glamor.conf` (era simpledrm) apuntaba a `card0`, que
+  ahora es la GPU (adreno); el display es `card1` (msm_dpu). Corregido en vivo
+  → Xorg arranca sin "no screens", pero sigue negra.
+- **v0.56 (fix DSC)**: `drm_dsc_config` sólo tenía 8 campos; el DPU necesita las
+  tablas RC estándar 8bpp (`rc_buf_thresh`, `rc_range_params`, `rc_model_size`,
+  offsets…). Añadidas (modelo ilitek). El DPU hace el split de doble slice DSC
+  correcto (2×1480x1848). Sigue negra, **sin errores**.
+- **v0.57 (fix TE + PPS + diagnóstico)**: dos bugs reales frente a los panels de
+  modo comando de mainline (visionox-r66451, lg-sw43408) y el board Samsung
+  `sdm845-samsung-starqltechn`:
+  1. **PPS mal enviado**: yo mandaba el PPS como DCS `0x0A` hardcodeado (tipo de
+     paquete equivocado); lo correcto es `drm_dsc_pps_payload_pack()` +
+     `mipi_dsi_picture_parameter_set_multi()`. Corregido.
+  2. **Falta el TE**: `gpio86` debe muxearse a `mdp_vsync` por pinctrl (igual que
+     el QRD, mismo gpio). Añadidos pinctrl `sde_te` + `te-gpios`. Verificado en
+     vivo: `gpio86 : func1 (mdp_vsync)`.
+  Sigue negra.
+- **DIAGNÓSTICO DEFINITIVO (debug DRM en vivo, sin reflashear)**: con
+  `drm.debug` + restart de lightdm se capturó la transacción del DPU:
+  `dpu_crtc_commit_kickoff … first commit`, kickoff de modo comando, y
+  **`dpu_crtc_frame_event_work crtc103 event:1` + `dsi_host_irq`** → **un frame
+  se completa SIN timeout**. Es decir, el DPU **sí entrega frames** al panel por
+  DSI en modo comando con DSC. Los relojes son correctos (pixel 247 MHz, byte
+  185 MHz ≈ 1.48 GHz, MDP 514 MHz).
+- **El DDIC ESTÁ VIVO**: el cmdline lleva `msm_drm.lcd_id=800004` — ese ID lo
+  leyó el **bootloader** del propio DDIC (0x80 0x00 0x04). Mi lectura por DCS daba
+  `00 00 00` sólo porque **las lecturas DCS de msm no son fiables** (BTA), NO
+  porque el panel esté muerto.
+- **CONCLUSIÓN**: el pipeline entero funciona (relojes, DPU, DSI, DSC, TE, entrega
+  de frames) y el panel recibe los frames, pero **no emite**. El fallo está en la
+  **secuencia de init del DDIC** (o en la emisión). Hipótesis para la siguiente
+  iteración, por probabilidad:
+  1. **Orden de la secuencia por revisión**: el stock tiene DOS secuencias — revA
+     (`W 0x11` primero, luego VBP/MX_IP/…) y revC+ (`POWER_ON_PRE_SETTING`:
+     VBP/DISPLAY_ON_DELAY ANTES de `W 0x11`). Mi driver usa el orden revA; el ID
+     `0x800004` sugiere una revisión concreta que podría querer el orden revC.
+  2. **Brillo explícito**: quité el `W 0x51` de la secuencia; el registro de
+     brillo del DDIC podría estar a 0 (aunque el bump en vivo del backlight por
+     0x51 no cambió nada evidente).
+  3. **Modo LP vs HS** para los comandos de init (el stock marca algunos modos
+     `dsi_hs_mode`).
+  El pipeline es un HITO enorme: sólo falta afinar los bytes de init del DDIC,
+  que es trabajo iterativo (cada intento = build + flash TWRP).

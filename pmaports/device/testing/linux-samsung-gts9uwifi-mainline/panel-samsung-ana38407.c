@@ -50,6 +50,9 @@ static inline struct ana38407 *to_ana38407(struct drm_panel *panel)
 	return container_of(panel, struct ana38407, panel);
 }
 
+/* Pack a signed DSC range BPG offset into the 6-bit field. */
+#define DSC_BPG_OFFSET(x)	((u8)((x) & DSC_RANGE_BPG_OFFSET_MASK))
+
 static void ana38407_reset(struct ana38407 *ctx)
 {
 	/* Samsung reset-sequence <0 10 1 1>: assert low, release high. */
@@ -69,12 +72,21 @@ static void ana38407_reset(struct ana38407 *ctx)
 static int ana38407_on(struct ana38407 *ctx)
 {
 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
+	struct drm_dsc_picture_parameter_set pps;
+	u8 id[3] = {};
 
 	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
 	/* sleep out */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x11);
 	mipi_dsi_msleep(&dsi_ctx, 120);
+
+	/* Diagnostic: confirm the DDIC answers on the DSI link. */
+	mipi_dsi_dcs_read(ctx->dsi, 0xda, &id[0], 1);
+	mipi_dsi_dcs_read(ctx->dsi, 0xdb, &id[1], 1);
+	mipi_dsi_dcs_read(ctx->dsi, 0xdc, &id[2], 1);
+	dev_info(&ctx->dsi->dev, "ana38407 panel id: %02x %02x %02x\n",
+		 id[0], id[1], id[2]);
 
 	/* VBP_SETTING_FOR_SDC_IP */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
@@ -134,22 +146,15 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
 	/*
-	 * DSC compression on + Picture Parameter Set.  The DPU also programs the
-	 * DSC encoder from drm_dsc_config; the panel wants its exact PPS
-	 * (samsung,no_qcom_pps), so send it verbatim.
+	 * DSC: enable compression and send the Picture Parameter Set as a proper
+	 * MIPI PPS packet generated from drm_dsc_config (this is how mainline
+	 * command-mode DSC panels do it; a hand-rolled DCS 0x0A long write is the
+	 * wrong packet type).
 	 */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x07, 0x01);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x0a,
-		0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x07, 0x38, 0x0b, 0x90,
-		0x00, 0x4d, 0x05, 0xc8, 0x05, 0xc8, 0x02, 0x00, 0x03, 0xe5,
-		0x00, 0x20, 0x0b, 0x07, 0x00, 0x14, 0x00, 0x0c, 0x01, 0x44,
-		0x00, 0x7a, 0x18, 0x00, 0x10, 0xd0, 0x03, 0x0c, 0x20, 0x00,
-		0x06, 0x0b, 0x0b, 0x33, 0x0e, 0x1c, 0x2a, 0x38, 0x46, 0x54,
-		0x62, 0x69, 0x70, 0x77, 0x79, 0x7b, 0x7d, 0x7e, 0x01, 0x02,
-		0x01, 0x00, 0x09, 0x40, 0x09, 0xbe, 0x19, 0xfc, 0x19, 0xfa,
-		0x19, 0xf8, 0x1a, 0x38, 0x1a, 0x78, 0x1a, 0xb6, 0x2a, 0xf6,
-		0x2b, 0x34, 0x2b, 0x74, 0x3b, 0x74, 0x6b, 0xf4);
+	mipi_dsi_compression_mode_multi(&dsi_ctx, true);
+	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
+	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
 	/* SP_SETTING */
@@ -305,19 +310,61 @@ static struct backlight_device *ana38407_create_backlight(struct mipi_dsi_device
 					      &ana38407_bl_ops, &props);
 }
 
+/*
+ * DSC config decoded from the panel's PPS (WT 0x0A ...): DSC 1.1, 2960x1848,
+ * two 1480x77 slices, 8 bpc, 8.0 bpp.  The rc_buf_thresh / rc_range_params are
+ * the DSC 8 bpp spec-standard tables (identical across 8 bpp panels).  The msm
+ * DSI host fills convert_rgb/line_buf_depth and calls
+ * drm_dsc_compute_rc_parameters() for the derived fields, so those are left out.
+ */
+static const struct drm_dsc_config ana38407_dsc_template = {
+	.dsc_version_major = 1,
+	.dsc_version_minor = 1,
+	.slice_height = 77,
+	.slice_width = 1480,
+	.slice_count = 2,
+	.bits_per_component = 8,
+	.bits_per_pixel = 8 << 4,
+	.block_pred_enable = true,
+	.pic_width = 2960,
+	.pic_height = 1848,
+	.rc_buf_thresh = {
+		14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126
+	},
+	.rc_model_size = DSC_RC_MODEL_SIZE_CONST,
+	.rc_edge_factor = DSC_RC_EDGE_FACTOR_CONST,
+	.rc_tgt_offset_high = DSC_RC_TGT_OFFSET_HI_CONST,
+	.rc_tgt_offset_low = DSC_RC_TGT_OFFSET_LO_CONST,
+	.mux_word_size = DSC_MUX_WORD_SIZE_8_10_BPC,
+	.line_buf_depth = 9,
+	.first_line_bpg_offset = 12,
+	.initial_xmit_delay = 512,
+	.initial_offset = 6144,
+	.rc_quant_incr_limit0 = 11,
+	.rc_quant_incr_limit1 = 11,
+	.rc_range_params = {
+		{ 0,  4, DSC_BPG_OFFSET(2)},
+		{ 0,  4, DSC_BPG_OFFSET(0)},
+		{ 1,  5, DSC_BPG_OFFSET(0)},
+		{ 1,  6, DSC_BPG_OFFSET(-2)},
+		{ 3,  7, DSC_BPG_OFFSET(-4)},
+		{ 3,  7, DSC_BPG_OFFSET(-6)},
+		{ 3,  7, DSC_BPG_OFFSET(-8)},
+		{ 3,  8, DSC_BPG_OFFSET(-8)},
+		{ 3,  9, DSC_BPG_OFFSET(-8)},
+		{ 3, 10, DSC_BPG_OFFSET(-10)},
+		{ 5, 10, DSC_BPG_OFFSET(-10)},
+		{ 5, 11, DSC_BPG_OFFSET(-12)},
+		{ 5, 11, DSC_BPG_OFFSET(-12)},
+		{ 9, 12, DSC_BPG_OFFSET(-12)},
+		{12, 13, DSC_BPG_OFFSET(-12)},
+	},
+	.slice_chunk_size = 1480,
+};
+
 static void ana38407_dsc_config(struct ana38407 *ctx)
 {
-	struct drm_dsc_config *dsc = &ctx->dsc;
-
-	/* Values decoded from the panel's PPS (WT 0x0A ...). */
-	dsc->dsc_version_major = 1;
-	dsc->dsc_version_minor = 1;
-	dsc->slice_height = 77;
-	dsc->slice_width = 1480;
-	dsc->slice_count = 2;
-	dsc->bits_per_component = 8;
-	dsc->bits_per_pixel = 8 << 4;	/* 8.0 bpp, .4 fixed point */
-	dsc->block_pred_enable = true;
+	ctx->dsc = ana38407_dsc_template;
 }
 
 static int ana38407_probe(struct mipi_dsi_device *dsi)
