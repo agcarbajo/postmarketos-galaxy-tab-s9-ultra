@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-22 (sesión 80: v0.71 reproducible; HiDPI completo y 120 Hz estables; WCN7850 Bluetooth con firmware b21, dirección nativa de EFS y escaneo real validados tras reinicio).
+> Última actualización: 2026-07-22 (sesión 81: Bluetooth A2DP validado de extremo a extremo con los Buds2 Pro; bug de blanking DPMS encontrado y arreglado — xfce4-power-manager reactivaba el DPMS y el ANA38407 no resume de un blank, ahora el DPMS queda deshabilitado de forma reproducible).
 
 ## Objetivo
 
@@ -67,7 +67,7 @@ demostrarlo en este dispositivo.
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
-| Bluetooth WCN7850 | ✅ **Controlador y descubrimiento funcional (v0.70 + userspace v0.71)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21` temprano, dirección pública nativa leída de EFS en sólo lectura, `hci0`/BlueZ activos y escaneo BR/EDR+BLE con dispositivos reales |
+| Bluetooth WCN7850 | ✅ **Validado de extremo a extremo (sesión 81)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21`, dirección pública nativa de EFS. Bonds persistentes (Buds2 Pro + móvil), sink A2DP clásico creado y audio real confirmado (YouTube en Chromium por los Buds). Servidor de sonido = PulseAudio 17. HID sin probar por falta de periférico BT |
 
 ## Reto en curso
 
@@ -79,17 +79,23 @@ y SSH funcionan y BlueZ descubre dispositivos clásicos y BLE.
 
 Trabajo actual (con canal de control en vivo por SSH y UFS):
 
-1. **Siguiente reto: validar Bluetooth de extremo a extremo.** El controlador y
-   el escaneo ya funcionan; toca emparejar y probar al menos un HID y un equipo
-   de audio, confirmar persistencia de bonds y revisar PipeWire/WirePlumber para
-   A2DP/HFP. No volver a investigar UART/firmware/dirección salvo regresión.
-2. **Suspensión/reanudación y brillo.** El panel funciona estable mientras Xorg
-   mantiene deshabilitado el blanking. Implementar/revisar suspend del ANA38407
-   antes de permitir DPMS automático y validar brillo sin perder la recuperación
-   DSI de reinicio cálido.
-3. **Después:** audio interno, sensores y USB Code 43 como canal secundario.
-   UFS permite iterar por SSH sobre `boot`/`vendor_boot`; TWRP queda como
-   recuperación.
+1. **Bluetooth de extremo a extremo — ✅ CERRADO (sesión 81).** Bonds
+   persistentes; sink A2DP clásico de los Buds2 Pro creado y audio real
+   confirmado (YouTube en Chromium). Servidor = PulseAudio 17. HID sin probar por
+   falta de un ratón/teclado BT. No reinvestigar UART/firmware/dirección.
+2. **Brillo — ✅ funciona** (`/sys/class/backlight/ae94000.dsi.0`, 0..4095, DCS
+   0x51; atenuación verificada por cámara). **Blanking DPMS — ✅ arreglado
+   (sesión 81):** xfce4-power-manager reactivaba el DPMS (`dpms-on-ac-off=17`) y
+   el ANA38407 no resume de un blank → warm-black irrecuperable salvo reinicio de
+   lightdm. El autostart HiDPI ahora deshabilita el DPMS de xfce4-power-manager;
+   verificado `DPMS is Disabled` en la sesión de usuario. **Pendiente:** el
+   suspend/resume REAL del panel (que un blank pueda re-encender el OLED).
+3. **Siguiente: audio interno y botones (Tarea 3).** Audio interno = bring-up
+   grande: no hay tarjeta ALSA, configs `SND_SOC_QCOM/LPASS` en `=m`, falta el
+   stack ADSP(q6/GPR)+soundwire+códecs WCD/WSA+LPASS+machine card. Botones =
+   añadir `gpio-keys`/`pwrkey` al DTS (power vía PMIC PON, volumen vía resin/gpio).
+   Después: sensores y USB Code 43. UFS permite iterar por SSH sobre
+   `boot`/`vendor_boot`; TWRP queda como recuperación.
 
 Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
 

@@ -3463,3 +3463,48 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
   vendor_boot `f57571ca7a37be9e48333aa52e92f9324aff0cbb35ac4dd18066f067d417349f`.
   El ZIP no se flasheó: la tablet mantiene v0.70 boot/vendor_boot y los cambios
   userspace v0.71 ya instalados/validados en vivo.
+
+## 2026-07-22 — sesión 81: Bluetooth E2E validado y arreglo del blanking DPMS
+
+- **Tarea 1 (Bluetooth de extremo a extremo) — CERRADA.** El controlador `hci0`
+  es Primary con la dirección nativa `<TABLET_BT_ADDR>` (de EFS), BlueZ activo y
+  el servicio de dirección `SUCCESS`. Los bonds **persisten**: `Buds2 Pro de
+  <OWNER>` (<PAIRED_BT_ADDR>) y el `Galaxy S24 Ultra` seguían emparejados tras
+  reinicios. Conectando los Buds2 Pro se creó el sink A2DP clásico
+  `bluez_sink.<PAIRED_BT_ADDR>.a2dp_sink` (s16le 2ch 44100, perfil `a2dp_sink`,
+  Default Sink). Reproducción validada: `ffmpeg -f pulse -device <sink>` con la
+  pista de prueba dejó el sink RUNNING→IDLE, `rc=0`, sin errores; y la usuaria
+  confirmó físicamente audio real reproduciendo un vídeo de YouTube en Chromium
+  por los Buds. Servidor de sonido real = **PulseAudio 17.0** (paquete
+  `postmarketos-base-ui-audio-backend-pulseaudio`); PipeWire/WirePlumber corren
+  también pero PulseAudio maneja el audio (por eso `wpctl` mostraba 0 sinks).
+  HID no probado por falta de un ratón/teclado BT; el perfil está soportado.
+- **Tarea 2 (blanking/DPMS) — BUG ENCONTRADO Y ARREGLADO.** La pantalla se puso
+  negra tras ~17 min de inactividad. Diagnóstico: `card1-DSI-1 dpms=Off`, `xset`
+  con `Off: 1020`. El greeter SÍ tenía los cuatro timers Xorg a 0 (de
+  `10-msm-dpu.conf`), pero al iniciar sesión **xfce4-power-manager** reactivaba
+  el DPMS: `xfce4-power-manager.xml` tenía `dpms-on-ac-off = 17` (min = 1020 s).
+  El ANA38407 **no resume de un blank DPMS**: ni `xset dpms force on`, ni el hook
+  `gts9uwifi-panel-reinit`, ni un ciclo `xrandr off/on` manual relucen el OLED
+  (leen `panel id 80 00 04` pero sigue negro); sólo un `systemctl restart
+  lightdm` completo lo recupera (re-ejecuta el display-setup en el contexto de
+  arranque). Confirmado que hay UN solo Xorg (pid 1295, tty7, `:0`, DRM master) y
+  la sesión de usuario corre en ese mismo `:0`.
+- **Arreglo reproducible:** el autostart `gts9uwifi-xfce-hidpi` ahora fija por
+  `xfconf-query` `xfce4-power-manager/dpms-enabled=false` y todos los timeouts de
+  blank/dpms a 0, y ejecuta `xset s off -dpms`. Replicado en `configs/` y en
+  `pmaports/.../device-samsung-gts9uwifi/` (device r22, checksum actualizado).
+  Verificado en vivo: iniciada la sesión de phablet (por autologin temporal,
+  porque la usuaria estaba lejos), `xset -q` mostró `Standby/Suspend/Off = 0` y
+  `DPMS is Disabled`; el escritorio XFCE 2960×1848 con cursor 2× se ve por cámara
+  OBS. El panel ya **no se apaga por inactividad**.
+- **Pendiente en Tarea 2:** el suspend/resume REAL del ANA38407 (que un
+  DPMS/blank pueda re-encender el OLED) sigue sin resolver; la mitigación robusta
+  es mantener el blanking deshabilitado. El autologin se activó SÓLO en vivo
+  (`/etc/lightdm/lightdm.conf`, con `.bak-dpmscheck`), no está en la imagen
+  reproducible; decidir si se quiere permanente.
+- **Nota de audio interno (Tarea 3):** no hay tarjeta ALSA (`/proc/asound/cards`
+  vacío); los configs `SND_SOC_QCOM/LPASS/...` están `=m` (sin autocargar) y falta
+  todo el stack ADSP(q6/GPR)+soundwire+códecs WCD/WSA+LPASS+machine card. Bring-up
+  grande. Botones (Tarea 3b): sólo el táctil Goodix en input; faltan `gpio-keys`
+  y `pwrkey` (añadir nodos DTS; power vía PMIC PON, volumen vía resin/gpio).

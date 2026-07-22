@@ -27,4 +27,19 @@ gsettings set org.onboard.window.landscape dock-height 230
 gsettings set org.onboard.window.landscape dock-expand true
 gsettings set org.onboard.window.portrait dock-height 300
 
+# The ANA38407 does not resume from a DPMS blank: once xfce4-power-manager's
+# 17-minute "dpms-on-ac-off" fires the OLED goes warm-black and neither DPMS-on
+# nor the xrandr off/on cycle relights it, only a full LightDM restart.  Until a
+# real panel suspend/resume exists, keep the display always on: stop
+# xfce4-power-manager from touching DPMS (the greeter already sets the Xorg
+# timers to 0) and clear the X screensaver/DPMS timers immediately.
+set_xfconf xfce4-power-manager /xfce4-power-manager/dpms-enabled bool false
+set_xfconf xfce4-power-manager /xfce4-power-manager/dpms-on-ac-off uint 0
+set_xfconf xfce4-power-manager /xfce4-power-manager/dpms-on-ac-sleep uint 0
+set_xfconf xfce4-power-manager /xfce4-power-manager/dpms-on-battery-off uint 0
+set_xfconf xfce4-power-manager /xfce4-power-manager/dpms-on-battery-sleep uint 0
+set_xfconf xfce4-power-manager /xfce4-power-manager/blank-on-ac uint 0
+set_xfconf xfce4-power-manager /xfce4-power-manager/blank-on-battery uint 0
+xset s off -dpms || true
+
 exit 0
