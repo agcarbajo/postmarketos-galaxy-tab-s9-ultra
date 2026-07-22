@@ -3282,3 +3282,90 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
   La tablet continúa sobre los boot images v0.59 equivalentes y los overlays
   v0.61 instalados/validados en vivo; no se reflasheó el ZIP para no añadir un
   ciclo TWRP innecesario.
+
+## 2026-07-22 — sesión 73: el KMS vacío permite reverse PRIME; r2/r3 fallan y r4 da primera imagen acelerada
+
+- La ruta `v0.62` de renombrar el driver KMS separado a `msm` no resolvió el
+  problema fundamental: el DRM Adreno creado por `msm.separate_gpu_kms=1` era
+  render-only y `DRM_IOCTL_MODE_GETRESOURCES` fallaba. Xorg no lo aceptaba como
+  pantalla/proveedor, por lo que no podía actuar como source de reverse PRIME.
+- Se añadió `expose-separate-gpu-kms-resources.patch`. La instancia GPU conserva
+  cero CRTCs/planes/connectors, pero anuncia `DRIVER_MODESET`, inicializa un
+  `mode_config` vacío y, en v0.64/v0.65, recibe los hooks dumb/framebuffer y
+  límites finitos 1..16384 que Xorg necesita durante `PreInit`. El boot v0.65
+  quedó instalado y validado: provider Adreno `Source Output/Offload` y DPU
+  `Sink Output`, sin alterar la salida DSI estable.
+- Se creó un Xorg local opt-in. `AllowEmptyInitialConfiguration` permite que
+  Adreno sea primary sin connector y crea un modo sintético 2960×1848.
+  `PrimeSinkOffload` se exploró para la dirección DPU-primary, pero esa dirección
+  dejaba el root GLX en llvmpipe; se adoptó reverse PRIME (Adreno-primary,
+  DPU-secondary).
+- **r2 falló** con SEGV en `xf86InitViewport`: el primary no tenía lista de
+  modos. El modo CVT sintético corrigió esa caída.
+- **r3 falló** con SEGV en `xf86RandR12CreateMonitors`: RandR asumía al menos un
+  output en la pantalla primary. Se añadieron guardas limitadas al caso
+  `num_output == 0`.
+- **r4 fue la primera ruta completa de escritorio reverse PRIME**: Xorg arrancó
+  glamor sobre FD740, DPU quedó como GPU screen, `xrandr
+  --setprovideroutputsource` + `DSI-1-1 2960x1848` mostró XFCE físicamente. Sin
+  embargo, `glxinfo` emitía DRI3 `BadAlloc` y `glmark2` ocupaba una zona negra.
+  El panel y el scanout 2D funcionaban; faltaba importar el buffer 3D.
+
+## 2026-07-22 — sesión 74: diagnóstico DRI3 r5–r9; el modifier LINEAR resuelve la geometría negra
+
+- **r5 descartado:** deshabilitar DRI3 para intentar DRI2 eliminó `BadAlloc`,
+  pero AIGLX volvió a llvmpipe. DRI2 no ofrece la ruta accelerated+reverse PRIME
+  requerida en esta topología.
+- **r6 diagnóstico:** instrumentación temporal en `glamor_pixmap_from_fds()`
+  demostró que el cliente legacy DRI3 entregaba un dma-buf con modifier
+  `DRM_FORMAT_MOD_INVALID` y que `dmabuf_capable=0`; el import devolvía false.
+  El ServerFlag documentado `Debug=dmabuf_capable` activó dma-buf, pero el
+  modifier continuó inválido y el import siguió fallando.
+- **r7/r8 descartados:** forzar LINEAR en la negociación
+  `get_drawable_modifiers` no se ejecutaba. Mesa/GLX usa aquí el entry point
+  heredado DRI3 `PixmapFromBuffer`, que no consulta modifiers antes de enviar
+  el FD; por eso cambiar la lista anunciada no tenía efecto.
+- **r9 resolvió la causa raíz:** con un switch opt-in
+  `force_linear_dri3`, glamor convierte únicamente el modifier implícito
+  `INVALID` a `DRM_FORMAT_MOD_LINEAR` antes de `gbm_bo_import`. El log confirmó
+  modifier 0, `dmabuf=1`, sin retorno false; `glxinfo` pasó a freedreno FD740
+  acelerado sin `BadAlloc`.
+- Validación visual por OBS: tras corregir la referencia de cámara, la tablet es
+  el dispositivo grande central con notch; el monitor inclinado de la izquierda
+  no cuenta. El OLED central estaba negro pese a DPMS On y se recuperó con un
+  ciclo DSI off/on. Después `glmark2` mostró físicamente el caballo y otras
+  geometrías 3D, en vez del rectángulo negro, sin GPU/IOMMU/DRM faults.
+
+## 2026-07-22 — sesión 75: Xorg r10 limpio, arranque automático y build reproducible v0.66
+
+- Se retiraron todos los `ErrorF("SM-X910 DRI3 …")` de diagnóstico. Xorg r10
+  conserva sólo las piezas funcionales opt-in: primary connectorless, modo
+  sintético, guardas RandR y conversión implícita a LINEAR. APK compilado:
+  `xorg-server-999921.1.23-r10.apk`, SHA-256
+  `3d734fac4e0becc32e5f6489990c84ec0b1913ced7c302303d0952c0d9afa4c5`.
+- La configuración canónica ahora pone `card0` Adreno como pantalla primary
+  glamor y `card1` DPU como GPUDevice sin glamor. El hook existente
+  `gts9uwifi-panel-reinit` descubre dinámicamente los provider IDs y el output
+  conectado, los asocia, hace DSI off/on, activa 2960×1848@120 y fuerza DPMS
+  on. Esto evita hardcodear `0x3e`, `0x70` o `DSI-1-1`.
+- Prueba viva con rollback: r10 actualizó r9, reinició LightDM y, sin ejecutar
+  comandos xrandr manuales, devolvió imagen en el OLED central. `glxinfo`:
+  freedreno/FD740/Accelerated yes; `glmark2` visible a pantalla completa,
+  escenas iniciales 124–153 FPS, sin faults. Se desarmó el rollback.
+- Integración reproducible: `pmaports/extra-repos/systemd/xorg-server` contiene
+  APKBUILD r10 + parche; `scripts/build-custom-xorg.sh` lo construye. El ZIP
+  incluye el APK y un `ExecStartPre` de LightDM que lo instala localmente antes
+  de arrancar X, por lo que funciona también sobre un rootfs/microSD limpio y
+  actualiza correctamente la base de datos de `apk`.
+- **v0.66 construida desde worktree kernel pristino**, `BUILD_EXIT=0`. ZIP:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.66-reverse-prime-sm-x910-twrp.zip`,
+  29.420.384 bytes, SHA-256
+  `f54322f0dbd5145f57f5c138d3e52ec09ff78b6a3a6991cf1c2a77ddc87b7466`.
+  La auditoría ZIP verificó APK r10, config reverse PRIME, ambos drop-ins/hooks y
+  CRC de todos los miembros. El ZIP no se flasheó: se mantiene la regla de que
+  la usuaria ejecuta los ZIP TWRP.
+- Validación final de equivalencia instalada tras reinicio normal completo:
+  SSH volvió por WLAN en ~70 s; `lightdm`, `NetworkManager` y `sshd` activos;
+  `wlan0=<TABLET_IP>`; Xorg r10; DSI-1-1 2960×1848@120; FD740 acelerado;
+  Goodix registrado. La cámara confirmó XFCE y después geometría `glmark2` en
+  la tablet central. No hubo GPU fault, hangcheck ni error DRM/DSI.

@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=34
+pkgrel=37
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -50,6 +50,7 @@ source="
 	wcn7850-pwrseq-cold-reset-aop.patch
 	build-wcn-pcie-providers-in.patch
 	unpark-pcie0-pipe-mux.patch
+	expose-separate-gpu-kms-resources.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 	panel-samsung-ana38407.c
@@ -119,6 +120,7 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 4d021337148ece0741c1914a968955e230242b2d5a9d1d842332b5d62d84610e03aeb737c14d4b068921e75372d02f9138027c251e99ee0f472e4bcbbf69c0bf  wcn7850-pwrseq-cold-reset-aop.patch
 d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
+2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
 a3e9b621a967670e5b6382d81c5cac216e89d1b11c167a034262ba678dc56b21801cad5a26b0f5b3a834fd18dee008b4074782fd8af162ef0773b5d4992aeb4c  config-gts9uwifi.fragment
 7bb1b775350eabd0b8f9d50bf3549781d8c3439899d91601074756255d9fa8b1e6c4902386ea1fbc0f4b89585893f9b1d94b10cbee4434be0bafc306c245266d  sm8550-samsung-gts9uwifi.dts
 537c8bed13f3d640479028604a3b26d2368e79df0323971ba1102b6d76e7cc19ae08c13b720b2c2541c4c58e86ef1be553d6a6992cf2ef621b8f66c48f1a7ebe  panel-samsung-ana38407.c

@@ -79,6 +79,37 @@ if ! grep -q 'clk_set_rate(qmp->pipe_clks\[0\].clk, ULONG_MAX)' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/unpark-pcie0-pipe-mux.patch"
 fi
+# Xorg only creates a PRIME GPU screen when MODE_GETRESOURCES succeeds.  Keep
+# the split GPU/DPU topology, but expose an empty KMS resource list on Adreno.
+if sed -n '/static const struct drm_driver msm_gpu_driver/,/^};/p' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c" | \
+	grep -q 'DRIVER_FEATURES_GPU,$'; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/expose-separate-gpu-kms-resources.patch"
+elif ! sed -n '/static const struct drm_driver msm_gpu_driver/,/^};/p' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c" | \
+	grep -q 'DRIVER_FEATURES_GPU | DRIVER_MODESET'; then
+	echo 'unexpected msm_gpu_driver features; refusing to build' >&2
+	exit 1
+elif ! sed -n '/static int msm_drm_init/,/^}/p' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c" | \
+	grep -q 'drm_core_check_feature(ddev, DRIVER_MODESET)'; then
+	echo 'separate GPU mode_config guard missing; refusing to build' >&2
+	exit 1
+elif ! sed -n '/static const struct drm_driver msm_gpu_driver/,/^};/p' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c" | \
+	grep -q 'dumb_create[[:space:]]*= msm_gem_dumb_create'; then
+	echo 'separate GPU dumb-buffer hook missing; refusing to build' >&2
+	exit 1
+elif ! grep -q 'msm_gpu_mode_config_funcs' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c"; then
+	echo 'separate GPU framebuffer hook missing; refusing to build' >&2
+	exit 1
+elif ! grep -q 'mode_config.max_width = 16384' \
+	"$kernel_tree/drivers/gpu/drm/msm/msm_drv.c"; then
+	echo 'separate GPU framebuffer bounds missing; refusing to build' >&2
+	exit 1
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \

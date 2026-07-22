@@ -3,6 +3,26 @@
 Los ficheros binarios de este directorio no se incluyen en Git. Cada bundle
 publicado debe figurar aquí con su propósito, validación y SHA-256.
 
+## Bundle actual v0.66 — reverse PRIME acelerado
+
+`postmarketos-edge-xfce-mainline-v0.66-reverse-prime-sm-x910-twrp.zip`
+
+- SHA-256:
+  `f54322f0dbd5145f57f5c138d3e52ec09ff78b6a3a6991cf1c2a77ddc87b7466`.
+- Tamaño: 29.420.384 bytes.
+- Kernel mainline 7.2-rc3/r37 con Wi-Fi, Goodix, Adreno, DPU/DSI/DSC, panel
+  ANA38407 y UFS. Mantiene `msm.separate_gpu_kms=1` y expone recursos KMS
+  vacíos en la DRM Adreno para poder usarla como source reverse PRIME.
+- El overlay incluye el APK local `xorg-server-999921.1.23-r10`, su instalador
+  previo a LightDM, la configuración Adreno-primary/DPU-output y el hook que
+  asocia providers y recupera el OLED mediante un ciclo DSI.
+- Build desde worktree kernel pristino con `BUILD_EXIT=0`. Validación local:
+  ZIP/CRC correcto y presencia/contenido de APK, config, scripts y drop-ins.
+- Validación física equivalente: el mismo boot v0.65/r37 y userspace r10
+  sobreviven a un reinicio completo; Wi-Fi/SSH, XFCE, Goodix y FD740 acelerado
+  vuelven solos. `glmark2` se ve en el OLED central sin faults. El ZIP v0.66
+  todavía no se ha flasheado; debe hacerlo manualmente la usuaria.
+
 ## Restauración disponible
 
 `restore-ubuntu-touch-v8-boot-sm-x910.zip`

@@ -9,8 +9,10 @@ bundle="$base/out/gts9uwifi-mainline-v$version"
 overlay="$base/out/rootfs-overlay-v$version"
 artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v$version-wcn7850-pcie-cold-reset-sm-x910-twrp.zip"}
 firmware="$project/pmaports/device/testing/firmware-samsung-gts9uwifi"
+xorg_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/xorg-server-999921.1.23-r10.apk"
 
 bash "$project/scripts/stage-gpu-firmware.sh"
+bash "$project/scripts/build-custom-xorg.sh"
 
 KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
 	bash "$project/scripts/build-mainline-kernel.sh"
@@ -28,6 +30,7 @@ mkdir -p \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/lib/firmware/qcom" \
 	"$overlay/usr/libexec" \
+	"$overlay/usr/share/gts9uwifi/packages" \
 	"$overlay/usr/share/X11/xorg.conf.d"
 
 cp -a "$kernel/modules-root/." "$overlay/"
@@ -47,10 +50,16 @@ install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
 	"$overlay/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 install -m 0644 "$project/configs/display-native/10-msm-dpu.conf" \
 	"$overlay/etc/X11/xorg.conf.d/10-msm-dpu.conf"
+install -m 0755 "$project/configs/display-native/gts9uwifi-install-xorg-package" \
+	"$overlay/usr/libexec/gts9uwifi-install-xorg-package"
+install -m 0644 "$project/configs/display-native/10-gts9uwifi-xorg-package.conf" \
+	"$overlay/etc/systemd/system/lightdm.service.d/10-gts9uwifi-xorg-package.conf"
 install -m 0755 "$project/configs/display-native/gts9uwifi-panel-reinit" \
 	"$overlay/usr/libexec/gts9uwifi-panel-reinit"
 install -m 0644 "$project/configs/display-native/20-gts9uwifi-panel-reinit.conf" \
 	"$overlay/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
+install -m 0644 "$xorg_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/$(basename "$xorg_apk")"
 # Official linux-firmware amss: Samsung's WLAN.HMT downstream amss never
 # raises WMI ready under mainline ath12k because it expects the phy_ucode
 # QMI download that only cnss2 implements.

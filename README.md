@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-22 (sesión 72: v0.60 unificada descartada; v0.61 estable construida, copiada y validada en vivo con recuperación automática del panel).
+> Última actualización: 2026-07-22 (sesión 75: reverse PRIME + DRI3 lineal resueltos; Xorg r10 y v0.66 reproducibles, aceleración FD740 validada físicamente tras reinicio completo).
 
 ## Objetivo
 
@@ -55,18 +55,18 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.59: WCN7850, Goodix, GPU, display DSI/DSC nativo y UFS interno activos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Kernel fuente r34: Adreno/DPU/DSI/panel/UFS built-in; firmware r5 (QRD Wi-Fi + zap/GMU Adreno firmados por Samsung) |
+| Paquetes pmaports | ✅ Kernel fuente r37: Adreno/DPU/DSI/panel/UFS built-in + proveedor KMS vacío para la GPU separada; device r19; firmware r5; Xorg r10 reproducible en `extra-repos/systemd/xorg-server` |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
+| Escritorio | ✅ XFCE/LightDM a 2960×1848@120; desde r10 arranca automáticamente sobre la pantalla Adreno acelerada y saca imagen por el provider DPU reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
 | SSH | ✅ **Acceso en vivo por WLAN**: `<TABLET_IP>`, host key `1N9kAKdf…` verificada, clave de desarrollo Ed25519 como `phablet`. El canal USB (Code 43) queda como secundario |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v0.61 estable construida** (28.084.177 bytes, SHA-256 `dd250843...ceb4`), copiada y verificada en la tablet; base física v0.59 + los mismos overlays v0.61 validados en vivo |
-| Display nativo | ✅ **v0.58/v0.59**: ANA38407/AMSA46AS02 2960×1848, DSI command mode + DSC + TE. En reinicio cálido el primer init puede leer `00 00 00` y quedar negro; un servicio validado hace un ciclo DSI y recupera `80 00 04` + imagen |
+| Imagen/paquete de prueba | ✅ **v0.66 reproducible construida** (29.420.384 bytes, SHA-256 `f54322f0dbd5145f57f5c138d3e52ec09ff78b6a3a6991cf1c2a77ddc87b7466`); contiene kernel r37, APK Xorg r10 y setup automático. El ZIP aún no se ha flasheado; su mismo kernel v0.65 + userspace r10 sí está validado en vivo |
+| Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
-| GPU Adreno 740 | 🧪 Render node + Mesa/Turnip GL 4.6 operativos. **v0.60 unificada descartada**: glamor/GL funciona lógicamente pero el panel no escanea y queda negro. Con KMS separado, glamor abre FD740 pero busca `msm-kms_dri.so` inexistente y Xorg hace SEGV. Base estable: `card0=adreno`, `card1=msm_dpu`, software |
+| GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
 
 ## Reto en curso
 
@@ -81,33 +81,37 @@ BDF QRD en ELF (v0.49) → WMI ready → mac80211 → `wlan0` asociada con seña
 
 Trabajo actual (con canal de control en vivo por SSH y UFS):
 
-1. **Aceleración del display nativo — dos rutas simples ya descartadas**:
-   - v0.60 retiró `msm.separate_gpu_kms=1`: el component master creó una sola
-     `card0=msm_dpu`, ligó Adreno, Xorg activó glamor FD740/DRI3 y `glmark2`
-     renderizó 2960×1848 a 123 FPS, pero el OLED permaneció físicamente negro
-     incluso durante la carga. Se restauraron por hash `boot`/`vendor_boot`
-     v0.59.
-   - con KMS separado, cambiar sólo `card1` a glamor también abre FD740, pero
-     Xorg deriva `DRI driver: msm-kms`, intenta cargar el inexistente
-     `/usr/lib/dri/msm-kms_dri.so` y termina en SEGV. Se restauró software.
-   - un alias a `msm_dri.so` tampoco vale: Gallium responde `msm-kms exports
-     no extensions`; `MESA_LOADER_DRIVER_OVERRIDE=msm` no se respeta en esa
-     ruta AIGLX/DRI2 y Xorg vuelve a caer. El candidato siguiente es cambiar
-     en kernel únicamente `msm_kms_driver.name` de `msm-kms` a `msm`, con
-     rollback v0.61 listo y prueba física antes de consolidarlo.
-   El siguiente intento debe resolver PRIME/DRI entre el render-only `card0`
-   y el scanout-only `card1`, o corregir por qué el master unificado no produce
-   scanout físico; no repetir ninguna de las dos configuraciones anteriores.
-2. **Estabilización del panel en reinicios cálidos**: el primer prepare puede
-   leer ID `00 00 00` y dejar el OLED negro aunque DSI figure conectado. Un
-   ciclo `xrandr DSI-1 off → on` fuerza reset/init, lee `80 00 04` y recupera
-   la imagen. El drop-in `lightdm.service.d/20-gts9uwifi-panel-reinit.conf`
-   quedó validado tras un reinicio normal (`ExecStartPost` SUCCESS); además
-   Xorg desactiva blanking/DPMS hasta implementar suspend/resume.
-3. **Iteración autónoma desbloqueada**: UFS ya expone por partlabel las
-   particiones internas. Las próximas imágenes `boot`/`vendor_boot` se pueden
-   escribir por SSH y validar por hash antes de un reinicio normal; TWRP queda
-   como recuperación, no como requisito de cada iteración.
+1. **Siguiente reto: Bluetooth WCN7850.** El Wi-Fi ya alimenta y arranca el PMU
+   compartido; toca modelar el lado Bluetooth (`bt-enable` GPIO81, UART/firmware
+   y rfkill) sin alterar el cold-reset/PIPE mux del ath12k que ya funciona.
+2. **Suspensión/reanudación y brillo.** El panel funciona estable mientras Xorg
+   mantiene deshabilitado el blanking. Hay que implementar/revisar suspend del
+   ANA38407 antes de permitir DPMS automático y validar control de brillo sin
+   perder la recuperación DSI de reinicio cálido.
+3. **Después:** USB Code 43 como canal secundario, audio y sensores. UFS permite
+   iterar por SSH sobre `boot`/`vendor_boot`; TWRP queda como recuperación.
+
+Hito recién cerrado — **aceleración del display nativo (sesiones 73–75)**:
+
+- Se conserva `msm.separate_gpu_kms=1`: un pequeño parche kernel hace que la
+  DRM render-only Adreno exponga recursos KMS vacíos, límites 16384×16384,
+  dumb buffers y framebuffer funcs. Esto basta para que Xorg la acepte como
+  primary connectorless; el DPU separado queda como provider Sink Output.
+- Xorg r10 añade, de forma opt-in, `AllowEmptyInitialConfiguration`, un modo
+  sintético 2960×1848 y guardas RandR para cero outputs. El primary Adreno usa
+  glamor; el hook de LightDM asocia dinámicamente Source/Sink y activa el DSI.
+- La barrera final era DRI3: Mesa usa el `PixmapFromBuffer` heredado y entrega
+  modifier implícito `INVALID`. Con `dmabuf_capable` y el switch específico
+  `force_linear_dri3`, Xorg lo trata como `DRM_FORMAT_MOD_LINEAR`; el import GBM
+  funciona y desaparece `BadAlloc`. La instrumentación temporal r6–r9 se retiró
+  del r10 de producción.
+- Validación física: `glxinfo` → freedreno FD740, `Accelerated: yes`; `glmark2`
+  2960×1848 visible en el OLED central (no en el monitor del PC), 113–153 FPS
+  en las primeras escenas y sin GPU fault/hangcheck/DRM error. Tras un reinicio
+  completo volvieron solos Wi-Fi/SSH, LightDM, DSI, Goodix y la aceleración.
+- v0.66 lleva el APK r10 dentro del overlay y un `ExecStartPre` local que lo
+  instala antes de LightDM, por lo que el arreglo no depende de la instalación
+  viva y también se aplica sobre una microSD/rootfs limpia.
 
 Historial de tareas anteriores:
 
@@ -120,9 +124,9 @@ Historial de tareas anteriores:
    consolidados los arreglos WCN en `wcn7850-pwrseq-cold-reset-aop.patch`
    funcional-only. Flasheado por `twrp install`; en vivo el kernel corre
    limpio (dmesg sin `SM-X910`) con Wi-Fi, táctil y escritorio intactos.
-3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **EN CURSO
-   (v0.53 construida, pendiente de flash)**. Dos bloqueos encontrados y
-   resueltos, ambos validados en vivo:
+3. GPU + DRM/KMS nativo (Adreno 740, panel DSI, Mesa/Turnip) — **✅ CERRADO EN
+   v0.66**. El bloque siguiente conserva los primeros hallazgos históricos de
+   v0.52/v0.53 que desbloquearon el render node:
    - **`-110` (resuelto en v0.52)**: el gpucc no tenía driver porque
      `CONFIG_GPUCC_SM8550` *no existe* — el símbolo real es
      **`CONFIG_SM_GPUCC_8550`**, y además venía en `=m` (este port no autocarga

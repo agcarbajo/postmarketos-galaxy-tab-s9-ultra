@@ -164,3 +164,16 @@ GPL-2.0 (kernel) — el .dat/mdnie son datos de calibración propietarios.
   ID cambió de `00 00 00` a `80 00 04` a los 24,5 s y el login quedó visible.
 - Xorg fija además `BlankTime`, `StandbyTime`, `SuspendTime` y `OffTime` a cero
   mientras el suspend/resume real del panel no sea fiable.
+
+## Reverse PRIME y recuperación automática (sesión 75)
+
+- Con la topología DRM separada final, el output del DPU aparece en Xorg como
+  `DSI-1-1`, no necesariamente `DSI-1`. El script ya no hardcodea ese nombre:
+  primero asocia los providers Source Output (Adreno) y Sink Output (DPU),
+  después elige el primer output `connected`.
+- El ciclo off/on sigue siendo necesario después de algunos reinicios de Xorg:
+  DRM puede reportar `enabled` y DPMS `On` mientras el OLED físico está negro.
+  El disable/enable fuerza otra lectura `80 00 04` y repite la secuencia rev-D.
+- El hook actualizado se validó tras un reinicio completo con Xorg r10 reverse
+  PRIME: recuperó por sí solo XFCE a 2960×1848@120. Después `glmark2` acelerado
+  por FD740 se vio físicamente en el panel, sin error DSI/DRM.
