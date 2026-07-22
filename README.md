@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-22 (sesión 71, ✅ v0.59 validada: display DSI nativo + UFS interno + Wi-Fi/SSH; reto actual: GPU unificada con DPU y glamor).
+> Última actualización: 2026-07-22 (sesión 72: v0.60 unificada descartada; v0.61 estable construida, copiada y validada en vivo con recuperación automática del panel).
 
 ## Objetivo
 
@@ -63,10 +63,10 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ v0.59 flasheada y validada: display DSI nativo, UFS interno, Wi-Fi, táctil y escritorio |
-| Display nativo | ✅ **v0.58/v0.59**: ANA38407/AMSA46AS02 2960×1848, DSI command mode + DSC + TE; secuencia rev-D y brillo explícito emiten imagen |
+| Imagen/paquete de prueba | ✅ **v0.61 estable construida** (28.084.177 bytes, SHA-256 `dd250843...ceb4`), copiada y verificada en la tablet; base física v0.59 + los mismos overlays v0.61 validados en vivo |
+| Display nativo | ✅ **v0.58/v0.59**: ANA38407/AMSA46AS02 2960×1848, DSI command mode + DSC + TE. En reinicio cálido el primer init puede leer `00 00 00` y quedar negro; un servicio validado hace un ciclo DSI y recupera `80 00 04` + imagen |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
-| GPU Adreno 740 | 🧪 Render node + Mesa/Turnip GL 4.6 operativos. v0.59 aún separa GPU (`card0`) y DPU (`card1`) por `msm.separate_gpu_kms=1`; Xorg usa software. Siguiente build: DRM msm unificado + glamor |
+| GPU Adreno 740 | 🧪 Render node + Mesa/Turnip GL 4.6 operativos. **v0.60 unificada descartada**: glamor/GL funciona lógicamente pero el panel no escanea y queda negro. Con KMS separado, glamor abre FD740 pero busca `msm-kms_dri.so` inexistente y Xorg hace SEGV. Base estable: `card0=adreno`, `card1=msm_dpu`, software |
 
 ## Reto en curso
 
@@ -81,13 +81,30 @@ BDF QRD en ELF (v0.49) → WMI ready → mac80211 → `wlan0` asociada con seña
 
 Trabajo actual (con canal de control en vivo por SSH y UFS):
 
-1. **Aceleración del display nativo**: retirar `msm.separate_gpu_kms=1` para que
-   el component master de `mdss` una Adreno + DPU en una sola tarjeta DRM, y
-   retirar la configuración Xorg `AccelMethod "none"`/`kmsdev card1` para que
-   modesetting use glamor sobre buffers comunes de scanout. v0.59 confirma el
-   estado previo exacto: `card0=adreno`, `card1=msm_dpu` y el kernel registra
-   `msm_dpu ... no GPU device was found`.
-2. **Iteración autónoma desbloqueada**: UFS ya expone por partlabel las
+1. **Aceleración del display nativo — dos rutas simples ya descartadas**:
+   - v0.60 retiró `msm.separate_gpu_kms=1`: el component master creó una sola
+     `card0=msm_dpu`, ligó Adreno, Xorg activó glamor FD740/DRI3 y `glmark2`
+     renderizó 2960×1848 a 123 FPS, pero el OLED permaneció físicamente negro
+     incluso durante la carga. Se restauraron por hash `boot`/`vendor_boot`
+     v0.59.
+   - con KMS separado, cambiar sólo `card1` a glamor también abre FD740, pero
+     Xorg deriva `DRI driver: msm-kms`, intenta cargar el inexistente
+     `/usr/lib/dri/msm-kms_dri.so` y termina en SEGV. Se restauró software.
+   - un alias a `msm_dri.so` tampoco vale: Gallium responde `msm-kms exports
+     no extensions`; `MESA_LOADER_DRIVER_OVERRIDE=msm` no se respeta en esa
+     ruta AIGLX/DRI2 y Xorg vuelve a caer. El candidato siguiente es cambiar
+     en kernel únicamente `msm_kms_driver.name` de `msm-kms` a `msm`, con
+     rollback v0.61 listo y prueba física antes de consolidarlo.
+   El siguiente intento debe resolver PRIME/DRI entre el render-only `card0`
+   y el scanout-only `card1`, o corregir por qué el master unificado no produce
+   scanout físico; no repetir ninguna de las dos configuraciones anteriores.
+2. **Estabilización del panel en reinicios cálidos**: el primer prepare puede
+   leer ID `00 00 00` y dejar el OLED negro aunque DSI figure conectado. Un
+   ciclo `xrandr DSI-1 off → on` fuerza reset/init, lee `80 00 04` y recupera
+   la imagen. El drop-in `lightdm.service.d/20-gts9uwifi-panel-reinit.conf`
+   quedó validado tras un reinicio normal (`ExecStartPost` SUCCESS); además
+   Xorg desactiva blanking/DPMS hasta implementar suspend/resume.
+3. **Iteración autónoma desbloqueada**: UFS ya expone por partlabel las
    particiones internas. Las próximas imágenes `boot`/`vendor_boot` se pueden
    escribir por SSH y validar por hash antes de un reinicio normal; TWRP queda
    como recuperación, no como requisito de cada iteración.

@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+export DISPLAY=:0
+export XAUTHORITY=/var/run/lightdm/root/:0
+
+# A warm Samsung reboot can leave the DDIC answering 00:00:00 and emitting
+# black even though DRM reports DSI-1 connected.  Wait for LightDM's X server,
+# then force one complete DRM disable/enable cycle.  The second prepare toggles
+# reset, restores the real 80:00:04 ID and replays brightness/display-on.
+for _ in $(seq 1 30); do
+	if [ -r "$XAUTHORITY" ] && xrandr --query >/dev/null 2>&1; then
+		break
+	fi
+	sleep 1
+done
+
+xrandr --query >/dev/null 2>&1
+xrandr --output DSI-1 --off
+sleep 3
+xrandr --output DSI-1 --mode 2960x1848 --rate 120

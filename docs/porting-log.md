@@ -3222,3 +3222,63 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
   `card1=msm_dpu`; Xorg fuerza `kmsdev card1` y `AccelMethod none`, y el DPU
   avisa `no GPU device was found`. El siguiente paso es retirar la separación,
   dejar que mdss cree el master DRM unificado y habilitar glamor.
+
+## 2026-07-22 — sesión 72: v0.60 GPU+DPU unificada falla visualmente; rollback y recuperación automática del panel
+
+- **Preflight UFS antes de escribir.** En v0.59 se verificó por SSH que
+  `boot -> /dev/sda21` y `vendor_boot -> /dev/sda24`, ambas de 100.663.296
+  bytes. Sus hashes coincidían exactamente con los exports v0.59:
+  `89c07cab...ed9` y `c2a85241...921`. Se guardó además un rollback completo
+  en `/home/phablet/rollback-v059/` y se verificó antes del experimento.
+- **v0.60 unificada.** Se retiró `msm.separate_gpu_kms=1` y Xorg dejó de fijar
+  `card1`, con `AccelMethod glamor`. El boot/vendor_boot se escribieron por UFS
+  y se verificaron (`c35e3b6e...306e` / `3e5096da...770a`). En vivo se obtuvo
+  una única `card0=msm_dpu`, `renderD128`, DSI-1 conectado y Adreno ligado al
+  component master. Xorg registró OpenGL 4.6, glamor sobre FD740 y DRI3;
+  `glxinfo` confirmó aceleración directa y `glmark2` ejecutó a pantalla completa
+  2960×1848, 123 FPS, sin hangcheck/fault.
+- **Fallo físico decisivo:** la cámara mostró que el OLED permanecía negro,
+  incluso capturando mientras `glmark2` dibujaba. La GPU ejecuta y el DPU
+  acepta los buffers, pero el master unificado no produce scanout visible en
+  este bring-up. No confundir un benchmark lógico exitoso con imagen física.
+  Se restauraron por hash ambos exports v0.59 y `kmsdev card1` + software.
+- **Segundo camino descartado, con KMS separado.** Cambiar únicamente el DPU
+  (`card1`) a glamor hace que Xorg abra correctamente FD740 (`glamor X
+  acceleration enabled on FD740`), pero asigna `DRI driver: msm-kms`, intenta
+  cargar `/usr/lib/dri/msm-kms_dri.so` (inexistente) y termina en SEGV. Sólo
+  aparece un provider XRandR (`modesetting`, sink output); `DRI_PRIME=1`
+  continúa en llvmpipe con la configuración software. Se restauró el baseline.
+- **Alias/override userspace descartados.** Un symlink
+  `msm-kms_dri.so -> msm_dri.so` llega más lejos pero falla con `msm-kms exports
+  no extensions` y vuelve a generar coredumps de Xorg. Exportar
+  `MESA_LOADER_DRIVER_OVERRIDE=msm` para LightDM no altera la selección del
+  nombre en esta ruta AIGLX/DRI2: sigue buscando `msm-kms_dri.so` y hace SEGV.
+  El watchdog de 90 s y la restauración manual devolvieron siempre software +
+  DSI visible. En el kernel, `msm_kms_driver.name` es explícitamente
+  `"msm-kms"`, mientras GPU/unificado usan `"msm"`; el siguiente experimento
+  controlado será renombrar sólo ese driver para que Mesa seleccione su alias
+  soportado, manteniendo las dos tarjetas DRM.
+- **Hallazgo de reinicio cálido del panel.** Tanto tras el rollback como en un
+  reinicio normal, el primer init puede leer `panel id: 00 00 00` y dejar el
+  OLED negro aunque DSI-1 esté conectado. Un ciclo explícito `xrandr DSI-1
+  off -> on` fuerza reset/reinit; el segundo prepare lee `80 00 04` y devuelve
+  el login inmediatamente. Esto permitió recuperar la tablet sin TWRP ni
+  power-cycle.
+- **Workaround reproducible validado:** el drop-in regular
+  `lightdm.service.d/20-gts9uwifi-panel-reinit.conf` ejecuta
+  `/usr/libexec/gts9uwifi-panel-reinit` como `ExecStartPost`. En un arranque
+  limpio terminó `SUCCESS`, cambió el ID de `00 00 00` (7,84 s) a `80 00 04`
+  (24,66 s), y la cámara confirmó el login visible. Se eligió el drop-in porque
+  `make-twrp-zip.py` omite symlinks absolutos del overlay y una unidad regular
+  dentro de `.wants` resulta `disabled`; el drop-in sí queda en el ZIP y además
+  se repite al reiniciar LightDM. Xorg desactiva los cuatro temporizadores de
+  blanking/DPMS.
+- **v0.61 estable construida y copiada.** ZIP
+  `postmarketos-edge-xfce-mainline-v0.61-stable-display-panel-reinit-sm-x910-twrp.zip`,
+  28.084.177 bytes, SHA-256
+  `dd25084343e923457b11c9a2908186b68654aec4910b967b174eb90438b3ceb4`.
+  `BUILD_EXIT=0`; contiene KMS separado, Xorg software/no-blank, script y
+  drop-in. Copiado a `/home/phablet/v061.zip` y verificado una vez por hash.
+  La tablet continúa sobre los boot images v0.59 equivalentes y los overlays
+  v0.61 instalados/validados en vivo; no se reflasheó el ZIP para no añadir un
+  ciclo TWRP innecesario.

@@ -23,6 +23,8 @@ mkdir -p \
 	"$overlay/etc/modules-load.d" \
 	"$overlay/etc/modprobe.d" \
 	"$overlay/etc/ssh/sshd_config.d" \
+	"$overlay/etc/X11/xorg.conf.d" \
+	"$overlay/etc/systemd/system/lightdm.service.d" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/lib/firmware/qcom" \
 	"$overlay/usr/libexec" \
@@ -43,6 +45,12 @@ install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
 	"$overlay/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
+install -m 0644 "$project/configs/display-native/10-msm-dpu.conf" \
+	"$overlay/etc/X11/xorg.conf.d/10-msm-dpu.conf"
+install -m 0755 "$project/configs/display-native/gts9uwifi-panel-reinit" \
+	"$overlay/usr/libexec/gts9uwifi-panel-reinit"
+install -m 0644 "$project/configs/display-native/20-gts9uwifi-panel-reinit.conf" \
+	"$overlay/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
 # Official linux-firmware amss: Samsung's WLAN.HMT downstream amss never
 # raises WMI ready under mainline ath12k because it expects the phy_ucode
 # QMI download that only cnss2 implements.

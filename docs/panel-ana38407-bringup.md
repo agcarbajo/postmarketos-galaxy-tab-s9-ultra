@@ -149,3 +149,18 @@ GPL-2.0 (kernel) — el .dat/mdnie son datos de calibración propietarios.
 - Resultado validado físicamente: el panel emite el escritorio XFCE a
   2960×1848 mediante DPU → DSI command mode → DSC → ANA38407. v0.59 conserva
   exactamente esta secuencia y añade UFS sin regresión visual.
+
+## Reinicio cálido y recuperación del DDIC (sesión 72)
+
+- Tras las pruebas v0.60 y también al volver por `systemctl reboot` a v0.59,
+  el primer `prepare` puede terminar con lectura `ana38407 panel id: 00 00 00`:
+  DRM registra `DSI-1 connected`, Xorg hace modeset, pero el OLED queda negro.
+- Un disable/enable completo desde X (`xrandr --output DSI-1 --off`, pausa de
+  3 s, y `--mode 2960x1848 --rate 120`) fuerza `unprepare/prepare`, repite el
+  reset y toda la secuencia rev-D. El segundo intento lee el ID real
+  `80 00 04` y recupera inmediatamente la imagen; validado por cámara.
+- El drop-in de LightDM `20-gts9uwifi-panel-reinit.conf` ejecuta ese ciclo como
+  `ExecStartPost`. En la prueba de reinicio normal terminó con `status=0/SUCCESS`, el
+  ID cambió de `00 00 00` a `80 00 04` a los 24,5 s y el login quedó visible.
+- Xorg fija además `BlankTime`, `StandbyTime`, `SuspendTime` y `OffTime` a cero
+  mientras el suspend/resume real del panel no sea fiable.
