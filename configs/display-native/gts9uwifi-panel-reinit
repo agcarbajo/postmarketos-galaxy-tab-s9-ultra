@@ -49,4 +49,10 @@ fi
 xrandr --output "$output" --off
 sleep 2
 xrandr --output "$output" --mode 2960x1848 --rate 120 --primary
+
+# The display and GPU are separate DRM devices.  PRIME Synchronization makes
+# both the source and the 120 Hz sink wait for one another on this topology,
+# reducing Present/GLX to about 30 fps.  With synchronization disabled the DPU
+# keeps scanning the imported linear buffer at 120 Hz and GLX reaches ~118 fps.
+xrandr --output "$output" --set "PRIME Synchronization" 0
 xset dpms force on || true

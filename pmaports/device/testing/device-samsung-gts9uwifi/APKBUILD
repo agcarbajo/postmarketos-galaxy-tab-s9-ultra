@@ -3,13 +3,14 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=19
+pkgrel=21
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
 depends="
 	android-tools
+	bluez-btmgmt
 	firmware-samsung-gts9uwifi
 	kbd
 	linux-samsung-gts9uwifi-mainline
@@ -19,13 +20,21 @@ depends="
 makedepends="devicepkg-dev"
 source="
 	20-gts9uwifi-fbdev.conf
+	20-gts9uwifi-address.conf
+	20-gts9uwifi-display.conf
 	20-gts9uwifi-panel-reinit.conf
 	deviceinfo
 	gts9uwifi-display-handoff
 	gts9uwifi-display-handoff.service
 	gts9uwifi-display-hold.conf
+	gts9uwifi-bluetooth-address
+	gts9uwifi-bluetooth-address.service
+	gts9uwifi-lightdm-hidpi
 	gts9uwifi-panel-reinit
+	gts9uwifi-xfce-hidpi
+	gts9uwifi-xfce-hidpi.desktop
 	kernel-cmdline.conf
+	slick-greeter.conf
 "
 
 build() {
@@ -46,19 +55,43 @@ package() {
 		"$pkgdir/usr/lib/systemd/system/graphical.target.wants/gts9uwifi-display-handoff.service"
 	install -Dm644 "$srcdir/gts9uwifi-display-hold.conf" \
 		"$pkgdir/usr/lib/modprobe.d/gts9uwifi-display-hold.conf"
+	install -Dm755 "$srcdir/gts9uwifi-bluetooth-address" \
+		"$pkgdir/usr/libexec/gts9uwifi-bluetooth-address"
+	install -Dm644 "$srcdir/gts9uwifi-bluetooth-address.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
+	install -Dm644 "$srcdir/20-gts9uwifi-address.conf" \
+		"$pkgdir/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
+	install -Dm755 "$srcdir/gts9uwifi-lightdm-hidpi" \
+		"$pkgdir/usr/libexec/gts9uwifi-lightdm-hidpi"
 	install -Dm755 "$srcdir/gts9uwifi-panel-reinit" \
 		"$pkgdir/usr/libexec/gts9uwifi-panel-reinit"
 	install -Dm644 "$srcdir/20-gts9uwifi-panel-reinit.conf" \
 		"$pkgdir/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
+	install -Dm644 "$srcdir/20-gts9uwifi-display.conf" \
+		"$pkgdir/etc/lightdm/lightdm.conf.d/20-gts9uwifi-display.conf"
+	install -Dm755 "$srcdir/gts9uwifi-xfce-hidpi" \
+		"$pkgdir/usr/libexec/gts9uwifi-xfce-hidpi"
+	install -Dm644 "$srcdir/gts9uwifi-xfce-hidpi.desktop" \
+		"$pkgdir/etc/xdg/autostart/gts9uwifi-xfce-hidpi.desktop"
+	install -Dm644 "$srcdir/slick-greeter.conf" \
+		"$pkgdir/etc/lightdm/slick-greeter.conf"
 }
 
 sha512sums="
 c2fffc648f136ba6f7611f918f0914ce90377cbfbb49d5b9be456091ce43a793d5b59c5828a7f1e9095692f0019eb0f30c67eb9b24cf010636b53f59f5da4e34  20-gts9uwifi-fbdev.conf
-6cc0de39e43759374236e92e8b28bd8ffa6be6bb14d95c24f3674dd5df60c397d15622a4436161d62c71bdc2ef8c55dd708b2a718b9117c44a47878c356a2ad2  20-gts9uwifi-panel-reinit.conf
+6ec4f2e7c65cc6569f53ce2c3d60e3f71bd1e98567ce807cb6fc60a64e70dab9dc76aeb13050822db92cd3318e0e58dcd08e49fe94bbb6bc7663292e4b45b2f5  20-gts9uwifi-address.conf
+89d013c3b56a331527a1e21e3e90449a4506fc4247cff54eceb0120e35bb402f91866887b4eef94f932fdf296512f33c8cc26cd4620a9853efa23d58b3c00ac8  20-gts9uwifi-display.conf
+5f7c50bf4b26c7435628fb9dbcef8a2eaf511a90dcb38c43f5272a5f1768a85d6ceadb14c93424b274406b04fd3e547e6c20ba77e8a08c0addf490bf610ac15d  20-gts9uwifi-panel-reinit.conf
 75b642beea4cf983a553e9f7de6987880f6debe91c1a4f3a5b9d77dd41f4d99f5ced2e4852db5055446cc194ca3d3f6653db37f77fc423b4247cd1a229410f87  deviceinfo
 79c03d4c8a779d3951fa2d0699cad083d4329381c16036e16b581a49d1d7db82b46cf28404d86cdc615dc2608b37c46deb357a3f6c70c9b4eb2281c374105d75  gts9uwifi-display-handoff
 b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e2d219667f79172827dbda2f7440d1dc6367cb8a9a3597987  gts9uwifi-display-handoff.service
 aa676db16e619570d79bccc7984ee83dfb933ad9de68280bfc0b6486fdb3eb4853dc4a12dcc4ebcafdc9120d15ca2f78e4091cbc99a44c5bcc67a054614a91dd  gts9uwifi-display-hold.conf
-8b1dfcfd92c5d174c79f94a5d010bd97702ff53e8ec8301edb9043179233d8a39866b0b1a4e4a8c0e667c3a2ddcb3193c83de5cde02e5f814359ea315cd7d116  gts9uwifi-panel-reinit
+844bed4ad2faa859e70a3a274bd66dc482554249fb4d1e29e2e4aee7baa9aa2de3b24ccf981c3d5ba243747a64fb73e5978040e6013e79b5c02b632c59eb5de2  gts9uwifi-bluetooth-address
+2ab9657ccc015f613d6b16d2d52c03e92f3279f8dd49a50312e92a5e0fc5ce6701c3a5d1573c7c6852cc6c56c28a43a8317e1e5a431fa7d91089ffafd7a33ff2  gts9uwifi-bluetooth-address.service
+8e1df7ebb571e5f256cc1d24405354f631bef8988c02f461f58f99e7c9b5b92235ce2f4681e947cb55b82390f2caa60be4b6bdd7564b1b78980b62343b78658a  gts9uwifi-lightdm-hidpi
+6a783ea53920063350527fd8e84521b1cc3820f7ff087e4a2540ebdb2b41657b53aea19609bc9c6f599fe52ed2c16f61ac0690a8825f9f4b8c41493d9050e19a  gts9uwifi-panel-reinit
+417b715690d1c7f8e0052ce584d0c19f752ba31212a2fe3dcd4a06a19d3a5df062889285e676303861c48365a58a9ee97d6fd81e18c4244c3b5ddfc62c422252  gts9uwifi-xfce-hidpi
+40fdf12f831c37512e633c728ceab528335448964dfe67c75c1e2bf221ff4ea8889728728beef0239a0b74e496f3310103874d9826ad9e7c922dcfd2d9ceb572  gts9uwifi-xfce-hidpi.desktop
 b714a0eaf237ec81b3a75f11d49b65e19110884342c2465d3a5b7fdd01c4f38856e04ba47945f1ab3c1d00a243df7607ed37851d30faeeacf4660dac70265af8  kernel-cmdline.conf
+f6e4d2350c78e06a5094db5c1dd40c22d53496e4128ca66017c4959c89fdbec0434aaf5ac3f50d5b47166d3e486435bf69b97d9311608c224372bf1513086a79  slick-greeter.conf
 "

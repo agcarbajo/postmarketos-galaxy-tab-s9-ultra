@@ -519,6 +519,11 @@
 	status = "okay";
 };
 
+/* UART14 (WCN7850 Bluetooth) is a child of the second QUPv3 wrapper. */
+&qupv3_id_1 {
+	status = "okay";
+};
+
 /* I2C4 (touch) and I2C6 (PTN3222) are GPI-only on SM8550. */
 &gpi_dma1 {
 	status = "okay";
@@ -564,6 +569,32 @@
 
 &uart7 {
 	status = "okay";
+};
+
+/*
+ * The Samsung downstream hsuart0 alias and pinctrl both identify QUP SE14
+ * (0x898000) as the four-wire WCN7850 Bluetooth transport.  Power is shared
+ * with Wi-Fi through the already-enabled wcn7850_pmu sequencer; keep the
+ * upstream SM8550 QRD supply map so hci_qca can use that sequencer directly.
+ */
+&uart14 {
+	status = "okay";
+
+	bluetooth {
+		compatible = "qcom,wcn7850-bt";
+		/* Samsung GTS9U NVM: generic hmtnv20.bin is rejected (-52). */
+		firmware-name = "hmtnv20.b21";
+
+		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
+		vddaon-supply = <&vreg_pmu_aon_0p59>;
+		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+		vddwlmx-supply = <&vreg_pmu_wlmx_0p85>;
+		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+		vddrfa1p8-supply = <&vreg_pmu_rfa_1p8>;
+
+		max-speed = <3200000>;
+	};
 };
 
 &sdhc_2 {

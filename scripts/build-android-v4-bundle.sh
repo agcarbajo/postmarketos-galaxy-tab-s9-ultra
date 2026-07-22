@@ -51,11 +51,18 @@ dtbo_configs="$project/configs/dtbo"
 append_dtb="${APPEND_DTB_TO_KERNEL:-1}"
 disable_runtime_dtbo="${DISABLE_RUNTIME_DTBO:-1}"
 generic_ramdisk_format="${GENERIC_RAMDISK_FORMAT:-lz4-legacy}"
+initramfs_overlay="${INITRAMFS_OVERLAY_DIR:-}"
 
 for file in "$mkbootimg" "$mkdtimg" "$avbtool" "$dtb" "$package_zboot" \
 	"$package_config" "$initramfs" "$cmdline_file" "$bootconfig"; do
 	test -f "$file" || { echo "missing input: $file" >&2; exit 1; }
 done
+if [ -n "$initramfs_overlay" ]; then
+	test -d "$initramfs_overlay" || {
+		echo "missing initramfs overlay: $initramfs_overlay" >&2
+		exit 1
+	}
+fi
 
 add_hash_footer() {
 	local target=$1
@@ -136,6 +143,12 @@ python3 "$mkbootimg" \
 add_hash_footer "$linux_out/init_boot.img" init_boot "$init_boot_size"
 
 mkdir -p "$tmp/empty-vendor-ramdisk"
+if [ -n "$initramfs_overlay" ]; then
+	# ABL concatenates this platform fragment after the generic initramfs.
+	# Firmware placed here is therefore available to built-in drivers during
+	# their first probe, while init_boot itself remains unchanged.
+	cp -a "$initramfs_overlay/." "$tmp/empty-vendor-ramdisk/"
+fi
 touch -d '@0' "$tmp/empty-vendor-ramdisk"
 (
 	cd "$tmp/empty-vendor-ramdisk"

@@ -53,6 +53,23 @@ CONFIG_CRYPTO_LIB_ARC4=y
 CONFIG_ATH_COMMON=y
 CONFIG_ATH12K=m
 
+# WCN7850 Bluetooth over the board's QUP SE14 four-wire UART.  Keep the full
+# transport and common HID/network profiles built-in: this port intentionally
+# does not install or autoload the generic kernel module tree.
+CONFIG_BT=y
+CONFIG_BT_BREDR=y
+CONFIG_BT_RFCOMM=y
+CONFIG_BT_RFCOMM_TTY=y
+CONFIG_BT_BNEP=y
+CONFIG_BT_BNEP_MC_FILTER=y
+CONFIG_BT_BNEP_PROTO_FILTER=y
+CONFIG_BT_HIDP=y
+CONFIG_BT_HCIUART=y
+CONFIG_BT_HCIUART_SERDEV=y
+CONFIG_BT_HCIUART_H4=y
+CONFIG_BT_HCIUART_QCA=y
+CONFIG_BT_QCA=y
+
 # Samsung ABL debug UART and initramfs support.
 CONFIG_SERIAL_QCOM_GENI=y
 CONFIG_SERIAL_QCOM_GENI_CONSOLE=y

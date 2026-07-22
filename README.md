@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-22 (sesión 75: reverse PRIME + DRI3 lineal resueltos; Xorg r10 y v0.66 reproducibles, aceleración FD740 validada físicamente tras reinicio completo).
+> Última actualización: 2026-07-22 (sesión 80: v0.71 reproducible; HiDPI completo y 120 Hz estables; WCN7850 Bluetooth con firmware b21, dirección nativa de EFS y escaneo real validados tras reinicio).
 
 ## Objetivo
 
@@ -53,43 +53,68 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
-| DTS `gts9uwifi` | ✅ v0.59: WCN7850, Goodix, GPU, display DSI/DSC nativo y UFS interno activos |
+| DTS `gts9uwifi` | ✅ v0.71: WCN7850 Wi-Fi/BT (QUP SE14), Goodix, GPU, display DSI/DSC nativo y UFS interno activos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Kernel fuente r37: Adreno/DPU/DSI/panel/UFS built-in + proveedor KMS vacío para la GPU separada; device r19; firmware r5; Xorg r10 reproducible en `extra-repos/systemd/xorg-server` |
+| Paquetes pmaports | ✅ Kernel fuente r40: Adreno/DPU/DSI/panel/UFS/Bluetooth built-in + proveedor KMS vacío para la GPU separada; device r21; firmware r5; Xorg r10 reproducible en `extra-repos/systemd/xorg-server` |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
-| Escritorio | ✅ XFCE/LightDM a 2960×1848@120; desde r10 arranca automáticamente sobre la pantalla Adreno acelerada y saca imagen por el provider DPU reverse PRIME |
+| Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
 | SSH | ✅ **Acceso en vivo por WLAN**: `<TABLET_IP>`, host key `1N9kAKdf…` verificada, clave de desarrollo Ed25519 como `phablet`. El canal USB (Code 43) queda como secundario |
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v0.66 reproducible construida** (29.420.384 bytes, SHA-256 `f54322f0dbd5145f57f5c138d3e52ec09ff78b6a3a6991cf1c2a77ddc87b7466`); contiene kernel r37, APK Xorg r10 y setup automático. El ZIP aún no se ha flasheado; su mismo kernel v0.65 + userspace r10 sí está validado en vivo |
+| Imagen/paquete de prueba | ✅ **v0.71 reproducible construida** (30.269.344 bytes, SHA-256 `ec7b7480e2c20ad3a7b06d2f82d5653c8884fa325d1a83de637a259ed365405c`); build limpio con kernel r40, Xorg r10, HiDPI/120 Hz y Bluetooth b21 + dirección EFS. La tablet corre boot/vendor_boot v0.70 y userspace equivalente v0.71 validado en vivo; el ZIP v0.71 no se ha flasheado |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
+| Bluetooth WCN7850 | ✅ **Controlador y descubrimiento funcional (v0.70 + userspace v0.71)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21` temprano, dirección pública nativa leída de EFS en sólo lectura, `hci0`/BlueZ activos y escaneo BR/EDR+BLE con dispositivos reales |
 
 ## Reto en curso
 
-✅ **Wi-Fi funcional y SSH en vivo por WLAN (v0.49)**. Los hitos 1–5 de la
-estrategia están cumplidos sobre base exclusivamente mainline: kernel 7.2-rc3
-arrancando, rootfs en microSD, red + SSH (ahora por Wi-Fi, `<TABLET_IP>`
-con la clave de desarrollo), pantalla + táctil y escritorio XFCE. La cadena
-Wi-Fi completa quedó: rails/PDC verificados → mux PIPE des-aparcado (v0.45)
-→ enlace PCIe Gen.2 x2 → `17cb:1107` → amss/m3 oficiales de linux-firmware +
-BDF QRD en ELF (v0.49) → WMI ready → mac80211 → `wlan0` asociada con señal
-65 a 270 Mbit/s.
+✅ Los hitos de arranque, microSD, Wi-Fi/SSH, táctil, escritorio, DRM/DSI,
+Turnip y ahora el controlador Bluetooth están cumplidos sobre Linux mainline
+7.2-rc3. La tablet está arrancada con boot/vendor_boot v0.70 y el userspace
+equivalente a v0.71; el login es visible a 2960×1848@120 con escalado 2×, Wi-Fi
+y SSH funcionan y BlueZ descubre dispositivos clásicos y BLE.
 
 Trabajo actual (con canal de control en vivo por SSH y UFS):
 
-1. **Siguiente reto: Bluetooth WCN7850.** El Wi-Fi ya alimenta y arranca el PMU
-   compartido; toca modelar el lado Bluetooth (`bt-enable` GPIO81, UART/firmware
-   y rfkill) sin alterar el cold-reset/PIPE mux del ath12k que ya funciona.
+1. **Siguiente reto: validar Bluetooth de extremo a extremo.** El controlador y
+   el escaneo ya funcionan; toca emparejar y probar al menos un HID y un equipo
+   de audio, confirmar persistencia de bonds y revisar PipeWire/WirePlumber para
+   A2DP/HFP. No volver a investigar UART/firmware/dirección salvo regresión.
 2. **Suspensión/reanudación y brillo.** El panel funciona estable mientras Xorg
-   mantiene deshabilitado el blanking. Hay que implementar/revisar suspend del
-   ANA38407 antes de permitir DPMS automático y validar control de brillo sin
-   perder la recuperación DSI de reinicio cálido.
-3. **Después:** USB Code 43 como canal secundario, audio y sensores. UFS permite
-   iterar por SSH sobre `boot`/`vendor_boot`; TWRP queda como recuperación.
+   mantiene deshabilitado el blanking. Implementar/revisar suspend del ANA38407
+   antes de permitir DPMS automático y validar brillo sin perder la recuperación
+   DSI de reinicio cálido.
+3. **Después:** audio interno, sensores y USB Code 43 como canal secundario.
+   UFS permite iterar por SSH sobre `boot`/`vendor_boot`; TWRP queda como
+   recuperación.
+
+Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
+
+- El escalado correcto no es subir sólo Xft DPI: se fija GTK window scale 2,
+  cursor 32, panel 36, iconos 48, Onboard de usuario 230 y Slick Greeter con
+  HiDPI real/Onboard 420. `display-setup-script` ejecuta el hook reverse PRIME
+  antes del greeter, evitando el teclado recortado por la geometría 320×200.
+- PRIME Synchronization queda en 0 para esta topología de dos DRM: a 1 limitaba
+  GLX a 27–30 FPS; a 0 `glxgears` mide 117–118 FPS mientras DSI escanea a 120 Hz.
+- Bluetooth usa QUP SE14 con `&qupv3_id_1` activo. El NVM genérico falla con
+  `-52`; `hmtnv20.b21` es el NVM Samsung validado. Al ser `hci_qca` built-in,
+  patch+b21 viven temprano en el vendor ramdisk bajo **`/usr/lib/firmware/qca`**.
+- La dirección del NVM es nula. `gts9uwifi-bluetooth-address.service`, ordenado
+  antes de BlueZ, monta `efs` con `ro,noload`, valida `bluetooth/bt_addr`, desmonta
+  y la aplica con `btmgmt public-addr`. Tras reinicio, `hci0` es Primary,
+  `missing options` está vacío y un escaneo de 12 s detectó equipos BR/EDR y BLE.
+- v0.69 **NO DEBE FLASHEARSE**: el overlay temprano se colocó en `/lib`, pero el
+  initramfs tiene `lib -> usr/lib`; la segunda CPIO intentó crear un directorio
+  sobre ese symlink y provocó reset antes de journald. v0.70 lo corrigió usando
+  `/usr/lib/firmware/qca` y recuperó el arranque.
+- Un posterior bucle de LightDM no era una regresión gráfica: la rootfs estaba
+  al 100 % por `/home/phablet/v067` y `v068` (192 MiB cada uno), por lo que el
+  greeter no podía escribir `.Xauthority`. Se retiraron sólo esos temporales y
+  quedaron 341 MiB libres; el login volvió completo. El instalador Xorg ahora
+  usa `apk list -I` y es idempotente.
 
 Hito recién cerrado — **aceleración del display nativo (sesiones 73–75)**:
 

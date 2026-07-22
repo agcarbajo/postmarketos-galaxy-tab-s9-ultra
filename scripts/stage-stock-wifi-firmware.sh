@@ -23,6 +23,13 @@ for file in amss20.bin phy_ucode20.elf bdwlan.elf regdb.bin; do
 	install -m 0644 "$extracted/firmware/kiwi/$file" "$target/$file"
 done
 
+# Bluetooth shares the Kiwi/WCN7850 module but uses QUP SE14 plus hci_qca.
+# Preserve Samsung's board-specific NVM variants for comparison; the X910 DTS
+# explicitly selects the validated b21 image after loading hmtbtfw20.tlv.
+for file in hmtbtfw20.tlv hmtnv20.bin hmtnv20.b21 hmtnv20.b22 hmtnv20.b38; do
+	install -m 0644 "$extracted/firmware/$file" "$target/$file"
+done
+
 # Keep the old payload extraction for historical comparison only. The
 # official amss requires the complete ELF wrapper and hangs on the final QMI
 # segment when it receives this stripped payload as bdf_type 0.
@@ -110,4 +117,9 @@ sha256sum -c <<'EOF'
 9886957c549c1dfa8d48ec80f23a0af0d524389054a74aeb85fd21de4ce4fb70  samsung-board-2.bin
 0ef5f6f3cb124f33c6de52371819ccd7c13763ceb86d476a178fd56e4cdc26a3  qrd-board.bin
 75cc107536d3bd03fa2e29f369a4e6d997d2cf090c50620424a9ab1a749c7546  regdb.bin
+b91f0af74413a8c93cbba956b46227a38446ea6bba8a79691cf365c22ed6e9f3  hmtbtfw20.tlv
+ba9ef0865764cbdba0e76c9655f07e2290e1759ac5187be93556d90d586eae17  hmtnv20.bin
+864476ed6cea427003f2806ab27203d7615b8760a0849fd24905935671c59769  hmtnv20.b21
+9f23113db6263269a7a3bfb1f3c70dcc23dec68716ecabd50fcc2447c34b9323  hmtnv20.b22
+9f23113db6263269a7a3bfb1f3c70dcc23dec68716ecabd50fcc2447c34b9323  hmtnv20.b38
 EOF

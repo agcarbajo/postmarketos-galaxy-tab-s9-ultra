@@ -3369,3 +3369,97 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
   `wlan0=<TABLET_IP>`; Xorg r10; DSI-1-1 2960×1848@120; FD740 acelerado;
   Goodix registrado. La cámara confirmó XFCE y después geometría `glmark2` en
   la tablet central. No hubo GPU fault, hangcheck ni error DRM/DSI.
+
+## 2026-07-22 — sesión 76: escalado integral y 120 Hz real
+
+- Subir únicamente Xft DPI agrandaba el texto, pero no widgets/teclado, y al
+  aplicar un escalado global tardío Slick Greeter se quedaba con la geometría
+  provisional 320×200 del primary Adreno sin conectores. El resultado era un
+  Onboard diminuto o recortado que impedía iniciar sesión.
+- Configuración final: `/Gdk/WindowScalingFactor=2`, Xft DPI 96 (sin doble
+  escalado), cursor 32, panel XFCE 36, iconos de escritorio 48 y Onboard de
+  usuario con dock height 230. Para el greeter: `enable-hidpi=on`, `xft-dpi=192`
+  y Onboard 420. `gts9uwifi-lightdm-hidpi` prepara dconf antes de LightDM.
+- El hook reverse PRIME pasó de `ExecStartPost` a
+  `display-setup-script=/usr/libexec/gts9uwifi-panel-reinit`: se ejecuta después
+  de que X esté listo y antes de Slick Greeter, asocia providers, hace DSI
+  off/on y fija 2960×1848@120 antes de que el teclado calcule su layout.
+- PRIME Synchronization=1 limitaba Present/GLX a 27–30 FPS pese a 120 Hz.
+  Desactivarlo en esta topología de buffers LINEAR importados elevó `glxgears`
+  a 117–118 FPS. Se conserva DSI a 120 Hz. Pruebas visuales:
+  `work/obs-tablet-final-full-ui-scale.png` y
+  `work/obs-tablet-final-scale-coldboot.png`.
+
+## 2026-07-22 — sesión 77: QUP SE14 y NVM Samsung desbloquean WCN7850 Bluetooth
+
+- Se integraron built-in `CONFIG_BT`, BREDR/RFCOMM/BNEP/HIDP,
+  `BT_HCIUART`, SERDEV, H4 y QCA. El DTS modela `&uart14`/`bluetooth` con rails
+  y 3,2 Mbaud. v0.67 no creó el serdev porque faltaba activar su wrapper
+  `&qupv3_id_1`; añadido en v0.68.
+- En este Samsung el DTB efectivo lo entrega `vendor_boot`: escribir sólo
+  `boot.img` no cambia el árbol. Tras actualizar ambos aparecieron `serial0-0`,
+  `hci0` y el probe WCN7850.
+- Firmware extraído del vendor stock: `hmtbtfw20.tlv`, `hmtnv20.bin` y variantes
+  b21/b22/b38, con hashes fijados por `stage-stock-wifi-firmware.sh`. El NVM
+  genérico falla al parsear el segmento TLV (`-52`). Una prueba en vivo por
+  hot-rebind con `hmtnv20.b21` completó setup y anunció
+  `BTFW.HAMILTON_C.2.0.1-00280-PATCHZ-1.52014.13`; por ello el DTS fija
+  `firmware-name = "hmtnv20.b21"`.
+
+## 2026-07-22 — sesión 78: v0.69 bootloop por colisión CPIO; v0.70 recupera el arranque
+
+- `hci_qca` es built-in y sondea antes de montar la rootfs microSD. Se añadió
+  soporte `INITRAMFS_OVERLAY_DIR` para concatenar patch+NVM al vendor ramdisk.
+- **Fallo v0.69:** el overlay usaba `/lib/firmware/qca`. El initramfs base tiene
+  `lib -> usr/lib`; la CPIO concatenada intentó crear el directorio `lib` encima
+  del symlink y el equipo se reseteó antes de journald. TWRP no encontró journal
+  del boot y `last_kmsg`/ABL sólo mostraban handoff y reset, pero al desempaquetar
+  la CPIO se identificó la colisión exacta. v0.69 queda prohibida.
+- **Arreglo v0.70:** firmware temprano en `/usr/lib/firmware/qca`, sin tocar el
+  symlink. ZIP `postmarketos-edge-xfce-mainline-v0.70-hidpi-120hz-bluetooth-b21-sm-x910-twrp.zip`,
+  SHA-256 `3c12a4fd5dab9b232f34ad4e42e0ef20a7e12cf2bf71e84d22409af264ab4908`.
+  Se escribieron sólo boot/vendor_boot desde TWRP y el equipo arrancó; el primer
+  probe descargó patch+b21 y terminó `QCA setup on UART is completed`.
+
+## 2026-07-22 — sesión 79: dirección nativa de EFS y descubrimiento Bluetooth
+
+- Aunque existían sysfs/debugfs/rfkill para `hci0`, BlueZ leía una lista vacía.
+  `btmgmt config` dio la prueba definitiva: `Unconfigured controller`, opción
+  soportada `public-address` y opción ausente `public-address`. No era una carrera
+  D-Bus: el NVM Samsung deja la BD_ADDR nula.
+- UFS expone `efs=/dev/sda6`. Se montó exclusivamente con `ro,noload`, se localizó
+  `/bluetooth/bt_addr`, se validó su formato sin copiarla a fuentes y se desmontó.
+  `btmgmt --index 0 public-addr` convirtió el índice en Primary inmediatamente.
+- Arreglo reproducible: dependencia `bluez-btmgmt`, script
+  `gts9uwifi-bluetooth-address`, unidad oneshot antes de `bluetooth.service` y
+  drop-in Required/After. El script espera UFS/índice, monta EFS sólo lectura,
+  aplica la dirección y es idempotente. Tras reinicio limpio la unidad terminó
+  SUCCESS, `missing options` quedó vacío, BlueZ encendió el controlador y un
+  escaneo de 12 s detectó múltiples dispositivos BR/EDR y BLE (incluido un TV,
+  un PC, una báscula y un headset). Emparejamiento/perfiles quedan pendientes.
+
+## 2026-07-22 — sesión 80: recuperación de LightDM y build limpia v0.71
+
+- Después del reinicio Bluetooth, Slick Greeter entró en bucle con
+  `Failed to write X authority ... No space left on device`. No era DSI/HiDPI:
+  `mmcblk1p2` estaba al 100 % por dos directorios temporales propios,
+  `/home/phablet/v067` (192,3 MiB) y `v068` (192,0 MiB). Se borraron únicamente
+  esos staging dirs, recuperando 340,8 MiB (90 % usado). LightDM quedó activo y
+  la cámara confirmó login completo, teclado 2× sin recorte; evidencia
+  `work/obs-v070-bt-login-fixed.png`.
+- Se corrigió además `gts9uwifi-install-xorg-package`: `apk info -v` en Alpine
+  actual imprime metadatos, por lo que reinstalaba r10 en cada arranque de
+  LightDM. Ahora `apk list -I` comprueba la versión; test vivo por timestamp:
+  `XORG_INSTALLER_IDEMPOTENT=1`.
+- Build limpia v0.71 desde worktree a13c140cc: kernel, DTB y módulos ath12k
+  recompilados. El primer empaquetado falló sólo porque faltaba crear
+  `/usr/lib/systemd/system`; añadido al `mkdir` y reempaquetado con los outputs
+  de la misma build. `BUILD_EXIT=0`.
+- ZIP final:
+  `artifacts/postmarketos-edge-xfce-mainline-v0.71-hidpi-120hz-bluetooth-sm-x910-twrp.zip`,
+  30.269.344 bytes, SHA-256
+  `ec7b7480e2c20ad3a7b06d2f82d5653c8884fa325d1a83de637a259ed365405c`.
+  Imágenes: boot `56e99c74a72642bbd3a22df34bd32c505e128680279d09c9382c568d0929b6ef`,
+  vendor_boot `f57571ca7a37be9e48333aa52e92f9324aff0cbb35ac4dd18066f067d417349f`.
+  El ZIP no se flasheó: la tablet mantiene v0.70 boot/vendor_boot y los cambios
+  userspace v0.71 ya instalados/validados en vivo.

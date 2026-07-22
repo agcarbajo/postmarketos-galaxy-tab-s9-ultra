@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+# Keep the native 2960x1848 framebuffer.  XRandR transforms clip the reverse
+# PRIME scanout, so scale GTK's complete widget coordinate space instead.
+set_xfconf() {
+	channel=$1
+	property=$2
+	type=$3
+	value=$4
+
+	if ! xfconf-query -c "$channel" -p "$property" -s "$value" 2>/dev/null; then
+		xfconf-query -c "$channel" -p "$property" -n -t "$type" -s "$value"
+	fi
+}
+
+set_xfconf xsettings /Xft/DPI int 96
+set_xfconf xsettings /Gdk/WindowScalingFactor int 2
+set_xfconf xsettings /Gtk/CursorThemeSize int 32
+set_xfconf xfce4-panel /panels/panel-1/size uint 36
+set_xfconf xfwm4 /general/theme string Default
+set_xfconf xfce4-desktop /desktop-icons/icon-size uint 48
+
+# Onboard applies GDK's 2x scale as well; use logical heights that result in a
+# roughly 460 px landscape dock instead of doubling the previous 420 px dock.
+gsettings set org.onboard.window.landscape dock-height 230
+gsettings set org.onboard.window.landscape dock-expand true
+gsettings set org.onboard.window.portrait dock-height 300
+
+exit 0

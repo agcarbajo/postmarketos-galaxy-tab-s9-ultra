@@ -7,31 +7,51 @@ version=${WIFI_BUILD_VERSION:-0.42}
 kernel="$base/out/kernel-gts9uwifi-v${version/./}"
 bundle="$base/out/gts9uwifi-mainline-v$version"
 overlay="$base/out/rootfs-overlay-v$version"
+initramfs_overlay="$base/out/initramfs-overlay-v$version"
 artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v$version-wcn7850-pcie-cold-reset-sm-x910-twrp.zip"}
 firmware="$project/pmaports/device/testing/firmware-samsung-gts9uwifi"
 xorg_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/xorg-server-999921.1.23-r10.apk"
 
-bash "$project/scripts/stage-gpu-firmware.sh"
-bash "$project/scripts/build-custom-xorg.sh"
+if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
+	# Packaging-only recovery after a late overlay/bundle failure.  Never use
+	# this unless the same version's kernel and custom Xorg were already built.
+	test -f "$kernel/Image.gz"
+	test -f "$kernel/sm8550-samsung-gts9uwifi.dtb"
+	test -d "$kernel/modules-root"
+	test -f "$xorg_apk"
+else
+	bash "$project/scripts/stage-gpu-firmware.sh"
+	bash "$project/scripts/build-custom-xorg.sh"
 
-KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
-	bash "$project/scripts/build-mainline-kernel.sh"
+	KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
+		bash "$project/scripts/build-mainline-kernel.sh"
+fi
 
 case "$overlay" in
 	"$base"/out/rootfs-overlay-v*) rm -rf -- "$overlay" ;;
 	*) echo "unsafe overlay path: $overlay" >&2; exit 1 ;;
+esac
+case "$initramfs_overlay" in
+	"$base"/out/initramfs-overlay-v*) rm -rf -- "$initramfs_overlay" ;;
+	*) echo "unsafe initramfs overlay path: $initramfs_overlay" >&2; exit 1 ;;
 esac
 mkdir -p \
 	"$overlay/etc/modules-load.d" \
 	"$overlay/etc/modprobe.d" \
 	"$overlay/etc/ssh/sshd_config.d" \
 	"$overlay/etc/X11/xorg.conf.d" \
+	"$overlay/etc/lightdm/lightdm.conf.d" \
+	"$overlay/etc/xdg/autostart" \
 	"$overlay/etc/systemd/system/lightdm.service.d" \
+	"$overlay/etc/systemd/system/bluetooth.service.d" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
+	"$overlay/usr/lib/firmware/qca" \
 	"$overlay/usr/lib/firmware/qcom" \
 	"$overlay/usr/libexec" \
+	"$overlay/usr/lib/systemd/system" \
 	"$overlay/usr/share/gts9uwifi/packages" \
-	"$overlay/usr/share/X11/xorg.conf.d"
+	"$overlay/usr/share/X11/xorg.conf.d" \
+	"$initramfs_overlay/usr/lib/firmware/qca"
 
 cp -a "$kernel/modules-root/." "$overlay/"
 install -m 0644 "$project/configs/wifi/ath12k.conf" \
@@ -44,6 +64,12 @@ install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.c
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \
 	"$overlay/etc/ssh/gts9uwifi_authorized_keys"
+install -m 0755 "$project/configs/bluetooth/gts9uwifi-bluetooth-address" \
+	"$overlay/usr/libexec/gts9uwifi-bluetooth-address"
+install -m 0644 "$project/configs/bluetooth/gts9uwifi-bluetooth-address.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
+install -m 0644 "$project/configs/bluetooth/20-gts9uwifi-address.conf" \
+	"$overlay/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
 install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
@@ -58,6 +84,16 @@ install -m 0755 "$project/configs/display-native/gts9uwifi-panel-reinit" \
 	"$overlay/usr/libexec/gts9uwifi-panel-reinit"
 install -m 0644 "$project/configs/display-native/20-gts9uwifi-panel-reinit.conf" \
 	"$overlay/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
+install -m 0644 "$project/configs/display-native/20-gts9uwifi-display.conf" \
+	"$overlay/etc/lightdm/lightdm.conf.d/20-gts9uwifi-display.conf"
+install -m 0755 "$project/configs/display-native/gts9uwifi-lightdm-hidpi" \
+	"$overlay/usr/libexec/gts9uwifi-lightdm-hidpi"
+install -m 0644 "$project/configs/display-native/slick-greeter.conf" \
+	"$overlay/etc/lightdm/slick-greeter.conf"
+install -m 0755 "$project/configs/display-native/gts9uwifi-xfce-hidpi" \
+	"$overlay/usr/libexec/gts9uwifi-xfce-hidpi"
+install -m 0644 "$project/configs/display-native/gts9uwifi-xfce-hidpi.desktop" \
+	"$overlay/etc/xdg/autostart/gts9uwifi-xfce-hidpi.desktop"
 install -m 0644 "$xorg_apk" \
 	"$overlay/usr/share/gts9uwifi/packages/$(basename "$xorg_apk")"
 # Official linux-firmware amss: Samsung's WLAN.HMT downstream amss never
@@ -79,12 +115,26 @@ install -m 0644 "$firmware/qrd-board.bin" \
 install -m 0644 "$firmware/regdb.bin" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0/regdb.bin"
 
+# WCN7850 Bluetooth firmware and Samsung board-NVM variants.  Mainline's
+# hci_qca requests these from qca/ after bringing up the QUP SE14 serdev.
+for f in hmtbtfw20.tlv hmtnv20.bin hmtnv20.b21 hmtnv20.b22 hmtnv20.b38; do
+	install -m 0644 "$firmware/$f" "$overlay/usr/lib/firmware/qca/$f"
+done
+# hci_qca is built-in and probes before the microSD rootfs is mounted.  Keep
+# the patch and the validated GTS9U b21 NVM in the generic initramfs so the
+# first HCI setup succeeds.  Userspace then supplies the native EFS address.
+install -m 0644 "$firmware/hmtbtfw20.tlv" \
+	"$initramfs_overlay/usr/lib/firmware/qca/hmtbtfw20.tlv"
+install -m 0644 "$firmware/hmtnv20.b21" \
+	"$initramfs_overlay/usr/lib/firmware/qca/hmtnv20.b21"
+
 BUNDLE_OUT_DIR="$bundle" \
 BUNDLE_EXPORT_DIR="$bundle/export" \
 INITRAMFS="$base/out/rootfs-gts9uwifi/initramfs" \
 KERNEL_IMAGE="$kernel/Image.gz" \
 KERNEL_DTB="$kernel/sm8550-samsung-gts9uwifi.dtb" \
 PACKAGE_CONFIG="$kernel/config" \
+INITRAMFS_OVERLAY_DIR="$initramfs_overlay" \
 APPEND_DTB_TO_KERNEL=1 \
 DISABLE_RUNTIME_DTBO=1 \
 	bash "$project/scripts/build-android-v4-bundle.sh"

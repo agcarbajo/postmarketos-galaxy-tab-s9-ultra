@@ -1,8 +1,8 @@
 maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=firmware-samsung-gts9uwifi
 pkgver=1
-pkgrel=4
-pkgdesc="Stock Qualcomm Kiwi v2 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+pkgrel=5
+pkgdesc="Stock Qualcomm Kiwi v2 Wi-Fi and Bluetooth firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 url="https://www.samsung.com/"
 arch="aarch64"
 license="proprietary"
@@ -13,6 +13,11 @@ source="
 	official-board-2.bin
 	qrd-board.bin
 	regdb.bin
+	hmtbtfw20.tlv
+	hmtnv20.bin
+	hmtnv20.b21
+	hmtnv20.b22
+	hmtnv20.b38
 "
 
 package() {
@@ -26,6 +31,16 @@ package() {
 	install -Dm644 "$srcdir/official-board-2.bin" "$fw/board-2.bin"
 	install -Dm644 "$srcdir/qrd-board.bin" "$fw/board.bin"
 	install -Dm644 "$srcdir/regdb.bin" "$fw/regdb.bin"
+
+	# WCN7850 Bluetooth over QUP SE14.  The X910 DTS explicitly requests the
+	# validated Samsung b21 NVM; retain the other stock variants and generic
+	# image for diagnostics and fallback experiments.
+	local bt="$pkgdir/usr/lib/firmware/qca"
+	install -Dm644 "$srcdir/hmtbtfw20.tlv" "$bt/hmtbtfw20.tlv"
+	install -Dm644 "$srcdir/hmtnv20.bin" "$bt/hmtnv20.bin"
+	install -Dm644 "$srcdir/hmtnv20.b21" "$bt/hmtnv20.b21"
+	install -Dm644 "$srcdir/hmtnv20.b22" "$bt/hmtnv20.b22"
+	install -Dm644 "$srcdir/hmtnv20.b38" "$bt/hmtnv20.b38"
 }
 
 sha512sums="
@@ -34,4 +49,9 @@ f97bf4eaf2e2a902ef2c7776ff729bd871d2bb6c52d54054c7aaf8e2b588c1d546ad6243374a9612
 c64016d271a8bb2d7abcfb445d7a65c7474b25b0d1a008b1f0c064348bac5b6c7d783e3d449b44d3b7eabb10d858fc3c8186a15e7e00094fd23e530853d625b4  official-board-2.bin
 12b5d4fdff6858cc001995dcfb63c9655ff30d29dc48a1aae930fe072a751fe9d16ab4656fde81cdcfe2156d747c8e846cc5e5b3d6b9aa281d1ddc2be7b0518c  qrd-board.bin
 52cf26f9893f42907e3971d890e2ae885b47f74dda3b6599a4293b1d4ae09e3f466a8364a446161a2ace7dc56e52c2ddf4fd3ef92bd47277d103dd104cc40188  regdb.bin
+76d3df493dcca1e08528a8076950216bd9937254b190a0e719c5492ff137d5287b9c25339c788a80285c0f4b7416cdac9d7bebbcde6fa3ccd69390f50cb7f1a9  hmtbtfw20.tlv
+b3a440b78363b3e3ce0152ce0f75054f248b83fc67ea5152a6f971174756c5ce82ef8bb57485563cc6f941526d2809c62c0fb292bd9f7c64e9583fffb9ac01a4  hmtnv20.bin
+7651a23cd8027095383955a3dbde42bcccdd517bfc043f6587f97e70db8082a79a10a3ec5d70f6944d3e1762ea4bea57d8cf3d5262c2783c870fd4bf3d2a92be  hmtnv20.b21
+a4b03827b9aa0bbacad60b063a0f81b1903ff41b2e37b350352389c9840f17a4ef0ebee37fcf22ae1df14f6649f60fe0eaf38c8650fa84e7eed7db910ebb0363  hmtnv20.b22
+a4b03827b9aa0bbacad60b063a0f81b1903ff41b2e37b350352389c9840f17a4ef0ebee37fcf22ae1df14f6649f60fe0eaf38c8650fa84e7eed7db910ebb0363  hmtnv20.b38
 "
