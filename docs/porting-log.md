@@ -3188,3 +3188,37 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
      `dsi_hs_mode`).
   El pipeline es un HITO enorme: sólo falta afinar los bytes de init del DDIC,
   que es trabajo iterativo (cada intento = build + flash TWRP).
+
+## 2026-07-22 — sesión 71: v0.58 da imagen; v0.59 habilita UFS y se valida en vivo
+
+- **Display nativo resuelto en v0.58.** El DDIC `lcd_id=0x800004` necesitaba la
+  secuencia rev-D: VBP/DISPLAY_ON_DELAY antes de `0x11`, TSP sync rev-C+, DIA
+  activa y brillo explícito `0x51=0x07ff`. Con esos cambios el panel
+  ANA38407/AMSA46AS02 muestra físicamente XFCE a 2960×1848 sobre el pipeline
+  nativo dispcc → msm_dpu → DSI command mode + DSC + TE → panel.
+- ZIP v0.58:
+  `postmarketos-edge-xfce-mainline-v0.58-native-display-revd-sm-x910-twrp.zip`,
+  28.051.794 bytes, SHA-256
+  `3b95f08793873d6da043754399f2d61f13fcde5651f475361a365e882fea226e`.
+- **UFS v0.59.** Se integran built-in `CONFIG_SCSI_UFS_QCOM=y` y
+  `CONFIG_PHY_QCOM_QMP_UFS=y`, los nodos `&ufs_mem_hc`/`&ufs_mem_phy`, reset
+  GPIO210 y rails L17B 2,504 V, L1G 1,2 V, L1E 0,88 V y L3E/L3G 1,2 V. El
+  paquete kernel queda reproducible como r34 con checksums actualizados.
+- ZIP v0.59:
+  `postmarketos-edge-xfce-mainline-v0.59-ufs-selfflash-sm-x910-twrp.zip`,
+  28.081.015 bytes, SHA-256
+  `a5feba247bc0cc77bc0c5ce3d926f6d7c006d6377f6b847370a6d13a67d06ceb`.
+  Se flasheó desde TWRP con el script autorizado `work/flash-v059.ps1`; el
+  instalador alcanzó `Unmounting System...`, ADB cayó como estaba previsto y
+  la tablet arrancó sola.
+- **Validación en vivo v0.59 (`#32`).** `ufshcd-qcom` registra `scsi host0` y
+  enumera las seis LUN UFS `sda`–`sdf`. Las particiones internas aparecen por
+  nombre: `boot=/dev/sda21`, `init_boot=/dev/sda22`,
+  `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30`; `vbmeta=/dev/sde15` sigue
+  correctamente read-only. La raíz continúa en `mmcblk1p2`.
+- No hay regresión: DSI-1 está `connected`, LightDM activo, Wi-Fi asociada y
+  SSH identificado por la host key física. El estado gráfico previo queda
+  confirmado: cmdline con `msm.separate_gpu_kms=1`, `card0=adreno`,
+  `card1=msm_dpu`; Xorg fuerza `kmsdev card1` y `AccelMethod none`, y el DPU
+  avisa `no GPU device was found`. El siguiente paso es retirar la separación,
+  dejar que mdss cree el master DRM unificado y habilitar glamor.

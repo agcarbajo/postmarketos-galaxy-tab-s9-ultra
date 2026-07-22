@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-21 (sesión 70, ✅ GPU Adreno 740 arrancada en v0.53: render node + Mesa FD740 GL 4.6; pendiente cuelgue bajo carga).
+> Última actualización: 2026-07-22 (sesión 71, ✅ v0.59 validada: display DSI nativo + UFS interno + Wi-Fi/SSH; reto actual: GPU unificada con DPU y glamor).
 
 ## Objetivo
 
@@ -53,9 +53,9 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
-| DTS `gts9uwifi` | ✅ Sin cambios desde v0.44; SW_CTRL, AOP/PDC, rails y secuencia eléctrica verificados |
+| DTS `gts9uwifi` | ✅ v0.59: WCN7850, Goodix, GPU, display DSI/DSC nativo y UFS interno activos |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🧪 Kernel r29 (v0.51) añade la GPU Adreno 740 built-in (`DRM_MSM=y`, `GPUCC_SM8550=y`, `QCOM_LLCC=y`) headless sobre la base limpia r28; firmware r5 (QRD Wi-Fi + zap/GMU Adreno firmados por Samsung) |
+| Paquetes pmaports | ✅ Kernel fuente r34: Adreno/DPU/DSI/panel/UFS built-in; firmware r5 (QRD Wi-Fi + zap/GMU Adreno firmados por Samsung) |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ v0.31 llega físicamente a LightDM con el kernel/DTS actuales; la regresión de los pingüinos queda aislada a la carga de algún módulo |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -63,8 +63,10 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ v0.53 flasheada y validada físicamente: GPU Adreno 740 arrancada (render node + Mesa FD740 OpenGL 4.6); Wi-Fi + táctil + escritorio OK |
-| GPU Adreno 740 | 🧪 **v0.53: arranca de verdad** — `renderD128`, GMU fw v4.1.9, `gpu-initialized: 1`, y Mesa/freedreno da contexto GL 4.6. Pendiente: cuelga bajo carga sostenida de glamor (`hangcheck rb 2`), mitigado desactivando la aceleración de Xorg |
+| Imagen/paquete de prueba | ✅ v0.59 flasheada y validada: display DSI nativo, UFS interno, Wi-Fi, táctil y escritorio |
+| Display nativo | ✅ **v0.58/v0.59**: ANA38407/AMSA46AS02 2960×1848, DSI command mode + DSC + TE; secuencia rev-D y brillo explícito emiten imagen |
+| UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
+| GPU Adreno 740 | 🧪 Render node + Mesa/Turnip GL 4.6 operativos. v0.59 aún separa GPU (`card0`) y DPU (`card1`) por `msm.separate_gpu_kms=1`; Xorg usa software. Siguiente build: DRM msm unificado + glamor |
 
 ## Reto en curso
 
@@ -77,7 +79,20 @@ Wi-Fi completa quedó: rails/PDC verificados → mux PIPE des-aparcado (v0.45)
 BDF QRD en ELF (v0.49) → WMI ready → mac80211 → `wlan0` asociada con señal
 65 a 270 Mbit/s.
 
-Trabajo actual (con canal de control en vivo por SSH, sin ciclos ciegos):
+Trabajo actual (con canal de control en vivo por SSH y UFS):
+
+1. **Aceleración del display nativo**: retirar `msm.separate_gpu_kms=1` para que
+   el component master de `mdss` una Adreno + DPU en una sola tarjeta DRM, y
+   retirar la configuración Xorg `AccelMethod "none"`/`kmsdev card1` para que
+   modesetting use glamor sobre buffers comunes de scanout. v0.59 confirma el
+   estado previo exacto: `card0=adreno`, `card1=msm_dpu` y el kernel registra
+   `msm_dpu ... no GPU device was found`.
+2. **Iteración autónoma desbloqueada**: UFS ya expone por partlabel las
+   particiones internas. Las próximas imágenes `boot`/`vendor_boot` se pueden
+   escribir por SSH y validar por hash antes de un reinicio normal; TWRP queda
+   como recuperación, no como requisito de cada iteración.
+
+Historial de tareas anteriores:
 
 1. RF nativo Samsung — **CERRADO NEGATIVO** (sesión 68): un arranque limpio de
    prueba en vivo (con rollback autónomo) demostró que la BDF Samsung se

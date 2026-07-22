@@ -109,6 +109,12 @@ CONFIG_SM_DISPCC_8550=y
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 CONFIG_DRM_PANEL_SAMSUNG_ANA38407=y
 
+# Internal UFS storage (built-in; the QCOM glue and UFS QMP phy default to =m).
+# Lets pmOS reach the on-device boot partition so builds can be flashed over SSH
+# without a TWRP round-trip; the rootfs itself still boots from the microSD.
+CONFIG_SCSI_UFS_QCOM=y
+CONFIG_PHY_QCOM_QMP_UFS=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set

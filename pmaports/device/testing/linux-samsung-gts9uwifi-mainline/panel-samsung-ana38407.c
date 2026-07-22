@@ -77,16 +77,11 @@ static int ana38407_on(struct ana38407 *ctx)
 
 	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
-	/* sleep out */
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x11);
-	mipi_dsi_msleep(&dsi_ctx, 120);
-
-	/* Diagnostic: confirm the DDIC answers on the DSI link. */
-	mipi_dsi_dcs_read(ctx->dsi, 0xda, &id[0], 1);
-	mipi_dsi_dcs_read(ctx->dsi, 0xdb, &id[1], 1);
-	mipi_dsi_dcs_read(ctx->dsi, 0xdc, &id[2], 1);
-	dev_info(&ctx->dsi->dev, "ana38407 panel id: %02x %02x %02x\n",
-		 id[0], id[1], id[2]);
+	/*
+	 * Rev C/D order (POWER_ON_PRE_SETTING): VBP and the display-on-delay
+	 * register writes come BEFORE sleep-out.  The panel id (0x80 0x00 0x04,
+	 * read by the bootloader as lcd_id=0x800004) is revision D.
+	 */
 
 	/* VBP_SETTING_FOR_SDC_IP */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
@@ -105,6 +100,17 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xc0, 0x0f, 0x00, 0x00, 0x00, 0x01, 0x04, 0x81);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf1, 0xa5, 0xa5);
+
+	/* sleep out */
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x11);
+	mipi_dsi_msleep(&dsi_ctx, 120);
+
+	/* Diagnostic: confirm the DDIC answers on the DSI link. */
+	mipi_dsi_dcs_read(ctx->dsi, 0xda, &id[0], 1);
+	mipi_dsi_dcs_read(ctx->dsi, 0xdb, &id[1], 1);
+	mipi_dsi_dcs_read(ctx->dsi, 0xdc, &id[2], 1);
+	dev_info(&ctx->dsi->dev, "ana38407 panel id: %02x %02x %02x\n",
+		 id[0], id[1], id[2]);
 
 	/* MX_IP_ENABLE */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
@@ -135,14 +141,12 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x35, 0x00);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
-	/* TSP_SYNC_ON */
+	/* TSP_SYNC_SETTING (rev C+) */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb0, 0x0b, 0xb9);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb9, 0xcc);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb0, 0x0e, 0xb9);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb9, 0x15);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb0, 0x10, 0xb9);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb9, 0x88, 0x88, 0x88, 0x88);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
 	/*
@@ -157,14 +161,22 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
+	/* DIA_SETTING (digital image adjust on) */
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x91, 0x02);
+
+	/*
+	 * BRIGHTNESS: dimming control (normal) + an explicit non-zero brightness
+	 * level (0x51, 12-bit).  Without a real 0x51 write the DDIC emits black
+	 * even with the display on.
+	 */
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x53, 0x28);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x51, 0x07, 0xff);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
+
 	/* SP_SETTING */
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xc3, 0x02);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
-
-	/* default brightness dimming control (normal mode) */
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x53, 0x28);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
 	mipi_dsi_msleep(&dsi_ctx, 50);

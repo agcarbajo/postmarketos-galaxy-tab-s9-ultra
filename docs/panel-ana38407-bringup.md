@@ -137,3 +137,15 @@ Delay 100ms
 `work/samsung-panel-src/` (gitignored): `*_panel.c/.h`, `*_PDF.h`,
 `PDF-decoded.txt`, `ss_dsi_panel_common.h`. Origen: opensource.samsung.com,
 GPL-2.0 (kernel) — el .dat/mdnie son datos de calibración propietarios.
+
+## Resultado físico final (v0.58)
+
+- El pipeline SoC ya completaba frames en v0.57; la ausencia de emisión era la
+  secuencia del DDIC. El `lcd_id=0x800004` corresponde a revisión D.
+- v0.58 aplica el orden rev-C/D `POWER_ON_PRE_SETTING`: VBP y
+  DISPLAY_ON_DELAY se programan **antes** de `SLEEP_OUT (0x11)`.
+- Usa `TSP_SYNC_SETTING` rev-C+, habilita DIA (`0x91 0x02`) y fija brillo no
+  nulo con `0x53 0x28` + `0x51 0x07 0xff` antes de `DISPLAY_ON (0x29)`.
+- Resultado validado físicamente: el panel emite el escritorio XFCE a
+  2960×1848 mediante DPU → DSI command mode → DSC → ANA38407. v0.59 conserva
+  exactamente esta secuencia y añade UFS sin regresión visual.
