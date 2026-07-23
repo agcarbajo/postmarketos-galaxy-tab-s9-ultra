@@ -3,7 +3,7 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-22 (sesión 81: Bluetooth A2DP validado de extremo a extremo con los Buds2 Pro; bug de blanking DPMS encontrado y arreglado — xfce4-power-manager reactivaba el DPMS y el ANA38407 no resume de un blank, ahora el DPMS queda deshabilitado de forma reproducible).
+> Última actualización: 2026-07-23 (sesión 82: audio interno paso 1 — **el ADSP arranca y autentica en mainline**. Firmware Samsung `adsp.mdt` + `adsp_dtb.mdt` extraído de apnhlos, configs remoteproc PAS `=y`, nodo `&remoteproc_adsp` activado. Descubierto que el ABL del X910 usa el DTB de **vendor_boot**, no el anexado en boot.img. El path de interconnect LPASS no resuelve (grafo desconectado) → se elide y el ADSP hace PAS secure-boot OK: `remote processor adsp is now up`. Service `gts9uwifi-adsp-boot` lo arranca tras montar el rootfs (auto_boot es demasiado temprano para el firmware de 34 MB en microSD). v0.72 boot+vendor_boot flasheados por UFS; BT intacto.
 
 ## Objetivo
 
@@ -68,6 +68,7 @@ demostrarlo en este dispositivo.
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
 | Bluetooth WCN7850 | ✅ **Validado de extremo a extremo (sesión 81)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21`, dirección pública nativa de EFS. Bonds persistentes (Buds2 Pro + móvil), sink A2DP clásico creado y audio real confirmado (YouTube en Chromium por los Buds). Servidor de sonido = PulseAudio 17. HID sin probar por falta de periférico BT |
+| ADSP (audio DSP) | 🟡 **Paso 1 hecho (sesión 82): el ADSP arranca y autentica**. `qcom,sm8550-adsp-pas` `=y`, firmware Samsung `qcom/sm8550/adsp.mdt` + `adsp_dtb.mdt` (de apnhlos; el `adsp_dtb` es OBLIGATORIO, `dtb_pas_id=0x24`, y va en `firmware-name` índice 1). PAS secure-boot OK → `remote processor adsp is now up`, `state=running`. Arranca vía service `gts9uwifi-adsp-boot` (auto_boot dispara a ~2 s, antes del rootfs). Interconnect LPASS elidido temporalmente. **Falta:** GPR/q6apm/q6afe/q6prm, LPASS macros, soundwire, WCD938x/WSA88x, machine card → tarjeta ALSA y PCM real |
 
 ## Reto en curso
 
@@ -90,12 +91,29 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    lightdm. El autostart HiDPI ahora deshabilita el DPMS de xfce4-power-manager;
    verificado `DPMS is Disabled` en la sesión de usuario. **Pendiente:** el
    suspend/resume REAL del panel (que un blank pueda re-encender el OLED).
-3. **Siguiente: audio interno y botones (Tarea 3).** Audio interno = bring-up
-   grande: no hay tarjeta ALSA, configs `SND_SOC_QCOM/LPASS` en `=m`, falta el
-   stack ADSP(q6/GPR)+soundwire+códecs WCD/WSA+LPASS+machine card. Botones =
-   añadir `gpio-keys`/`pwrkey` al DTS (power vía PMIC PON, volumen vía resin/gpio).
-   Después: sensores y USB Code 43. UFS permite iterar por SSH sobre
-   `boot`/`vendor_boot`; TWRP queda como recuperación.
+3. **Audio interno (Tarea 3) — 🟡 EN CURSO, paso 1 hecho (sesión 82).** El
+   **ADSP arranca y autentica** en mainline: configs remoteproc PAS `=y`
+   (`QCOM_Q6V5_PAS/COMMON`, `RPROC_COMMON`, `SYSMON`, `RPMSG_QCOM_GLINK_SMEM`),
+   nodo `&remoteproc_adsp` con `firmware-name = "qcom/sm8550/adsp.mdt",
+   "qcom/sm8550/adsp_dtb.mdt"` (el `adsp_dtb` es obligatorio: `dtb_pas_id=0x24`).
+   Firmware Samsung extraído de apnhlos → paquete `firmware-samsung-gts9uwifi` r6
+   y rootfs. PAS secure-boot lo acepta (a diferencia de la BDF de Wi-Fi):
+   `remote processor adsp is now up`. Lo arranca el service
+   `gts9uwifi-adsp-boot` tras montar el rootfs. **Descubrimiento clave:** el ABL
+   del X910 aplica el DTB de **vendor_boot** (no el anexado en boot.img) → para
+   cambios de DTS hay que reflashear `vendor_boot` (sda24), no basta `boot`.
+   **Pendientes del audio:** (a) el path de interconnect LPASS del ADSP no
+   resuelve (grafo desconectado; `lpass_ag_noc@7e40000` disabled upstream) — hoy
+   se elide borrando `interconnects`, restaurar cuando se arregle el grafo;
+   (b) `QCOM_PDR_HELPERS/MSG` bajan a `=m` (dependen de QRTR=m); (c) el stack
+   GPR/q6apm/q6afe/q6prm + LPASS macros + soundwire + WCD938x/WSA88x + machine
+   card para tener tarjeta ALSA y PCM real. Método de prueba de sonido: micro de
+   los cascos BT pegados a la tablet capta los altavoces (y viceversa para el
+   micro), grabando por OBS.
+4. **Botones (Tarea 3).** Añadir `gpio-keys`/`pwrkey` al DTS (power vía PMIC PON,
+   volumen vía resin/gpio); avisar a la usuaria para probar las pulsaciones.
+   Después: sensores, USB Code 43 y cámaras. UFS permite iterar por SSH sobre
+   `boot`/`vendor_boot`; TWRP/Download Mode quedan como recuperación.
 
 Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
 

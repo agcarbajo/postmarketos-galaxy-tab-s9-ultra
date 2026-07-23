@@ -3508,3 +3508,80 @@ porque se quitó `simple-framebuffer`). Diagnóstico incremental:
   todo el stack ADSP(q6/GPR)+soundwire+códecs WCD/WSA+LPASS+machine card. Bring-up
   grande. Botones (Tarea 3b): sólo el táctil Goodix en input; faltan `gpio-keys`
   y `pwrkey` (añadir nodos DTS; power vía PMIC PON, volumen vía resin/gpio).
+
+## 2026-07-23 — sesión 82: audio interno paso 1 — el ADSP arranca y autentica en mainline
+
+Objetivo: de-riesgar la Tarea 3 (audio interno) confirmando lo más incierto —
+si el firmware del ADSP de Samsung es aceptado por el secure boot del SoC bajo
+mainline (como NO ocurrió con la BDF RF de Wi-Fi). Resultado: **sí lo acepta**.
+
+**Configs remoteproc PAS a `=y`** en `config-gts9uwifi.fragment` (este port no
+autocarga módulos): `CONFIG_REMOTEPROC`, `QCOM_RPROC_COMMON`, `QCOM_Q6V5_COMMON`,
+`QCOM_Q6V5_PAS`, `QCOM_SYSMON`, `QCOM_PDR_HELPERS`, `QCOM_PDR_MSG`,
+`RPMSG_QCOM_GLINK_SMEM`. La build aborta si un símbolo no existe (red de
+seguridad). Nota: `QCOM_PDR_HELPERS/MSG` bajan a `=m` porque dependen de
+`QRTR=m` (un tristate no supera su dependencia `=m`, mismo patrón que LLCC/DRM_MSM
+en la GPU). No bloquea el arranque del ADSP; queda para cuando haga falta PD
+restart / QMI de audio.
+
+**DTS `&remoteproc_adsp`** (label = `remoteproc@6800000`, compatible
+`qcom,sm8550-adsp-pas`): `status = "okay"` + `firmware-name = "qcom/sm8550/adsp.mdt",
+"qcom/sm8550/adsp_dtb.mdt"`. El segundo elemento (índice 1) es OBLIGATORIO: el
+driver tiene `dtb_pas_id = 0x24`, así que en `qcom_pas_prepare` hace
+`request_firmware(adsp_dtb)` y si falla `return ret` (fatal). El driver lee la
+ruta del dtb de `firmware-name` índice 1; sin él usaría `desc->dtb_firmware_name
+= "adsp_dtb.mdt"` SIN el prefijo `qcom/sm8550/`. Los carveouts ya existen
+(`adspslpi_mem` redefinido a 9ea00000 en el board DTS; `q6_adsp_dtb_mem` a
+9e980000 upstream).
+
+**Firmware Samsung extraído de apnhlos** (`/dev/disk/by-partlabel/apnhlos`,
+vfat, `/image/`): `adsp.mdt` (ELF32 QUALCOMM DSP6) + 48 segmentos `adsp.bNN`
+(~33 MB; faltan b26/b29/b37/b50 = segmentos filesz=0 que el loader mdt salta) +
+`adsp_dtb.mdt` + `adsp_dtb.b00..b02`. Empaquetados en
+`firmware-samsung-gts9uwifi` r6 bajo `/usr/lib/firmware/qcom/sm8550/` (loop en
+`package()`), y staged en el overlay de rootfs por `build-wifi-bringup.sh`. El
+`adsp.mbn` de referencia de Qualcomm NO sirve (firma Qualcomm, rechazada por el
+secure boot de Samsung); el `.mdt` de Samsung sí.
+
+**DESCUBRIMIENTO CLAVE — el ABL del X910 usa el DTB de vendor_boot, no el
+anexado en boot.img.** Primer intento: reflasheé sólo `boot` (sda21). El nodo
+seguía `status=disabled` en `/proc/device-tree` pese a que el DTB construido
+tenía el override (verificado por `dtc`). Como `adspslpi@9ea00000` ya estaba en
+v0.70, no era prueba de DTB nuevo. Al reflashear `vendor_boot` (sda24, mismo
+`--dtb`) el nodo pasó a `okay`. Corrección de un supuesto de sesiones previas:
+para cambios de DTS hay que reflashear **vendor_boot**, no basta boot.
+
+**Bloqueo de interconnect (elidido).** Con el nodo activo, el probe quedaba en
+`-EPROBE_DEFER` perpetuo: `of_icc_get_by_index: invalid path=-517` →
+`failed to acquire interconnect path`. El nodo vota BW sobre
+`<&lpass_lpicx_noc MASTER_LPASS_PROC ... &mc_virt SLAVE_EBI1 ...>`. Ambos
+extremos SÍ registran (`qxm_lpinoc_dsp_axim@7430000`, `ebi@interconnect-1`) y
+la cadena lpicx→lpiaon→gemnoc→llcc→ebi existe, pero `path_find` no la conecta
+(grafo desconectado; `lpass_ag_noc@7e40000` está `disabled` upstream). Un bind
+manual a t=279 s seguía dando -517 → no es orden de probe. Solución de bring-up:
+`/delete-property/ interconnects;` en el override. `qcom_q6v5_init` trata el path
+NULL como válido (`devm_of_icc_get` devuelve NULL sin la propiedad,
+`icc_set_bw(NULL,...)` es no-op). Restaurar un path real cuando se arregle el
+grafo LPASS.
+
+**PAS secure-boot OK.** Con el interconnect elidido, `remoteproc0` aparece como
+`adsp` (offline). El `auto_boot` dispara a ~2 s y falla con `-ENOENT`: el
+firmware de ~34 MB está en el rootfs de la microSD, aún sin montar. Tras montar
+el rootfs, `echo start > .../state`:
+`Booting fw image qcom/sm8550/adsp.mdt` → `remote processor adsp is now up` →
+`Handover signaled`, `state=running`. **El ADSP de Samsung autentica y arranca
+bajo mainline.**
+
+**Service `gts9uwifi-adsp-boot`** (`configs/audio/`, oneshot,
+`After=local-fs.target`, `ConditionPathExists=.../adsp.mdt`,
+`WantedBy=multi-user.target`): busca el remoteproc `name=adsp` y hace el `start`
+tardío. Instalado en vivo y validado tras reboot: a t≈19.6 s el service arranca
+el ADSP sin acción manual (`adsp state now running`). Cableado también en
+`build-wifi-bringup.sh` (symlink en `multi-user.target.wants`). Bluetooth sigue
+intacto en v0.72 (descarga `hmtbtfw20.tlv`+`hmtnv20.b21`, HFP soportado).
+
+Estado de la tablet: v0.72 boot+vendor_boot flasheados por UFS (backups v0.70 en
+`/tmp` del device, volátiles; recuperación real = ZIP v0.71 + Download Mode).
+`cpufreq` sigue sin icc paths (OSM_L3=m) — preexistente, no regresión. Pendiente
+del audio real: GPR/q6apm/q6afe/q6prm + LPASS macros (rx/tx/wsa/va) + soundwire
+(swr0/1/2) + WCD938x + WSA88x + machine sound card → tarjeta ALSA y PCM.

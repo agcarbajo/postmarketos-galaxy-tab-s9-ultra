@@ -132,6 +132,21 @@ CONFIG_DRM_PANEL_SAMSUNG_ANA38407=y
 CONFIG_SCSI_UFS_QCOM=y
 CONFIG_PHY_QCOM_QMP_UFS=y
 
+# Internal audio, step 1: the ADSP (audio DSP) remoteproc.  All of this defaults
+# to =m and this port does not autoload modules, so it must be built-in or the
+# ADSP never probes.  Firmware is Samsung's own adsp.mdt (extracted from the
+# apnhlos partition; the reference qcom/sm8550/adsp.mbn is Qualcomm-signed and
+# would be rejected by Samsung's secure boot).  This is the foundation the q6
+# audio (GPR/soundwire/codecs/sound card) is built on later.
+CONFIG_REMOTEPROC=y
+CONFIG_QCOM_RPROC_COMMON=y
+CONFIG_QCOM_Q6V5_COMMON=y
+CONFIG_QCOM_Q6V5_PAS=y
+CONFIG_QCOM_SYSMON=y
+CONFIG_QCOM_PDR_HELPERS=y
+CONFIG_QCOM_PDR_MSG=y
+CONFIG_RPMSG_QCOM_GLINK_SMEM=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set

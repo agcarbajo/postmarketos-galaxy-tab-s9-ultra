@@ -47,8 +47,10 @@ mkdir -p \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/lib/firmware/qca" \
 	"$overlay/usr/lib/firmware/qcom" \
+	"$overlay/usr/lib/firmware/qcom/sm8550" \
 	"$overlay/usr/libexec" \
 	"$overlay/usr/lib/systemd/system" \
+	"$overlay/usr/lib/systemd/system/multi-user.target.wants" \
 	"$overlay/usr/share/gts9uwifi/packages" \
 	"$overlay/usr/share/X11/xorg.conf.d" \
 	"$initramfs_overlay/usr/lib/firmware/qca"
@@ -60,6 +62,13 @@ install -m 0644 "$project/configs/wifi/ath12k.conf" \
 for f in a740_zap.mdt a740_zap.b00 a740_zap.b01 a740_zap.b02 a740_sqe.fw gmu_gen70200.bin; do
 	install -m 0644 "$firmware/$f" "$overlay/usr/lib/firmware/qcom/$f"
 done
+# ADSP (audio DSP) boot image under qcom/sm8550 — Samsung's own signed adsp.mdt
+# + segments (matches DTS firmware-name = "qcom/sm8550/adsp.mdt").  The mainline
+# qcom_q6v5_pas mdt loader reads adsp.mdt and pulls each adsp.bNN segment.
+for f in "$firmware"/adsp.mdt "$firmware"/adsp.b* \
+	 "$firmware"/adsp_dtb.mdt "$firmware"/adsp_dtb.b*; do
+	install -m 0644 "$f" "$overlay/usr/lib/firmware/qcom/sm8550/${f##*/}"
+done
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \
@@ -70,6 +79,15 @@ install -m 0644 "$project/configs/bluetooth/gts9uwifi-bluetooth-address.service"
 	"$overlay/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
 install -m 0644 "$project/configs/bluetooth/20-gts9uwifi-address.conf" \
 	"$overlay/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
+# Internal audio step 1: late-start the ADSP remoteproc once the rootfs (which
+# carries the ~34 MB Samsung ADSP firmware) is mounted.  auto_boot fires too
+# early to see the microSD firmware, so a oneshot service does the real start.
+install -m 0755 "$project/configs/audio/gts9uwifi-adsp-boot" \
+	"$overlay/usr/libexec/gts9uwifi-adsp-boot"
+install -m 0644 "$project/configs/audio/gts9uwifi-adsp-boot.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-adsp-boot.service"
+ln -sf ../gts9uwifi-adsp-boot.service \
+	"$overlay/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-adsp-boot.service"
 install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \

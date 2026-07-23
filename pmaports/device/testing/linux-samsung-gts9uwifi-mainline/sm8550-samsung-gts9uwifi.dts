@@ -762,3 +762,33 @@
 	vdda-pll-supply = <&vreg_l3e_1p2>;
 	status = "okay";
 };
+
+/*
+ * ADSP (audio DSP) — step 1 of internal audio.  Uses Samsung's own signed
+ * firmware (adsp.mdt + adsp_dtb.mdt + segments, extracted from apnhlos) because
+ * the reference qcom/sm8550/adsp.mbn is Qualcomm-signed and rejected by Samsung
+ * secure boot.  The sm8550-adsp-pas driver has dtb_pas_id set, so the second
+ * firmware-name entry (index 1) is mandatory — without it request_firmware for
+ * adsp_dtb.mdt fails and the ADSP never boots.  Both paths carry the qcom/sm8550
+ * prefix so the loader looks under /usr/lib/firmware/qcom/sm8550/.
+ * The ADSP is not on the boot path (rootfs is on the microSD), so a probe
+ * failure does not break booting.  q6/soundwire/codecs/sound come later.
+ */
+&remoteproc_adsp {
+	firmware-name = "qcom/sm8550/adsp.mdt",
+			"qcom/sm8550/adsp_dtb.mdt";
+	/*
+	 * Bring-up: drop the LPASS interconnect path.  The upstream node votes
+	 * bandwidth over <&lpass_lpicx_noc MASTER_LPASS_PROC ... &mc_virt
+	 * SLAVE_EBI1 ...>, but on this tree of_icc_get for that path never
+	 * resolves (the LPASS sub-graph does not connect to mc_virt in the
+	 * registered icc graph; lpass_ag_noc@7e40000 is disabled upstream), so
+	 * the driver stays in -EPROBE_DEFER and never reaches firmware load.
+	 * qcom_q6v5_init() treats a NULL path as valid (devm_of_icc_get returns
+	 * NULL when the property is absent, and icc_set_bw(NULL,...) is a no-op),
+	 * so deleting it lets the ADSP actually attempt PAS auth/boot.  Restore a
+	 * real path once the LPASS interconnect graph is fixed.
+	 */
+	/delete-property/ interconnects;
+	status = "okay";
+};
