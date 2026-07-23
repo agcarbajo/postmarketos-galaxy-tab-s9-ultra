@@ -3652,3 +3652,33 @@ un import privado devuelve `E_ACCESSDENIED`), por lo que no puede ejecutar la
 compilación pesada. Estado honesto al cierre: fuentes y scripts preparados,
 checksums de APKBUILD actualizados y `git diff --check` limpio; **v0.73 todavía
 no construida, no flasheada y audio/botones no validados**.
+
+**Continuación de la sesión 83 — build ejecutada.** Una nueva ejecución Codex
+sí obtuvo acceso a la distro registrada y ejecutó `work/run-build-v073.sh`.
+Worktree limpio en `a13c140cc`; el DTS compiló y Kconfig conservó built-in los
+componentes requeridos. El log muestra compilación real de `q6apm`,
+`audioreach`, `q6prm`, `sc8280xp`, `lpass-va-macro`, `cs35l45-i2c`,
+`gpio_keys` y `pm8941-pwrkey`; el kernel enlazó sin errores. Único aviso:
+`ATH_COMMON=y` queda `=m`, comportamiento conocido y correcto para los dos
+módulos ath12k aislados.
+
+Resultado:
+
+- `BUILD_EXIT=0`;
+- Image.gz SHA-256
+  `20a47686d3fd0133d4d78cdb3a84925c2804a483ef945ae0c475dc566f4bb4f2`;
+- DTB SHA-256
+  `c93e169df2cf24cfffb6766fa25bbf3ed84fab8ab070f20951d458d643926e05`;
+- boot.img SHA-256
+  `b6c8774aa53caecd529a0c065d2e273be62d201ac5000a90e71766c3dab82769`;
+- vendor_boot.img SHA-256
+  `c2cac59d0897fbb6b8e7eebd8df14c31b3b8c4d98b91cbe7cc0236dc85d396a7`;
+- ZIP `postmarketos-edge-xfce-mainline-v0.73-internal-audio-buttons-sm-x910-twrp.zip`,
+  48.385.837 bytes, SHA-256
+  `b7ba04b56fdc7fb581839357340567c5c159a3a67a2ee7be0422d6207cfcfbd8`.
+
+Inspección del ZIP confirma boot/vendor_boot, los tres blobs CS35L45, la
+topología de 38.540 bytes bajo el nombre exacto de la tarjeta y el firmware
+ADSP. Sigue **sin flashear**: por la política de seguridad hace falta
+autorización explícita antes de escribir `sda21`/`sda24`. La tablet continúa en
+v0.72; tarjeta ALSA, PCM, audio acústico y botones todavía no están validados.
