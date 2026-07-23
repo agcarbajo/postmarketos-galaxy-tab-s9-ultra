@@ -21,6 +21,8 @@ if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	test -f "$xorg_apk"
 else
 	bash "$project/scripts/stage-gpu-firmware.sh"
+	bash "$project/scripts/stage-stock-audio-firmware.sh"
+	bash "$project/scripts/stage-audioreach-topology.sh"
 	bash "$project/scripts/build-custom-xorg.sh"
 
 	KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
@@ -69,6 +71,18 @@ for f in "$firmware"/adsp.mdt "$firmware"/adsp.b* \
 	 "$firmware"/adsp_dtb.mdt "$firmware"/adsp_dtb.b*; do
 	install -m 0644 "$f" "$overlay/usr/lib/firmware/qcom/sm8550/${f##*/}"
 done
+# X910-specific CS35L45 Halo DSP speaker-protection firmware. The codec probes
+# without these files, but playback cannot safely enable its protected path.
+for f in \
+	cs35l45-dsp1-spk-prot.wmfw \
+	cs35l45-dsp1-spk-prot.bin \
+	cs35l45-dsp1-spk-prot-calib.bin; do
+	install -m 0644 "$firmware/$f" "$overlay/usr/lib/firmware/$f"
+done
+# AudioReach refuses to register its PCM graphs without this topology. The
+# filename must exactly match qcom/<card driver>/<DTS model>-tplg.bin.
+install -m 0644 "$firmware/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin" \
+	"$overlay/usr/lib/firmware/qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin"
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \

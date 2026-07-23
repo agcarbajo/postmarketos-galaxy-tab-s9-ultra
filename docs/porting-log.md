@@ -3585,3 +3585,70 @@ Estado de la tablet: v0.72 boot+vendor_boot flasheados por UFS (backups v0.70 en
 `cpufreq` sigue sin icc paths (OSM_L3=m) — preexistente, no regresión. Pendiente
 del audio real: GPR/q6apm/q6afe/q6prm + LPASS macros (rx/tx/wsa/va) + soundwire
 (swr0/1/2) + WCD938x + WSA88x + machine sound card → tarjeta ALSA y PCM.
+
+## 2026-07-23 — sesión 83: hardware de audio corregido y fuentes v0.73 preparadas
+
+Se verificó primero la tablet v0.72 por SSH, comprobando la host key de la X910:
+kernel `7.2.0-rc3-dirty #43`, ADSP `state=running`, escritorio/Wi-Fi/BT estables
+y aún sin `/proc/asound/cards`. No se escribió ninguna partición UFS.
+
+**Corrección importante del mapa de hardware.** El FDT oficial Samsung de la
+SM-X910 no describe WCD938x ni WSA88x. La ruta de altavoces real consta de
+cuatro amplificadores Cirrus **CS35L45** en el bus Samsung I2C18 (mainline
+`i2c_hub_6`), direcciones `0x30..0x33`, con alimentación compartida en TLMM19,
+reset activo alto en TLMM42 e IRQ compartida activa baja en TLMM14. Reciben
+audio por `PRIMARY_MI2S_RX`: TLMM126=SCK, 129=WS, 127=data0 y 128=data1. Los
+micrófonos internos son DMIC directos al VA macro mediante LPI 6/7, 8/9, 12/13
+y 17/18. El FDT stock confirma además `qcom,wsa-max-devs=0` y
+`qcom,wcd-disabled=1`; se elimina por tanto la anterior hipótesis WCD/WSA.
+
+El kernel 7.2-rc3 fijado ya incluye el driver CS35L45, la machine AudioReach
+SM8550 y los backends q6apm. Se añadió al DTS una tarjeta
+`qcom,sm8550-sndcard` llamada `Samsung-Galaxy-Tab-S9-Ultra`, enlace playback
+`PRIMARY_MI2S_RX` con los cuatro CS35L45, enlace capture
+`TX_CODEC_DMA_TX_3` con `lpass_vamacro`, los cuatro códecs I2C y pinctrl
+correspondiente. Los configs se hacen built-in, siguiendo la regla del port de
+no autocargar el árbol genérico de módulos: `SOUND/SND/SND_SOC`,
+`QCOM_APR`, `SND_SOC_QCOM/QDSP6/SC8280XP`, `SOUNDWIRE`,
+`SND_SOC_CS35L45_I2C` y `SND_SOC_LPASS_VA_MACRO`. `QCOM_APR=y` seleccionará
+también los helpers PDR necesarios; `QRTR` ya era built-in.
+
+**Topología AudioReach.** La inicialización de q6apm construye la ruta
+`qcom/<driver_name>/<card_name>-tplg.bin`. Para esta machine y este `model` el
+nombre exacto es
+`qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin`. Se fijó la topología
+oficial `qcom/sm8550/SM8550-HDK-tplg.bin` del repositorio linux-firmware,
+commit `18cf97993f06c0a28d88cee30b7b646807642acd`, que ya contiene los grafos
+PRIMARY_MI2S_RX, VA/TX3 y MultiMedia playback/capture. Se instala bajo el nombre
+pedido por la tarjeta; SHA-512:
+`d41185a9c905571f7c234ff8caf6e6d24870161a5e6ef0316bb997bfd26cee871a483287308a0af177d39a81b256def4cfa99b0f2594b364ba7ef1104dd9caca`.
+El script `stage-audioreach-topology.sh` reproduce la extracción con commit y
+hash fijados.
+
+**Firmware de amplificadores.** Del archive oficial
+`SM-X910_EUR_16_Opensource.zip` se extraen reproduciblemente
+`cs35l45-dsp1-spk-prot.wmfw`, `cs35l45-dsp1-spk-prot.bin` y
+`cs35l45-dsp1-spk-prot-calib.bin`. `stage-stock-audio-firmware.sh` verifica sus
+SHA-512 antes de empaquetarlos en `firmware-samsung-gts9uwifi` r7. El kernel
+package sube a r41. `build-wifi-bringup.sh` instala tanto estos blobs como la
+topología en el rootfs.
+
+**Botones preparados en la misma DTS, pero aún no validados:** power por el
+PON de PMK8550, volumen-abajo por su resin y volumen-arriba mediante
+`gpio-keys` en PM8550 GPIO6 activo bajo. Los drivers correspondientes se fuerzan
+a built-in.
+
+Se conserva `/delete-property/ interconnects` en `remoteproc_adsp`. No se
+reactiva `lpass_ag_noc` en esta primera iteración porque la v0.72 demuestra que
+el ADSP arranca sin el voto y habilitar ese proveedor causó bloqueos anteriores.
+Primero se aislará tarjeta/PCM; sólo si el DMA evidencia falta de ancho de banda
+se corregirá el grafo en una iteración separada.
+
+Preparado `work/run-build-v073.sh` para generar
+`postmarketos-edge-xfce-mainline-v0.73-internal-audio-buttons-sm-x910-twrp.zip`
+desde un worktree limpio. Esta sesión Codex está aislada de la distro WSL
+Ubuntu-24.04 registrada por la usuaria (`wsl.exe` no enumera distribuciones y
+un import privado devuelve `E_ACCESSDENIED`), por lo que no puede ejecutar la
+compilación pesada. Estado honesto al cierre: fuentes y scripts preparados,
+checksums de APKBUILD actualizados y `git diff --check` limpio; **v0.73 todavía
+no construida, no flasheada y audio/botones no validados**.

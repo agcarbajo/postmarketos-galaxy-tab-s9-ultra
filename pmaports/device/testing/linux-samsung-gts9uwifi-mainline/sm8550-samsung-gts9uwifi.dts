@@ -11,6 +11,7 @@
 /dts-v1/;
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
@@ -238,6 +239,82 @@
 			};
 		};
 	};
+
+	/*
+	 * The four CS35L45 speaker amplifiers share one board power switch.
+	 * Samsung's stock overlay calls this a dummy regulator, but GPIO19 is
+	 * the real active-high enable and the rail is intentionally always on.
+	 */
+	speaker_vdd: regulator-speaker-vdd {
+		compatible = "regulator-fixed";
+		regulator-name = "speaker_vdd";
+		gpio = <&tlmm 19 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&volume_up_n>;
+
+		key-volume-up {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+	};
+
+	/*
+	 * Unlike the SM8550 QRD, the X910 has no WSA884x speaker path and no
+	 * WCD938x. Its four CS35L45 amplifiers consume PRIMARY_MI2S_RX over
+	 * TLMM126..129. Keep the first card deliberately small: one playback
+	 * backend plus the native VA-macro DMIC capture backend.
+	 */
+	sound {
+		compatible = "qcom,sm8550-sndcard", "qcom,sm8450-sndcard";
+		model = "Samsung-Galaxy-Tab-S9-Ultra";
+		pinctrl-names = "default";
+		pinctrl-0 = <&tdm0_clk_active>, <&tdm0_ws_active>,
+			    <&tdm0_din_active>, <&tdm0_dout_active>;
+
+		speaker-playback-dai-link {
+			link-name = "CS35L45 Speaker Playback";
+
+			cpu {
+				sound-dai = <&q6apmbedai PRIMARY_MI2S_RX>;
+			};
+
+			codec {
+				sound-dai = <&cs35l45_fl 0>, <&cs35l45_fr 0>,
+					    <&cs35l45_rl 0>, <&cs35l45_rr 0>;
+			};
+
+			platform {
+				sound-dai = <&q6apm>;
+			};
+		};
+
+		va-capture-dai-link {
+			link-name = "Internal DMIC Capture";
+
+			cpu {
+				sound-dai = <&q6apmbedai TX_CODEC_DMA_TX_3>;
+			};
+
+			codec {
+				sound-dai = <&lpass_vamacro 0>;
+			};
+
+			platform {
+				sound-dai = <&q6apm>;
+			};
+		};
+	};
 };
 
 /* The X910 firmware reserves a slightly larger HW-fence window than MTP. */
@@ -443,6 +520,14 @@
 };
 
 &pm8550_gpios {
+	volume_up_n: volume-up-n-state {
+		pins = "gpio6";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
+	};
+
 	sdc2_card_det_n: sdc2-card-det-state {
 		pins = "gpio12";
 		function = "normal";
@@ -462,6 +547,15 @@
 		bias-disable;
 		power-source = <0>;
 	};
+};
+
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
+	status = "okay";
 };
 
 /* Stock X910 connects the NXP repeater reset to PM8550VS-D GPIO4. */
@@ -513,6 +607,43 @@
 		drive-strength = <16>;
 		bias-pull-up;
 	};
+
+	cs35l45_gpio_default: cs35l45-gpio-default-state {
+		pins = "gpio14", "gpio42";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	tdm0_clk_active: tdm0-clk-active-state {
+		pins = "gpio126";
+		function = "i2s0_sck";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	tdm0_ws_active: tdm0-ws-active-state {
+		pins = "gpio129";
+		function = "i2s0_ws";
+		drive-strength = <2>;
+		bias-disable;
+		output-high;
+	};
+
+	tdm0_din_active: tdm0-din-active-state {
+		pins = "gpio127";
+		function = "i2s0_data0";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	tdm0_dout_active: tdm0-dout-active-state {
+		pins = "gpio128";
+		function = "i2s0_data1";
+		drive-strength = <2>;
+		bias-disable;
+	};
 };
 
 &qupv3_id_0 {
@@ -522,6 +653,111 @@
 /* UART14 (WCN7850 Bluetooth) is a child of the second QUPv3 wrapper. */
 &qupv3_id_1 {
 	status = "okay";
+};
+
+/*
+ * Samsung numbers this I2C18. On mainline it is SE6 of the dedicated QUPv3
+ * I2C master hub (0x998000), and all four speaker amplifiers live here.
+ */
+&i2c_master_hub_0 {
+	status = "okay";
+};
+
+&i2c_hub_6 {
+	clock-frequency = <1000000>;
+	status = "okay";
+
+	cs35l45_rl: amplifier@30 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x30>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+		vdd-a-supply = <&speaker_vdd>;
+		vdd-batt-supply = <&speaker_vdd>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cs35l45_gpio_default>;
+		sound-name-prefix = "Rear Left";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_fl: amplifier@31 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x31>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+		vdd-a-supply = <&speaker_vdd>;
+		vdd-batt-supply = <&speaker_vdd>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cs35l45_gpio_default>;
+		sound-name-prefix = "Front Left";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_rr: amplifier@32 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x32>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+		vdd-a-supply = <&speaker_vdd>;
+		vdd-batt-supply = <&speaker_vdd>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cs35l45_gpio_default>;
+		sound-name-prefix = "Rear Right";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
+
+	cs35l45_fr: amplifier@33 {
+		compatible = "cirrus,cs35l45";
+		reg = <0x33>;
+		#sound-dai-cells = <1>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+		vdd-a-supply = <&speaker_vdd>;
+		vdd-batt-supply = <&speaker_vdd>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&cs35l45_gpio_default>;
+		sound-name-prefix = "Front Right";
+		cirrus,asp-sdout-hiz-ctrl = <3>;
+
+		cirrus,gpio-ctrl1 {
+			gpio-ctrl = <2>;
+		};
+
+		cirrus,gpio-ctrl2 {
+			gpio-ctrl = <2>;
+		};
+	};
 };
 
 /* I2C4 (touch) and I2C6 (PTN3222) are GPI-only on SM8550. */
@@ -774,6 +1010,47 @@
  * The ADSP is not on the boot path (rootfs is on the microSD), so a probe
  * failure does not break booting.  q6/soundwire/codecs/sound come later.
  */
+&lpass_tlmm {
+	dmic45_default: dmic45-default-state {
+		clk-pins {
+			pins = "gpio12";
+			function = "dmic3_clk";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		data-pins {
+			pins = "gpio13";
+			function = "dmic3_data";
+			drive-strength = <8>;
+			input-enable;
+		};
+	};
+
+	dmic67_default: dmic67-default-state {
+		clk-pins {
+			pins = "gpio17";
+			function = "dmic4_clk";
+			drive-strength = <8>;
+			output-high;
+		};
+
+		data-pins {
+			pins = "gpio18";
+			function = "dmic4_data";
+			drive-strength = <8>;
+			input-enable;
+		};
+	};
+};
+
+&lpass_vamacro {
+	pinctrl-names = "default";
+	pinctrl-0 = <&dmic01_default>, <&dmic23_default>,
+		    <&dmic45_default>, <&dmic67_default>;
+	status = "okay";
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/sm8550/adsp.mdt",
 			"qcom/sm8550/adsp_dtb.mdt";

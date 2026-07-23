@@ -1,8 +1,8 @@
 maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=firmware-samsung-gts9uwifi
 pkgver=1
-pkgrel=6
-pkgdesc="Stock Qualcomm Kiwi v2 Wi-Fi, Bluetooth and ADSP firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+pkgrel=7
+pkgdesc="Stock Wi-Fi, Bluetooth, ADSP and CS35L45 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 url="https://www.samsung.com/"
 arch="aarch64"
 license="proprietary"
@@ -71,6 +71,10 @@ source="
 	adsp_dtb.b00
 	adsp_dtb.b01
 	adsp_dtb.b02
+	cs35l45-dsp1-spk-prot.wmfw
+	cs35l45-dsp1-spk-prot.bin
+	cs35l45-dsp1-spk-prot-calib.bin
+	Samsung-Galaxy-Tab-S9-Ultra-tplg.bin
 "
 
 package() {
@@ -105,6 +109,24 @@ package() {
 		   "$srcdir"/adsp_dtb.mdt "$srcdir"/adsp_dtb.b*; do
 		install -Dm644 "$seg" "$adsp/${seg##*/}"
 	done
+
+	# Four CS35L45 smart amplifiers. These are the exact X910 speaker
+	# protection image, coefficients and calibration defaults from Samsung's
+	# published source package. The mainline wm_adsp loader requests them at
+	# the firmware root using these canonical names.
+	for blob in \
+		cs35l45-dsp1-spk-prot.wmfw \
+		cs35l45-dsp1-spk-prot.bin \
+		cs35l45-dsp1-spk-prot-calib.bin; do
+		install -Dm644 "$srcdir/$blob" \
+			"$pkgdir/usr/lib/firmware/$blob"
+	done
+
+	# AudioReach graph topology. The upstream SM8550-HDK topology already
+	# contains the PRIMARY_MI2S_RX and VA_CODEC_DMA_TX_0/TX3 graphs used by
+	# this board. q6apm derives the filename from the DTS card model.
+	install -Dm644 "$srcdir/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin" \
+		"$pkgdir/usr/lib/firmware/qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin"
 }
 
 sha512sums="
@@ -171,4 +193,8 @@ e9aab0f8bc449460b2a63c7dd6c4a2f93e26508b21accfac2ee34e8abfad4f7f0a2b5623476129de
 66c1c86902ff0b8d3d83cf5476169f41b3b80b8e3e49ee651e987df188c1e2a71a095ff9544624bf355a20e73e2168eaffd39248fdbf0a01dc8e072f818abb99  adsp_dtb.b00
 628604786c486800aab2b2035ea75c4652488f4de76052817e519272b3b663ce5c2e473cd440cc15d135aa34b9386bd492189489046de311a9b8eed69aeb292b  adsp_dtb.b01
 bc3a2c4158d52a8872edc71e6330efbb57eab5696c7cab53689463a5f40e4f35bd41a8a3f8c8896d0b7a92891978e7ad1a628621122dbdf4239e855a4a3a985f  adsp_dtb.b02
+445b111839461d5028cd3e66756f868a5af1cc08e230304a536534ea58d5983ba62d83b1fe82b2c222b5a95fbd46e6d0fe917a352243ff31abeb307a4357a1f1  cs35l45-dsp1-spk-prot.wmfw
+f06cd4296eb9f2e1c5d72f28673c2d7f035688fb15ba9caf81c0f54a19c16b3ba6726aaa6a17f4370520e4e472a14f4748b724bbed495dd2111aae2896f44338  cs35l45-dsp1-spk-prot.bin
+2879c4dead57922ec74702ae07b382b6ff0fe859b671ae1ebaa2a666f25c67190a3ccd29ee5d2c4d6ed89078daef60ac2d39ade9f943aed02245f77b72c69a72  cs35l45-dsp1-spk-prot-calib.bin
+d41185a9c905571f7c234ff8caf6e6d24870161a5e6ef0316bb997bfd26cee871a483287308a0af177d39a81b256def4cfa99b0f2594b364ba7ef1104dd9caca  Samsung-Galaxy-Tab-S9-Ultra-tplg.bin
 "

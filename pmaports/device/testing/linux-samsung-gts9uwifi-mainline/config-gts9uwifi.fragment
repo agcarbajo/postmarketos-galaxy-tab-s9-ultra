@@ -147,6 +147,27 @@ CONFIG_QCOM_PDR_HELPERS=y
 CONFIG_QCOM_PDR_MSG=y
 CONFIG_RPMSG_QCOM_GLINK_SMEM=y
 
+# Internal audio, step 2: AudioReach/GPR, the SM8550 machine card, the X910's
+# real CS35L45 I2C/MI2S speaker path, and the LPASS VA macro used by its DMICs.
+# The generic mainline config leaves the entire graph at =m; this port does not
+# install or autoload that module tree, so the visible roots must be =y. Their
+# selects pull q6apm/q6afe/q6prm, WM_ADSP and QCOM PDR helpers up to =y too.
+CONFIG_SOUND=y
+CONFIG_SND=y
+CONFIG_SND_SOC=y
+CONFIG_SOUNDWIRE=y
+CONFIG_QCOM_APR=y
+CONFIG_SND_SOC_QCOM=y
+CONFIG_SND_SOC_QDSP6=y
+CONFIG_SND_SOC_SC8280XP=y
+CONFIG_SND_SOC_CS35L45_I2C=y
+CONFIG_SND_SOC_LPASS_VA_MACRO=y
+
+# Physical power/volume keys: PMIC PON handles power and volume-down (resin);
+# the board's volume-up line is PM8550 GPIO6 through gpio-keys.
+CONFIG_KEYBOARD_GPIO=y
+CONFIG_INPUT_PM8941_PWRKEY=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set

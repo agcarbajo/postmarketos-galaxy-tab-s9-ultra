@@ -3,7 +3,14 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-23 (sesión 82: audio interno paso 1 — **el ADSP arranca y autentica en mainline**. Firmware Samsung `adsp.mdt` + `adsp_dtb.mdt` extraído de apnhlos, configs remoteproc PAS `=y`, nodo `&remoteproc_adsp` activado. Descubierto que el ABL del X910 usa el DTB de **vendor_boot**, no el anexado en boot.img. El path de interconnect LPASS no resuelve (grafo desconectado) → se elide y el ADSP hace PAS secure-boot OK: `remote processor adsp is now up`. Service `gts9uwifi-adsp-boot` lo arranca tras montar el rootfs (auto_boot es demasiado temprano para el firmware de 34 MB en microSD). v0.72 boot+vendor_boot flasheados por UFS; BT intacto.
+> Última actualización: 2026-07-23 (sesión 83: preparado en fuentes el
+> audio interno real de la X910 y los botones para v0.73, aún sin construir ni
+> validar. El FDT oficial corrige la hipótesis inicial: la tablet usa cuatro
+> amplificadores Cirrus CS35L45 por I2C18 y PRIMARY_MI2S, más DMIC directos al
+> VA macro; no WCD938x/WSA88x. Se integraron AudioReach/q6apm built-in, los
+> cuatro códecs, firmware DSP Samsung, la topología SM8550 HDK bajo el nombre
+> exacto de la tarjeta, power/volumen y scripts reproducibles. La tablet sigue
+> ejecutando v0.72 estable; no se ha escrito UFS en esta sesión).
 
 ## Objetivo
 
@@ -53,9 +60,9 @@ demostrarlo en este dispositivo.
 | Identidad y boot chain SM-X910 | ✅ Inventariadas desde firmware X910XXS5CYG1 |
 | Kernel downstream 5.15.153 | 📚 Sólo referencia de hardware; no será la base pmOS |
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
-| DTS `gts9uwifi` | ✅ v0.71: WCN7850 Wi-Fi/BT (QUP SE14), Goodix, GPU, display DSI/DSC nativo y UFS interno activos |
+| DTS `gts9uwifi` | 🟡 Fuente v0.73 preparada: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; pendiente build y validación |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ Kernel fuente r40: Adreno/DPU/DSI/panel/UFS/Bluetooth built-in + proveedor KMS vacío para la GPU separada; device r21; firmware r5; Xorg r10 reproducible en `extra-repos/systemd/xorg-server` |
+| Paquetes pmaports | 🟡 Kernel fuente r41: añade AudioReach/q6apm, VA macro, CS35L45 y botones built-in; device r22; firmware r7 con DSP CS35L45 + topología; Xorg r10 reproducible. r41/r7 pendientes de build |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -63,20 +70,20 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v0.71 reproducible construida** (30.269.344 bytes, SHA-256 `ec7b7480e2c20ad3a7b06d2f82d5653c8884fa325d1a83de637a259ed365405c`); build limpio con kernel r40, Xorg r10, HiDPI/120 Hz y Bluetooth b21 + dirección EFS. La tablet corre boot/vendor_boot v0.70 y userspace equivalente v0.71 validado en vivo; el ZIP v0.71 no se ha flasheado |
+| Imagen/paquete de prueba | ✅ **v0.72 reproducible construida** (47.928.345 bytes, SHA-256 `0674099cac4aeebf4039df45cf27791ae01fdfbde372ad398bb2f42910b5a1aa`), boot+vendor_boot ejecutándose y ADSP validado. v0.73 está preparada en fuentes pero aún no construida |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
 | Bluetooth WCN7850 | ✅ **Validado de extremo a extremo (sesión 81)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21`, dirección pública nativa de EFS. Bonds persistentes (Buds2 Pro + móvil), sink A2DP clásico creado y audio real confirmado (YouTube en Chromium por los Buds). Servidor de sonido = PulseAudio 17. HID sin probar por falta de periférico BT |
-| ADSP (audio DSP) | 🟡 **Paso 1 hecho (sesión 82): el ADSP arranca y autentica**. `qcom,sm8550-adsp-pas` `=y`, firmware Samsung `qcom/sm8550/adsp.mdt` + `adsp_dtb.mdt` (de apnhlos; el `adsp_dtb` es OBLIGATORIO, `dtb_pas_id=0x24`, y va en `firmware-name` índice 1). PAS secure-boot OK → `remote processor adsp is now up`, `state=running`. Arranca vía service `gts9uwifi-adsp-boot` (auto_boot dispara a ~2 s, antes del rootfs). Interconnect LPASS elidido temporalmente. **Falta:** GPR/q6apm/q6afe/q6prm, LPASS macros, soundwire, WCD938x/WSA88x, machine card → tarjeta ALSA y PCM real |
+| Audio interno | 🟡 ADSP arrancando/autenticado en v0.72. Fuente v0.73 preparada con GPR/AudioReach q6apm, VA macro, PRIMARY_MI2S, cuatro CS35L45, firmware DSP Samsung y topología SM8550. Hardware identificado desde FDT oficial: no hay WCD938x/WSA88x. Pendiente build, tarjeta ALSA, PCM y validación acústica |
+| Botones | 🟡 Fuente v0.73 preparada: power por PMK8550 PON, volumen abajo por resin y volumen arriba por PM8550 GPIO6; pendiente build y prueba física |
 
 ## Reto en curso
 
 ✅ Los hitos de arranque, microSD, Wi-Fi/SSH, táctil, escritorio, DRM/DSI,
 Turnip y ahora el controlador Bluetooth están cumplidos sobre Linux mainline
-7.2-rc3. La tablet está arrancada con boot/vendor_boot v0.70 y el userspace
-equivalente a v0.71; el login es visible a 2960×1848@120 con escalado 2×, Wi-Fi
-y SSH funcionan y BlueZ descubre dispositivos clásicos y BLE.
+7.2-rc3. La tablet está arrancada con v0.72; el login es visible a
+2960×1848@120 con escalado 2×, Wi-Fi/SSH/BT funcionan y el ADSP queda `running`.
 
 Trabajo actual (con canal de control en vivo por SSH y UFS):
 
@@ -91,7 +98,8 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    lightdm. El autostart HiDPI ahora deshabilita el DPMS de xfce4-power-manager;
    verificado `DPMS is Disabled` en la sesión de usuario. **Pendiente:** el
    suspend/resume REAL del panel (que un blank pueda re-encender el OLED).
-3. **Audio interno (Tarea 3) — 🟡 EN CURSO, paso 1 hecho (sesión 82).** El
+3. **Audio interno (Tarea 3) — 🟡 EN CURSO, fuentes del paso 2 preparadas
+   (sesión 83).** El
    **ADSP arranca y autentica** en mainline: configs remoteproc PAS `=y`
    (`QCOM_Q6V5_PAS/COMMON`, `RPROC_COMMON`, `SYSMON`, `RPMSG_QCOM_GLINK_SMEM`),
    nodo `&remoteproc_adsp` con `firmware-name = "qcom/sm8550/adsp.mdt",
@@ -102,16 +110,20 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    `gts9uwifi-adsp-boot` tras montar el rootfs. **Descubrimiento clave:** el ABL
    del X910 aplica el DTB de **vendor_boot** (no el anexado en boot.img) → para
    cambios de DTS hay que reflashear `vendor_boot` (sda24), no basta `boot`.
-   **Pendientes del audio:** (a) el path de interconnect LPASS del ADSP no
-   resuelve (grafo desconectado; `lpass_ag_noc@7e40000` disabled upstream) — hoy
-   se elide borrando `interconnects`, restaurar cuando se arregle el grafo;
-   (b) `QCOM_PDR_HELPERS/MSG` bajan a `=m` (dependen de QRTR=m); (c) el stack
-   GPR/q6apm/q6afe/q6prm + LPASS macros + soundwire + WCD938x/WSA88x + machine
-   card para tener tarjeta ALSA y PCM real. Método de prueba de sonido: micro de
-   los cascos BT pegados a la tablet capta los altavoces (y viceversa para el
-   micro), grabando por OBS.
-4. **Botones (Tarea 3).** Añadir `gpio-keys`/`pwrkey` al DTS (power vía PMIC PON,
-   volumen vía resin/gpio); avisar a la usuaria para probar las pulsaciones.
+   El FDT oficial de la X910 demuestra que el hardware es **4× Cirrus CS35L45**
+   sobre I2C18 + PRIMARY_MI2S (GPIO126/129/127/128), con DMIC directos al VA
+   macro; la hipótesis WCD938x/WSA88x queda descartada. La fuente v0.73 fuerza
+   `SND_SOC`, GPR/AudioReach q6apm, VA macro, machine SM8550 y CS35L45 a `=y`;
+   añade los cuatro códecs y la tarjeta al DTS; empaqueta el firmware DSP
+   Samsung y `SM8550-HDK-tplg.bin` como el nombre exacto que solicita q6apm:
+   `qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin`. El interconnect LPASS se
+   mantiene elidido hasta observar si el PCM DMA realmente lo necesita: habilitar
+   `lpass_ag_noc` ya causó bloqueos históricos y no se mezclará con el primer
+   arranque ALSA. **Pendiente inmediato:** construir v0.73, verificar arranque,
+   `/proc/asound/cards`, códecs/PCM y después probar altavoces y micrófonos.
+4. **Botones (Tarea 3).** La fuente v0.73 añade power vía PMK8550 PON,
+   volumen-abajo por resin y volumen-arriba por PM8550 GPIO6. Falta compilar y,
+   sólo tras estabilizar el audio, pedir a la usuaria la prueba física.
    Después: sensores, USB Code 43 y cámaras. UFS permite iterar por SSH sobre
    `boot`/`vendor_boot`; TWRP/Download Mode quedan como recuperación.
 
