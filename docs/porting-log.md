@@ -3787,3 +3787,137 @@ La machine `sound` permanece deferred porque su DAI CPU q6apm aún no existe;
 no es una cuarta causa. Tampoco se reactivó el interconnect LPASS: ya causó
 bloqueos históricos y aún no hay un PCM que demuestre necesitarlo. Botones y
 la prueba acústica siguen aplazados hasta que aparezca una tarjeta ALSA.
+
+## 2026-07-24 — sesión 86: v0.75 desbloquea AudioReach vía pd-mapper; el I2C de los CS35L45 sigue mudo
+
+### Bloqueo 1 (PDR / `avs/audio`) — RESUELTO Y REPRODUCIBLE
+
+La sesión 85 dejó abierto por qué no aparecía `q6prmcc` pese a `QRTR_SMD=y`. El
+diagnóstico en vivo lo cerró: el transporte estaba **bien** — `qcom_smd_qrtr`
+enlazado al canal `IPCRTR` y `qcom,apr` a `adsp_apps` — pero `/sys/bus/apr/devices`
+estaba vacío y el log no daba ningún error: PDR esperaba en silencio. La causa es
+que **nada en el kernel responde al servicio QMI *servreg locator***; ese servicio
+lo provee el daemon de espacio de usuario **`pd-mapper`**, que no estaba instalado
+(ni binario, ni proceso, ni unidad, ni paquete). Subir QRTR-SMD a built-in nunca
+podía bastar; queda descartada esa vía.
+
+Instalado `pd-mapper` (Alpine `pd-mapper-1.1-r0` + `pd-mapper-systemd`), fallaba
+con `no pd maps available`. Un `strace` reveló su algoritmo real, que no son rutas
+fijas: abre `/sys/class/remoteproc`, lee `remoteproc0/firmware`
+(= `qcom/sm8550/adsp.mdt`), toma su **directorio** y busca ahí los `*.jsn`:
+
+```
+openat("/lib/firmware/postmarketos/qcom/sm8550") = -1 ENOENT
+openat("/lib/firmware//qcom/sm8550")            = 4   (56 entradas)
+getdents64 -> ningún .jsn -> "no pd maps available"
+```
+
+(Nótese que `firmware_class.path` vale `/lib/firmware/postmarketos`, que pd-mapper
+prueba primero y descarta.) Colocar los mapas en `/lib/firmware/` o
+`/lib/firmware/qcom/` NO sirve: deben ir **junto a `adsp.mdt`**.
+
+Los mapas están en el apnhlos de Samsung: `adspr.jsn`, `adsps.jsn`, `adspua.jsn`
+y `cdspr.jsn`. El decisivo es `adspua.jsn`, que declara
+`sr_domain{domain:"adsp", subdomain:"audio_pd", qmi_instance_id:74}` y el servicio
+`provider:"avs", service:"audio"` — exactamente el
+`qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd"` que llevan `service@1`
+y `service@2` del nodo GPR.
+
+Con los cuatro `.jsn` en `/usr/lib/firmware/qcom/sm8550/` y pd-mapper corriendo, la
+cadena se desbloqueó en cascada:
+
+- `qcom,apr ...: Adding APR/GPR dev: gprsvc:service:2:1` y `:2:2`;
+- `6e80000.pinctrl` enlaza `qcom-sm8550-lpass-lpi-pinctrl` (ya tiene sus clocks de
+  q6prmcc);
+- `6d44000.codec` enlaza `va_macro`;
+- `devices_deferred` pierde pinctrl y codec;
+- la razón de `sound` cambia de «error getting cpu dai name» a
+  **«codec dai not found»**: el CPU DAI de q6apm ya existe y sólo faltan los códecs.
+
+Hecho reproducible en v0.75: los `.jsn` se empaquetan en
+`firmware-samsung-gts9uwifi` r8 bajo `/usr/lib/firmware/qcom/sm8550/` y los instala
+también `build-wifi-bringup.sh`; `pd-mapper` entra en los `depends` del paquete de
+dispositivo; y un drop-in `configs/audio/10-gts9uwifi-adsp-order.conf` ordena
+`pd-mapper.service` **después** de `gts9uwifi-adsp-boot.service`, porque pd-mapper
+necesita el remoteproc arriba tanto para hallar los mapas como para tener a quién
+servir (este port arranca el ADSP tarde, ya que auto_boot dispara antes de montar
+la microSD). Validado tras reinicio: el desbloqueo persiste.
+
+### Bloqueo 2 (CS35L45) — NO resuelto; causa acotada por eliminación
+
+`Timeout waiting for OTP boot` (-110) en los cuatro amplificadores. Lo primero fue
+descartar la lectura obvia: **el -110 no es el timeout del poll OTP sino del bus
+I2C**. Un ftrace de `i2c`+`regmap` durante un bind muestra una única transacción y
+su resultado:
+
+```
+regmap_hw_read_start: 0-0030 reg=e01c
+i2c_write: i2c-0 a=030 l=4 [00-00-e0-1c]
+i2c_read:  i2c-0 a=030 l=4
+i2c_result: i2c-0 n=2 ret=-110      (1,017 s después)
+```
+
+Es decir, el chip no contesta en absoluto; el poll del OTP ni siquiera llega a
+iterar. Ese -110 nace de `wait_for_completion_timeout` (XFER_TIMEOUT = 1 s).
+
+Descartado con evidencia, para no repetirlo:
+
+- **Bus equivocado — NO.** El DT stock sitúa los cuatro `cs35l45-*@30..33` dentro
+  de `i2c@998000`, y `ext-dev-names = "cs35l45.18-0030..."` confirma que el I2C18
+  de Samsung es ese controlador, o sea nuestro `i2c_hub_6`.
+- **Reset mal manejado — NO.** Un ftrace de `gpio` durante el bind muestra
+  `gpio 578 (tlmm42) set 0` → `direction out(0)` → `set 1` con los 2 ms de hold, y
+  la primera transferencia 2,1 ms después. El gpio-shared-proxy funciona; al fallar
+  el probe el driver vuelve a dejar reset a 0 (por eso un `i2cdetect` posterior
+  siempre da `-- -- -- --`: no es información nueva).
+- **Rail apagado — NO.** `tlmm19` está `out high` y `speaker_vdd` aparece
+  `enabled`. El DT stock confirma que `dummy_vreg` (tlmm19, activo-alto) es la
+  **única** alimentación declarada; no hay ningún LDO de audio/spk/amp ni en el
+  stock ni en mainline.
+- **Pinmux — NO.** `pin 8/9 -> device 998000.i2c function i2chub0_se6`; los
+  `i2chub0_se6_l0/l1` del stock son la misma función hardware (func1) que mainline
+  expone unificada.
+- **IRQ no entregada — NO.** `/proc/interrupts` línea 154 (GICv3 502 = SPI 470,
+  coincide con el DT) incrementa durante cada transferencia.
+- **Relojes apagados — NO.** El `enable_cnt=0` de `gcc_qupv3_i2c_core_clk` y
+  `gcc_qupv3_i2c_s6_clk` es sólo runtime-suspend; el trace muestra escrituras a
+  `100000.clock-controller` inmediatamente antes de la transferencia.
+- **Drive-strength — PROBADO Y NEGATIVO.** Único delta real hallado contra el
+  stock: mainline pide `drive-strength = <2>` en `hub_i2c6_data_clk` mientras
+  Samsung usa `<8>` en `qupv3_hub_i2c6_{sda,scl}_active`, con el bus a 1 MHz
+  (Fast-Mode Plus). Se igualó al stock en v0.75 (override `&hub_i2c6_data_clk`) y
+  el DTB lo lleva (`drive-strength = <0x08>`), pero **el síntoma es idéntico**. El
+  cambio se conserva por fidelidad al stock, no como arreglo.
+
+No se pudo usar dynamic debug (no compilado) para ver si el GENI reporta NACK
+—el driver lo registra con `dev_dbg`— ni escribir pinconf en caliente
+(`pinconf-config` no existe; sólo `pinmux-select` es escribible).
+
+Pista para la próxima iteración: en el DT stock `gpio19` aparece además en estados
+pinctrl junto a `gpio18` (líneas 5711/5716) y junto a `gpio14`+`gpio86`
+(7407/7412), lo que sugiere una secuencia de pines de audio propia de Samsung que
+mainline no reproduce. Conviene también contrastar si el bootloader deja los amps
+en un estado que mainline altera, y probar un retardo post-reset mayor.
+
+### Build, flasheo y estado
+
+`work/run-build-v075.sh` desde worktree limpio: `BUILD_EXIT=0`, kernel r43,
+firmware r8. ZIP
+`postmarketos-edge-xfce-mainline-v0.75-pdmaps-i2c-drive-sm-x910-twrp.zip`
+(48.404.071 bytes, SHA-256
+`f7f9da8b138dbe8aa44f487f2c742e0cab248248a3b4b91c92145d71d59437da`);
+Image.gz `570717a6…`, DTB `af51a856…`, boot.img `318d3431…`,
+vendor_boot.img `0b47b3b7…`.
+
+Como v0.75 sólo cambia el DTS, se escribió **únicamente** `vendor_boot=/dev/sda24`
+(el ABL consume de ahí el DTB); `boot` sigue en v0.74. Backup previo en
+`/tmp/vendor_boot-v074-before-v075.img`, `dd conv=fsync` y SHA origen=destino:
+`V075_VENDORBOOT_VERIFY_OK`. Tras reiniciar, sin regresiones: Wi-Fi/SSH, LightDM,
+Bluetooth, táctil y ADSP `running`; `pd-mapper` activo y el desbloqueo de la
+cadena AudioReach persiste. `/proc/asound/cards` sigue vacío y `devices_deferred`
+queda reducido a `sound` («codec dai not found») más el `17d91000.cpufreq`
+preexistente (OSM_L3=m, no es regresión).
+
+Sigue sin reactivarse el interconnect LPASS: no hay aún un PCM que demuestre
+necesitarlo. Botones y prueba acústica continúan aplazados hasta que exista tarjeta
+ALSA.

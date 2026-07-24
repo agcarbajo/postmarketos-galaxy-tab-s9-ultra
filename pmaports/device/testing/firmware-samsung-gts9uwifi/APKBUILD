@@ -1,8 +1,8 @@
 maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=firmware-samsung-gts9uwifi
 pkgver=1
-pkgrel=7
-pkgdesc="Stock Wi-Fi, Bluetooth, ADSP and CS35L45 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+pkgrel=8
+pkgdesc="Stock Wi-Fi, Bluetooth, ADSP, PD maps and CS35L45 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 url="https://www.samsung.com/"
 arch="aarch64"
 license="proprietary"
@@ -75,6 +75,10 @@ source="
 	cs35l45-dsp1-spk-prot.bin
 	cs35l45-dsp1-spk-prot-calib.bin
 	Samsung-Galaxy-Tab-S9-Ultra-tplg.bin
+	adspr.jsn
+	adsps.jsn
+	adspua.jsn
+	cdspr.jsn
 "
 
 package() {
@@ -127,6 +131,18 @@ package() {
 	# this board. q6apm derives the filename from the DTS card model.
 	install -Dm644 "$srcdir/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin" \
 		"$pkgdir/usr/lib/firmware/qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin"
+
+	# Protection-domain maps for pd-mapper.  Nothing in the kernel answers the
+	# servreg locator QMI service, so the q6apm/q6prm nodes that carry
+	# qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd" wait forever and
+	# no APR/GPR device is ever created.  pd-mapper provides that service, and it
+	# looks for *.jsn strictly in the directory of each remoteproc's firmware
+	# (it reads /sys/class/remoteproc/*/firmware and takes its dirname), so these
+	# must sit next to adsp.mdt.  adspua.jsn is the one that maps avs/audio onto
+	# msm/adsp/audio_pd; the others come from the same Samsung apnhlos image.
+	for map in adspr.jsn adsps.jsn adspua.jsn cdspr.jsn; do
+		install -Dm644 "$srcdir/$map" "$adsp/$map"
+	done
 }
 
 sha512sums="
@@ -197,4 +213,8 @@ bc3a2c4158d52a8872edc71e6330efbb57eab5696c7cab53689463a5f40e4f35bd41a8a3f8c8896d
 f06cd4296eb9f2e1c5d72f28673c2d7f035688fb15ba9caf81c0f54a19c16b3ba6726aaa6a17f4370520e4e472a14f4748b724bbed495dd2111aae2896f44338  cs35l45-dsp1-spk-prot.bin
 2879c4dead57922ec74702ae07b382b6ff0fe859b671ae1ebaa2a666f25c67190a3ccd29ee5d2c4d6ed89078daef60ac2d39ade9f943aed02245f77b72c69a72  cs35l45-dsp1-spk-prot-calib.bin
 d41185a9c905571f7c234ff8caf6e6d24870161a5e6ef0316bb997bfd26cee871a483287308a0af177d39a81b256def4cfa99b0f2594b364ba7ef1104dd9caca  Samsung-Galaxy-Tab-S9-Ultra-tplg.bin
+a026d6a9188f7cc0e1bc0b572206b5651aefbfdfd86eeed1b14151031814f9714191140dd9c9fb4ebad4da6d76bee14c0f27e2f164dba6749e8a7818d6d9578a  adspr.jsn
+00bdba8e7e4d7ee30806fc245f5101c7b66ec4b92833d9be99326f977d8fd4f9712b16184ea330359820768dc54758744d857d8dd7209e7f0a2231ab196435f2  adsps.jsn
+0d4ed22c7eb1866f43032e5cf6ac2f196f02c3dc8220c49124d8e2c52bea559f63fa505e7fa60aba2c04ab6b1f08528306d60a31bd5426e16df3eb3e86f9a483  adspua.jsn
+30faec8d016ce554c5f576ffd94c8d4d320d0481cc4eef736f061307349f8fabedf5833b958e9cae86345450dfe84cf56ef935615926e728f527c54d2ec363d0  cdspr.jsn
 "

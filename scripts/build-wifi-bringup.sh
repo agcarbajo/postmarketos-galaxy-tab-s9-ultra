@@ -46,6 +46,7 @@ mkdir -p \
 	"$overlay/etc/xdg/autostart" \
 	"$overlay/etc/systemd/system/lightdm.service.d" \
 	"$overlay/etc/systemd/system/bluetooth.service.d" \
+	"$overlay/etc/systemd/system/pd-mapper.service.d" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/lib/firmware/qca" \
 	"$overlay/usr/lib/firmware/qcom" \
@@ -83,6 +84,14 @@ done
 # filename must exactly match qcom/<card driver>/<DTS model>-tplg.bin.
 install -m 0644 "$firmware/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin" \
 	"$overlay/usr/lib/firmware/qcom/sm8550/Samsung-Galaxy-Tab-S9-Ultra-tplg.bin"
+# Protection-domain maps consumed by pd-mapper.  It locates them by reading
+# /sys/class/remoteproc/*/firmware and scanning that firmware's own directory,
+# so they must sit beside adsp.mdt; adspua.jsn carries the avs/audio mapping the
+# q6apm/q6prm nodes block on.
+for f in adspr.jsn adsps.jsn adspua.jsn cdspr.jsn; do
+	install -m 0644 "$firmware/$f" \
+		"$overlay/usr/lib/firmware/qcom/sm8550/$f"
+done
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \
@@ -102,6 +111,10 @@ install -m 0644 "$project/configs/audio/gts9uwifi-adsp-boot.service" \
 	"$overlay/usr/lib/systemd/system/gts9uwifi-adsp-boot.service"
 ln -sf ../gts9uwifi-adsp-boot.service \
 	"$overlay/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-adsp-boot.service"
+# Order pd-mapper after that late ADSP start; it needs a running remoteproc both
+# to find its maps and to have someone to serve.
+install -m 0644 "$project/configs/audio/10-gts9uwifi-adsp-order.conf" \
+	"$overlay/etc/systemd/system/pd-mapper.service.d/10-gts9uwifi-adsp-order.conf"
 install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \

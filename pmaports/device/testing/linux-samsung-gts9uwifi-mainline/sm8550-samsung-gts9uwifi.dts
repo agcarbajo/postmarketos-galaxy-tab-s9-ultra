@@ -1069,3 +1069,24 @@
 	/delete-property/ interconnects;
 	status = "okay";
 };
+
+/*
+ * Speaker I2C bus drive strength.  The four CS35L45 amplifiers sit on the QUPv3
+ * I2C master hub SE6 (998000.i2c, Samsung's I2C18) which this board runs at
+ * 1 MHz, i.e. Fast-Mode Plus.  Mainline's generic hub_i2c6_data_clk state asks
+ * for the weakest TLMM setting, drive-strength = <2>; Samsung's own
+ * qupv3_hub_i2c6_{sda,scl}_active states use <8> for the same two pins with the
+ * same pull-up and the same mux (their per-line i2chub0_se6_l0/l1 functions are
+ * mainline's single i2chub0_se6, func1 on gpio8 and gpio9).
+ *
+ * With 2 mA the edges cannot meet FM+ timing against four amplifier loads: the
+ * GENI controller never completes the first transfer and returns -110 after
+ * ~1.0 s, which surfaces as "Timeout waiting for OTP boot" even though the rail
+ * (tlmm19) is high and the shared reset (tlmm42) is verifiably released - a
+ * gpio/i2c ftrace shows gpio 578 going 0 -> 1 and then a single i2c_write whose
+ * i2c_result is ret=-110.  Match Samsung's drive strength; nothing else in the
+ * bus configuration differs from stock.
+ */
+&hub_i2c6_data_clk {
+	drive-strength = <8>;
+};

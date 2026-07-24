@@ -3,13 +3,15 @@
 > Documento vivo del proyecto. Debe actualizarse con cada avance, fallo,
 > decisión de arquitectura y artefacto generado.
 >
-> Última actualización: 2026-07-24 (sesión 85: v0.74 arrancada y validada por
-> SSH). Wi-Fi/SSH, display, BT y ADSP siguen estables. Los tres proveedores que
-> bloqueaban los probes están ya built-in, pero aún no hay tarjeta ALSA: el
-> pinctrl LPASS espera q6prmcc/PDR y los cuatro CS35L45 han avanzado de
-> `-EPROBE_DEFER` a `Timeout waiting for OTP boot` (-110). La siguiente
-> iteración debe resolver ambos bloqueos con evidencia, sin reactivar todavía
-> el interconnect LPASS que causó bloqueos históricos.
+> Última actualización: 2026-07-24 (sesión 86: v0.75 construida y flasheada en
+> `vendor_boot`). **Bloqueo PDR resuelto:** faltaba el daemon `pd-mapper` y sus
+> mapas `*.jsn`, que debe encontrar **en el directorio del firmware del
+> remoteproc** (junto a `adsp.mdt`); con ellos aparecen los dispositivos GPR y
+> enlazan el pinctrl LPASS y el VA macro, y `sound` ya sólo espera «codec dai not
+> found». **Sigue abierto** el I2C de los cuatro CS35L45: el `-110` es un timeout
+> del bus, no del poll OTP, y quedan descartados por evidencia bus, reset, rail,
+> pinmux, IRQ, relojes y drive-strength. Sin regresiones; el interconnect LPASS
+> sigue sin reactivarse.
 
 ## Objetivo
 
@@ -74,7 +76,7 @@ demostrarlo en este dispositivo.
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
 | Bluetooth WCN7850 | ✅ **Validado de extremo a extremo (sesión 81)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21`, dirección pública nativa de EFS. Bonds persistentes (Buds2 Pro + móvil), sink A2DP clásico creado y audio real confirmado (YouTube en Chromium por los Buds). Servidor de sonido = PulseAudio 17. HID sin probar por falta de periférico BT |
-| Audio interno | 🟡 ADSP estable y v0.74 confirma los proveedores built-in. Sin ALSA: `q6prmcc` no aparece (pinctrl LPI sigue deferred) y CS35L45 ya recibe GPIO42 pero vence OTP (-110). Hardware: PRIMARY_MI2S + 4×CS35L45 y DMIC directos al VA macro, no WCD938x/WSA88x |
+| Audio interno | 🟡 **Cadena AudioReach desbloqueada (v0.75)**: `pd-mapper` + mapas `adspr/adsps/adspua/cdspr.jsn` junto a `adsp.mdt` publican `avs/audio` → aparecen `gprsvc:service:2:1/2:2`, enlazan `qcom-sm8550-lpass-lpi-pinctrl` y `va_macro`. Sin ALSA todavía: los cuatro CS35L45 no responden en I2C (timeout de bus -110; descartados bus, reset, rail, pinmux, IRQ, relojes y drive-strength). Hardware: PRIMARY_MI2S + 4×CS35L45 y DMIC directos al VA macro, no WCD938x/WSA88x |
 | Botones | 🟡 v0.73: `gpio-keys` de volumen-arriba aparece como `event1`; PON power/resin todavía no crean input. Prueba física aplazada hasta terminar audio |
 
 ## Reto en curso
@@ -119,19 +121,35 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    mantiene elidido hasta observar si el PCM DMA realmente lo necesita: habilitar
    `lpass_ag_noc` ya causó bloqueos históricos y no se mezclará con el primer
    arranque ALSA. v0.73 se escribió con verificación por UFS y arranca sin
-   regresiones, pero no crea tarjeta ALSA. La evidencia viva separa las causas:
-   `QRTR_SMD=m` deja PDR sin transporte y APR no instancia q6apm/q6prm; los
-   pinctrl LPASS-LPI en `=m` aplazan el VA macro; y Linux 7.2 marca GPIO42
-   como reset compartido correcto, pero `GPIO_SHARED_PROXY=m` hace que los
-   cuatro CS35L45 reciban `-EPROBE_DEFER`. **v0.74/kernel r42 ya está
-   arrancada:** los cuatro símbolos son `=y`, Wi-Fi/SSH/BT/display/ADSP no han
-   regresado y los CS35L45 ya adquieren el reset, pero cada uno alcanza
-   `Timeout waiting for OTP boot` (-110). El pinctrl LPI también sigue deferred
-   porque sus relojes `<&q6prmcc ...>` no tienen proveedor: q6prm no aparece
-   bajo APR/PDR. **Pendiente inmediato:** demostrar por qué PDR no publica
-   `avs/audio` pese a QRTR-SMD built-in y por qué los amplificadores no salen
-   del reset/OTP; obtener tarjeta ALSA y PCM antes de probar altavoces y
-   micrófonos acústicamente. No reactivar aún el interconnect LPASS.
+   regresiones, pero no crea tarjeta ALSA. v0.74 puso built-in `QRTR_SMD`, los
+   pinctrl LPASS-LPI y `GPIO_SHARED_PROXY`, lo que quitó los `-EPROBE_DEFER`
+   iniciales pero dejó dos bloqueos reales.
+   **v0.75 (sesión 86) resuelve el primero — PDR.** El transporte QRTR ya estaba
+   bien (`qcom_smd_qrtr` en `IPCRTR`, `qcom,apr` en `adsp_apps`); lo que faltaba
+   es que **nada en el kernel responde al servicio QMI *servreg locator***: lo
+   provee el daemon de espacio de usuario **`pd-mapper`**, que no estaba
+   instalado. Y `pd-mapper` no busca los mapas en rutas fijas: lee
+   `/sys/class/remoteproc/*/firmware` y escanea **ese mismo directorio**, así que
+   los `*.jsn` deben ir junto a `adsp.mdt`. Con `adspr/adsps/adspua/cdspr.jsn`
+   del apnhlos en `/usr/lib/firmware/qcom/sm8550/` (`adspua.jsn` mapea
+   `avs/audio` → `msm/adsp/audio_pd`) aparecen `gprsvc:service:2:1/2:2`, enlazan
+   `qcom-sm8550-lpass-lpi-pinctrl` y `va_macro`, y `sound` pasa de «error getting
+   cpu dai name» a «codec dai not found». Reproducible: firmware r8 empaqueta los
+   mapas, `pd-mapper` entra en `depends` del paquete de dispositivo y un drop-in
+   lo ordena tras `gts9uwifi-adsp-boot.service`.
+   **Sigue abierto el segundo — el I2C de los CS35L45.** El `-110` es un timeout
+   del **bus** (`wait_for_completion_timeout`, 1 s), no del poll OTP: un ftrace
+   muestra una sola transacción con `i2c_result ret=-110`. Descartados con
+   evidencia: bus equivocado (el DT stock pone los amps en `i2c@998000` =
+   `i2c_hub_6`), reset (ftrace: `gpio 578` 0→1 con sus 2 ms), rail (`tlmm19` out
+   high, `dummy_vreg` es la única alimentación también en el stock), pinmux
+   (`i2chub0_se6` func1), IRQ (línea 154 incrementa), relojes (GCC se escribe
+   antes de cada transferencia) y drive-strength (igualado a los 8 mA del stock en
+   v0.75, sin cambio). **Pendiente inmediato:** por qué los amplificadores no
+   contestan; pista: el DT stock agrupa `gpio19` con `gpio18` y con
+   `gpio14`+`gpio86` en estados pinctrl que mainline no reproduce. Obtener tarjeta
+   ALSA y PCM antes de probar altavoces y micrófonos acústicamente. No reactivar
+   aún el interconnect LPASS.
 4. **Botones (Tarea 3).** v0.73 añade power vía PMK8550 PON,
    volumen-abajo por resin y volumen-arriba por PM8550 GPIO6. `gpio-keys`
    aparece como `event1`; PON power/resin todavía no crean input. Sólo tras
