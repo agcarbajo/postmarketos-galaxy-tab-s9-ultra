@@ -3682,3 +3682,108 @@ topología de 38.540 bytes bajo el nombre exacto de la tarjeta y el firmware
 ADSP. Sigue **sin flashear**: por la política de seguridad hace falta
 autorización explícita antes de escribir `sda21`/`sda24`. La tablet continúa en
 v0.72; tarjeta ALSA, PCM, audio acústico y botones todavía no están validados.
+
+## 2026-07-23 — sesión 84: v0.73 en vivo y causas raíz de los probes de audio
+
+Con autorización explícita se escribió v0.73 por UFS únicamente en
+`boot=/dev/sda21` y `vendor_boot=/dev/sda24`, después de respaldar ambas
+particiones en `/tmp` y verificar SHA-256 origen=destino. El script terminó con
+`V073_UFS_VERIFY_OK`. La tablet reinició correctamente con
+`7.2.0-rc3-dirty #45`; Wi-Fi/SSH, LightDM, Bluetooth y el service del ADSP
+siguen activos, y `remoteproc adsp` queda `running`. Por tanto no hay regresión
+de arranque, pantalla ni conectividad.
+
+El primer probe todavía no crea una tarjeta ALSA. `/proc/asound/cards` muestra
+`--- no soundcards ---` y `devices_deferred` separa tres causas:
+
+- `sound`: la machine `snd-sc8280xp` no encuentra el CPU DAI de q6apm;
+- `6d44000.codec`: VA macro espera el proveedor pinctrl LPI de sus DMIC;
+- `0-0030..0-0033`: cada CS35L45 aplaza al pedir su reset compartido.
+
+**AudioReach/PDR.** GLINK e IPCC están vivos y remoteproc anuncia los canales
+RPMsg `IPCRTR` y `adsp_apps`; este último enlaza correctamente con
+`qcom,apr` y su `of_node` GPR. No aparecen dispositivos bajo el bus APR porque
+los nodos q6apm/q6prm tienen `qcom,protection-domain`: APR espera que PDR
+publique `avs/audio`. El config realmente compilado reveló
+`CONFIG_QRTR_SMD=m`. Como el port no instala/autocarga el árbol general de
+módulos, el canal `IPCRTR` carece de transporte y PDR nunca recibe el estado del
+PD. Causa raíz: QRTR core y PDR estaban built-in, pero su transporte SMD no.
+
+**VA macro.** El config construido contiene tanto
+`CONFIG_PINCTRL_LPASS_LPI=m` como `CONFIG_PINCTRL_SM8550_LPASS_LPI=m`.
+Por eso el nodo `pinctrl@6e80000` no registra el proveedor solicitado por
+`dmic67-default-state` y VA macro queda aplazado. Es el patrón ya conocido de
+clock/pinctrl controllers que upstream deja como módulo.
+
+**Reset CS35L45.** Se descartó un error de FDT y también una línea reservada:
+la propiedad viva es `<&tlmm 42 GPIO_ACTIVE_HIGH>`, phandle 0x69 apunta a
+`pinctrl@f100000`, GPIO42 es válido, está en función GPIO, entrada baja y sin
+pull, y coincide exactamente con el FDT Samsung. Una kretprobe sobre
+`devm_gpiod_get_optional` midió `-517` en los cuatro probes. La traza completa
+de gpiolib demostró que `of_get_named_gpiod_flags` sí encuentra el gpiochip y
+traduce la línea a 42; el error nace después, en
+`gpio_shared_add_proxy_lookup`. Linux 7.2 detecta automáticamente las cuatro
+referencias a la misma línea y marca el descriptor `GPIOD_FLAG_SHARED`, pero
+`CONFIG_GPIO_SHARED_PROXY=m`. Sin ese módulo, el proxy todavía no existe y la
+petición se aplaza. No se debe cambiar el GPIO ni eliminar la envoltura de
+reset compartido: hay que compilar el proxy.
+
+La fuente v0.74 sube el kernel package a r42 y fuerza exclusivamente los
+proveedores comprobados:
+
+- `CONFIG_QRTR_SMD=y`;
+- `CONFIG_PINCTRL_LPASS_LPI=y`;
+- `CONFIG_PINCTRL_SM8550_LPASS_LPI=y`;
+- `CONFIG_GPIO_SHARED_PROXY=y` (selecciona su `AUXILIARY_BUS`).
+
+No cambia rutas de audio, interconnects ni el DTS. Se mantiene el interconnect
+del ADSP elidido hasta alcanzar un PCM y observar una necesidad real de ancho
+de banda. La build reproducible v0.74 se inició desde worktree limpio mediante
+`work/run-build-v074.sh`; falta registrar aquí su resultado y validación viva.
+
+**Botones en v0.73.** `gpio-keys` aparece como `event1`, confirmando que el
+nodo de volumen-arriba y su driver enlazan. Los nodos PON de power/resin no
+crearon dispositivos de input y se investigarán después de estabilizar el
+audio. Conforme a la petición de la usuaria, la prueba física de botones se
+solicitará sólo al final.
+
+## 2026-07-24 — sesión 85: v0.74 elimina los defers iniciales, pero descubre dos bloqueos reales
+
+La build reproducible v0.74 terminó con kernel `#46`; su ZIP es
+`postmarketos-edge-xfce-mainline-v0.74-audio-probe-fixes-sm-x910-twrp.zip`
+(SHA-256 `eb16ed8322728a623c785cefe69b939e1620cf3165e1e7d4b4a40ec2197551f0`)
+y el `boot.img` es
+`f72bbb3ef082399756968b6c042cc8dd3dc81ebea1c7a1ffbc967b20b5a9e02a`.
+Con autorización vigente se escribió **sólo** `boot=/dev/sda21`: copia previa
+en `/tmp/boot-v073-before-v074.img`, `dd conv=fsync` y SHA de los primeros 96
+MiB igual al origen (`V074_BOOT_VERIFY_OK`). Tras reiniciar, SSH volvió por la
+host key de la X910 y Wi-Fi, pantalla, BT, LightDM y ADSP `running` siguen sin
+regresión.
+
+El kernel vivo confirma `CONFIG_QRTR_SMD=y`,
+`CONFIG_PINCTRL_LPASS_LPI=y`, `CONFIG_PINCTRL_SM8550_LPASS_LPI=y` y
+`CONFIG_GPIO_SHARED_PROXY=y`. Los cuatro clientes I2C aparecen en
+`0-0030..0-0033` y ya tienen driver `cs35l45`; esto confirma que el arreglo del
+proxy compartido eliminó el `-EPROBE_DEFER` de GPIO42. No obstante,
+`/proc/asound/cards` continúa vacío por dos bloqueos independientes:
+
+1. `6e80000.pinctrl` permanece deferred con razón desconocida; el VA macro
+   espera `dmic67-default-state`. El nodo LPI pide sus clocks a `q6prmcc`, pero
+   no existe aún dispositivo q6prm bajo APR. Los drivers q6apm/q6prm están
+   registrados, pero la protección de dominio sigue esperando que PDR publique
+   `avs/audio`. Subir QRTR-SMD por sí solo no lo ha conseguido; la siguiente
+   diagnosis debe inspeccionar el transporte QRTR/servreg y el camino PDR, no
+   asumir que la causa ya está resuelta.
+2. Los cuatro CS35L45 ahora llegan a inicializarse, pero vencen el sondeo de
+   `CS35L45_IRQ1_EINT_4` con `Timeout waiting for OTP boot` (-110). La
+   referencia Samsung confirma reset GPIO42 activo-alto compartido y el rail
+   fixed `dummy_vreg` por GPIO19. El DTS mainline reproduce ambas señales como
+   `speaker_vdd`; hay que contrastar de forma no destructiva el nivel real del
+   rail/reset y las diferencias de secuencia del driver upstream frente al
+   downstream. No cambiar todavía la polaridad ni retirar el reset sin una
+   traza que lo justifique.
+
+La machine `sound` permanece deferred porque su DAI CPU q6apm aún no existe;
+no es una cuarta causa. Tampoco se reactivó el interconnect LPASS: ya causó
+bloqueos históricos y aún no hay un PCM que demuestre necesitarlo. Botones y
+la prueba acústica siguen aplazados hasta que aparezca una tarjeta ALSA.

@@ -146,6 +146,7 @@ CONFIG_QCOM_SYSMON=y
 CONFIG_QCOM_PDR_HELPERS=y
 CONFIG_QCOM_PDR_MSG=y
 CONFIG_RPMSG_QCOM_GLINK_SMEM=y
+CONFIG_QRTR_SMD=y
 
 # Internal audio, step 2: AudioReach/GPR, the SM8550 machine card, the X910's
 # real CS35L45 I2C/MI2S speaker path, and the LPASS VA macro used by its DMICs.
@@ -162,6 +163,14 @@ CONFIG_SND_SOC_QDSP6=y
 CONFIG_SND_SOC_SC8280XP=y
 CONFIG_SND_SOC_CS35L45_I2C=y
 CONFIG_SND_SOC_LPASS_VA_MACRO=y
+CONFIG_PINCTRL_LPASS_LPI=y
+CONFIG_PINCTRL_SM8550_LPASS_LPI=y
+
+# Linux 7.2 detects that the four CS35L45 instances share their physical reset
+# line (TLMM GPIO42) and routes it through the GPIO shared-proxy driver.  Its
+# default is =m; without module autoload every codec gets -EPROBE_DEFER even
+# though TLMM and GPIO42 are both valid, so the proxy must be built-in.
+CONFIG_GPIO_SHARED_PROXY=y
 
 # Physical power/volume keys: PMIC PON handles power and volume-down (resin);
 # the board's volume-up line is PM8550 GPIO6 through gpio-keys.
