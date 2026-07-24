@@ -664,7 +664,18 @@
 };
 
 &i2c_hub_6 {
-	clock-frequency = <1000000>;
+	/*
+	 * 400 kHz, not the 1 MHz the downstream stack uses.  Under mainline the
+	 * QUPv3 i2c-master-hub runs its SEs in FIFO/PIO mode (no GPI DMA), and at
+	 * 1 MHz Fast-Mode Plus the SE accepts the M_CMD but never drives the bus
+	 * (mid-hang: bus idle, both lines high, zero interrupts) - the QUP core
+	 * clock available to PIO is not enough for FM+.  Every upstream SM8550
+	 * board that puts real devices on the i2c hub runs it at <=400 kHz
+	 * (sm8550-hdk/mtp/qrd typec muxes at default, sony-xperia-yodo at 400 kHz);
+	 * none run it at 1 MHz.  400 kHz is ample for CS35L45 register access and
+	 * DSP firmware download.
+	 */
+	clock-frequency = <400000>;
 	status = "okay";
 
 	cs35l45_rl: amplifier@30 {

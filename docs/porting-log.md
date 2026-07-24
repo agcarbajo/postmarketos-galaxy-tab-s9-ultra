@@ -3921,3 +3921,133 @@ preexistente (OSM_L3=m, no es regresión).
 Sigue sin reactivarse el interconnect LPASS: no hay aún un PCM que demuestre
 necesitarlo. Botones y prueba acústica continúan aplazados hasta que exista tarjeta
 ALSA.
+
+## 2026-07-24 — sesión 87: causa raíz del I2C de los CS35L45 = el GENI i2c-master-hub no clockea en modo PIO
+
+Continuación del bloqueo 2. Objetivo: por qué los cuatro CS35L45 dan `-110` en
+I2C. Se instrumentó el driver GENI (builds de diagnóstico v0.76–v0.79, sólo
+`boot`) y se llegó a una causa raíz precisa. **No hay fix aún**; la tablet quedó
+restaurada al v0.75 limpio (kernel r43, sin parches de diagnóstico), con el fix de
+`pd-mapper` intacto (`va_macro` y el pinctrl LPI siguen enlazados).
+
+**El `-110` es del bus, y el SE acepta el comando pero no conduce el bus.** Un
+ftrace i2c+regmap ya mostró una única transacción `i2c_result ret=-110` (1,017 s =
+`XFER_TIMEOUT = HZ`), sin NACK (`-ENXIO`) ni ARB_LOST (`-EAGAIN`). Promoviendo el
+volcado de registros del driver (`geni_i2c_err`, que sólo usaba `dev_dbg`) a
+`dev_err` en el camino `GENI_TIMEOUT`, el estado a mitad de cuelgue (capturado
+ANTES del `geni_se_abort_m_cmd`) es:
+
+- `geni_status = 0x41` = `M_GENI_CMD_ACTIVE` (comando aceptado, nunca termina);
+- `m_irq_status = 0x0` (NINGÚN interrupt: ni `M_CMD_DONE` ni `M_GP_IRQ`);
+- `geni_ios = 0x7` en el primer amp sobre bus limpio = **SDA=1, SCL=1, bus en
+  reposo**: el maestro nunca condujo el bus. (Los amps 2-4 muestran `0x2` porque
+  el abort del primero deja el bus contaminado.)
+
+Un chip no puede dejar ambas líneas altas; por tanto es el **SE/maestro**, no el
+esclavo. Descarta definitivamente la teoría de "chip presente que hace
+clock-stretch".
+
+**Firmware del SE presente e idéntico al bus que funciona.** `geni_se_read_proto`
+(reg `FW_REVISION_RO`) da `proto=3` (GENI_SE_I2C) y `fw_rev=0x303` tanto en el bus
+de los amps (998000) como en el del táctil (a90000). No es firmware del SE.
+
+**La diferencia real: modo de transferencia.** `GENI_IF_DISABLE_RO`: táctil
+`if_disable=0x1` → FIFO deshabilitado → usa **GPI DMA** (`gpi_mode=true`); amps
+`if_disable=0x0` + el desc `i2c_master_hub` fuerza `no_dma` → **FIFO/PIO**. El bus
+que funciona usa DMA; el que falla usa PIO. En PIO el secuenciador del SE necesita
+que el reloj **core** del QUP esté corriendo.
+
+**El reloj core del hub.** `gcc_qupv3_i2c_core_clk` y `gcc_qupv3_i2c_s_ahb_clk`
+son `clk_branch` `BRANCH_HALT_VOTED` (enable_reg 0x52008, bits 8 y 7). En vivo,
+DURANTE el cuelgue, ambos están `enable=1` pero **rate=0**, mientras `s6` (el SE)
+sí va a 19,2 MHz. OJO: el bus del táctil (qup1) también tiene su
+`gcc_qupv3_wrap1_core_clk` a rate=0 — pero funciona porque usa DMA, que no depende
+del secuenciador PIO. El core lo gestiona `bcm_qup0` (keepalive, buswidth=4) vía
+RPMh a partir del voto de interconnect `qup-core`.
+
+**El voto de BW NO es el arreglo (probado y negativo).** Para el hub,
+`geni_i2c_probe` sólo vota `GENI_DEFAULT_BW = Bps_to_icc(1000)` en core/config y
+nada en DDR (`icc_ddr=NULL`). Se probó votar el core proporcional a la velocidad
+(v0.78, `Bps_to_icc(1e6)`≈250 kHz de core): el PRIMER amp pasó a
+`status=0x0`/`m_irq=0x1` (M_CMD_DONE, ¡el SE ejecutó!) aunque aún falló el OTP;
+los otros tres siguieron atascados. Se subió el voto a ~600 MB/s (v0.79): **todos**
+volvieron a `status=0x41`. Como el resultado no es monótono con la magnitud, el
+"éxito" del primer amp en v0.78 se atribuye a **calor de arranque**: el ABL de
+Samsung usa estos amps para el sonido de arranque y deja el core del QUP caliente;
+la primera transacción de mainline lo aprovecha y luego decae. El voto de
+`avg_bw` no controla de forma útil el rate del core aquí.
+
+**Conclusión.** El SM8550 i2c-master-hub bajo mainline no ejecuta transacciones en
+modo PIO: el reloj core del QUP-i2c no queda corriendo (sólo lo dejó el
+bootloader, transitoriamente). Los buses que funcionan lo evitan usando GPI DMA,
+opción no disponible para el hub (FIFO-only). El arreglo correcto es de
+GCC/interconnect (hacer que el core del i2c-hub corra para PIO), no del DTS ni del
+driver CS35L45. Pistas de continuación: (a) revisar cómo el downstream/otros SoC
+SM8550 mainline con i2c-hub encienden el core (¿`assigned-clock-rates`,
+`CLK_IS_CRITICAL`, un clock que falta en el wrapper `9c0000.geniqup`?); (b) probar
+mantener el core vivo evitando el runtime-suspend del hub; (c) comparar el
+`clk_summary` del core justo tras el ABL (caliente) vs tras un ciclo de suspend.
+
+**No repetir (ya descartado con evidencia):** que sea el chip/OTP (el maestro no
+conduce el bus), reset/polaridad, rail (`dummy_vreg`/tlmm19 es la única
+alimentación también en el stock), pinmux, IRQ (línea 154 incrementa),
+firmware del SE (proto=3), drive-strength (v0.75, sin efecto) y el voto de BW del
+core (v0.78/v0.79, no monótono). Interconnect LPASS sigue sin reactivarse.
+
+Estado reproducible sin cambios de código nuevos: v0.75 sigue siendo el artefacto
+bueno (kernel r43, firmware r8, device r23; pd-mapper + mapas). Los parches
+GENIDIAG/COREBWFIX fueron sólo de diagnóstico, viven únicamente en el worktree
+caliente y no están en fuentes versionadas ni empaquetadas.
+
+## 2026-07-24 — sesión 88: audio interno — ¡tarjeta ALSA! El i2c-hub a 400 kHz desbloquea los CS35L45
+
+El bloqueo 2 (sesión 87) quedó como "el GENI i2c-master-hub no ejecuta en modo
+PIO a 1 MHz". La pieza que faltaba se encontró comparando con los DTs upstream:
+**todos** los boards SM8550 que ponen dispositivos reales en el i2c-hub lo corren a
+≤400 kHz — `sm8550-hdk`/`mtp`/`qrd` (typec mux, por defecto) y sobre todo
+`sm8550-sony-xperia-yodo-pdx234` (`i2c_hub_2` con un PMIC slg51000 a
+`clock-frequency = <400000>`). Ninguno a 1 MHz. Nuestro DTS heredaba el 1 MHz del
+stack downstream (que usa su propio driver del hub). El SE del hub en PIO/FIFO no
+sostiene Fast-Mode-Plus bajo mainline.
+
+**Fix (v0.80): `&i2c_hub_6 { clock-frequency = <400000>; }`** (antes 1000000).
+Un único cambio de una línea en el DTS, respaldado por el board Sony. Resultado en
+vivo tras flashear `vendor_boot` (sda24):
+
+```
+cs35l45 0-0030: Cirrus Logic CS35L45: REVID A0 OTPID 0B
+cs35l45 0-0031..0033: idem
+0 [SamsungGalaxyTa]: sm8550 - Samsung-Galaxy-Tab-S9-Ultra
+```
+
+- Los cuatro CS35L45 completan el OTP boot y reportan DEVID/REVID (antes: `-110`).
+- Aparece la **tarjeta ALSA** `Samsung-Galaxy-Tab-S9-Ultra`, card 0:
+  - playback: `MultiMedia1/2/6 Playback`;
+  - capture: `MultiMedia3/4 Capture`.
+- `amixer -c 0` expone los controles por amplificador (Front/Rear Left/Right):
+  `AMP Enable`, `Amplifier Mode`, `DSP1 Firmware/Preload`, rutas `ASP_TX*`/`DSP_RX*`.
+- `devices_deferred` ya sólo tiene `17d91000.cpufreq` (OSM_L3=m, preexistente); la
+  machine `sound` ya NO está aplazada.
+- Sin regresiones: NetworkManager/lightdm/bluetooth/pd-mapper/adsp-boot activos,
+  ADSP `running`, y `pd-mapper` (bloqueo 1) sigue haciendo su trabajo.
+
+Confirmado que los parches de diagnóstico GENIDIAG/COREBWFIX de las sesiones 86-87
+NO están en la build (worktree limpio; `grep -c GENIDIAG` = 0). El cambio de código
+reproducible desde v0.75 es únicamente el `clock-frequency` del DTS. Kernel r44.
+
+Artefacto: `postmarketos-edge-xfce-mainline-v0.80-i2chub-400khz-sm-x910-twrp.zip`
+(48.401.792 bytes, SHA-256
+`648a86c097aa1298d4f8b3a6141634d6e0e5357da456fac4f76de35c374f2e35`);
+vendor_boot.img SHA-256 `3b323593c399f0d8f7db67edbc3039b2c3e12054c30a9ed8c1ccab4e1b3c45d3`.
+`boot` sigue en v0.75 (el cambio es sólo de DTS → sólo vendor_boot). Backup previo
+en `/tmp/vendor_boot-v075-...` del device; `V080_VB_OK`.
+
+**Aprendizaje clave (no repetir):** el timeout `-110` del i2c-hub bajo mainline se
+resuelve corriendo el bus a ≤400 kHz, NO tocando el chip, el reset, el rail, el
+drive-strength ni el voto de interconnect. La causa es el modo PIO del hub a FM+.
+
+Pendiente para tener SONIDO real: montar la ruta ALSA (habilitar los amps, rutar
+`MultiMedia1 Playback` → `PRIMARY_MI2S_RX` → CS35L45), cargar/gestionar el firmware
+DSP de protección de altavoz de Cirrus (o modo passthrough), y UCM. Luego la prueba
+acústica (altavoces captados por el micro de los cascos BT; micros de la tablet
+grabando lo que suena en los cascos). Botones y sensores después.
