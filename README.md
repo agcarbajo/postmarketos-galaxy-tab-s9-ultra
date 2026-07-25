@@ -78,7 +78,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 **v0.74 arrancada y estable** por UFS (`boot` solamente, kernel `#46`). ZIP regenerable `postmarketos-edge-xfce-mainline-v0.74-audio-probe-fixes-sm-x910-twrp.zip`, SHA-256 `eb16ed8322728a623c785cefe69b939e1620cf3165e1e7d4b4a40ec2197551f0` |
+| Imagen/paquete de prueba | ✅ **v0.90 construida limpia** (worktree pristino, `BUILD_EXIT=0`, sin restos de instrumentación): `postmarketos-edge-xfce-mainline-v0.90-internal-audio-buttons-sm-x910-twrp.zip`, 48.411.346 bytes, SHA-256 `5fa93ad3f205cf26a28a20a6ec969f1f591c49c77549fb8d15a05d18a4bdc96f`; boot `1e450724…`, vendor_boot `5b14de5b…`. La tablet corre los incrementales v0.88, funcionalmente equivalentes |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |

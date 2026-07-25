@@ -4259,3 +4259,19 @@ fragment de config, parche del kernel (aplicado por `build-mainline-kernel.sh`),
 `stage-audioreach-topology.sh`, `configs/audio/` (UCM + udev, instalados por
 `build-wifi-bringup.sh`) y `configs/display-native/gts9uwifi-xfce-hidpi` (ajustes
 xfconf). Kernel r46, firmware r9, device r24.
+
+**Artefacto v0.90 (build limpia desde worktree pristino).** `BUILD_EXIT=0`.
+Comprobaciones automáticas sobre lo que salió: `POWER_RESET_QCOM_PON=y`, el
+parche del sysclk del códec aplicado, **cero restos de la instrumentación de
+diagnóstico** (GENIDIAG/I2SDIAG a 0), i2c hub a 400 kHz, carril de captura del VA
+macro, `qcom,dmic-sample-rate`, `vdd-micb-supply`, UCM y regla udev en el overlay,
+y la topología con el hash del retarget a SD1 (`0c362136…`).
+
+- ZIP `postmarketos-edge-xfce-mainline-v0.90-internal-audio-buttons-sm-x910-twrp.zip`,
+  48.411.346 bytes, SHA-256
+  `5fa93ad3f205cf26a28a20a6ec969f1f591c49c77549fb8d15a05d18a4bdc96f`
+- boot.img SHA-256 `1e45072482b5502536bca30b0ad86752171d4bfbe52a26e2c6fef710e5df71f4`
+- vendor_boot.img SHA-256 `5b14de5b678a69e0af4a6a9e6a92fdd95923fa550486f6962b55d1120eca5e96`
+
+La tablet quedó corriendo los incrementales v0.88 (boot+vendor_boot), que son
+funcionalmente equivalentes; v0.90 es el artefacto reproducible para reinstalar.
