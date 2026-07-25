@@ -146,6 +146,25 @@ if ! grep -q 'panel-samsung-ana38407.o' "$panel_dir/Makefile"; then
 		>> "$panel_dir/Makefile"
 fi
 
+# Silicon Mitus SM5714 charger/fuel gauge.  Shipped the same way as the panel:
+# the .c goes into the pristine tree and Kconfig/Makefile learn about it here.
+supply_dir="$kernel_tree/drivers/power/supply"
+install -m 0644 "$package/sm5714_battery.c" "$supply_dir/sm5714_battery.c"
+if ! grep -q 'BATTERY_SM5714' "$supply_dir/Kconfig"; then
+	sed -i '/^endif # POWER_SUPPLY$/i \
+config BATTERY_SM5714\
+\ttristate "Silicon Mitus SM5714 charger and fuel gauge"\
+\tdepends on I2C\
+\thelp\
+\t  Battery state of charge and charging status on boards that drive the\
+\t  SM5714 combo PMIC from the AP, such as the Galaxy Tab S9 Ultra Wi-Fi.\
+' "$supply_dir/Kconfig"
+fi
+if ! grep -q 'sm5714_battery.o' "$supply_dir/Makefile"; then
+	printf 'obj-$(CONFIG_BATTERY_SM5714)\t+= sm5714_battery.o\n' \
+		>> "$supply_dir/Makefile"
+fi
+
 cp "$base/pmaports/device/main/linux-postmarketos-mainline/config-mainline.aarch64" \
 	"$build_dir/.config"
 

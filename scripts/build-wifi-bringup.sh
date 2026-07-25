@@ -47,6 +47,7 @@ mkdir -p \
 	"$overlay/etc/systemd/system/lightdm.service.d" \
 	"$overlay/etc/systemd/system/bluetooth.service.d" \
 	"$overlay/etc/systemd/system/pd-mapper.service.d" \
+	"$overlay/etc/systemd/journald.conf.d" \
 	"$overlay/usr/lib/udev/rules.d" \
 	"$overlay/usr/share/alsa/ucm2/conf.d/sm8550" \
 	"$overlay/usr/share/alsa/ucm2/Qualcomm/sm8550/GTS9U" \
@@ -136,6 +137,11 @@ install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
 	"$overlay/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 install -m 0644 "$project/configs/display-native/10-msm-dpu.conf" \
 	"$overlay/etc/X11/xorg.conf.d/10-msm-dpu.conf"
+# A 3.6 GB rootfs plus an uncapped journal is what put lightdm into a permanent
+# crash loop once the filesystem hit 100%.  Cap it from the start.
+install -m 0644 "$project/configs/development-ssh/10-gts9uwifi-journal-cap.conf" \
+	"$overlay/etc/systemd/journald.conf.d/10-gts9uwifi-journal-cap.conf"
+
 install -m 0755 "$project/configs/display-native/gts9uwifi-install-xorg-package" \
 	"$overlay/usr/libexec/gts9uwifi-install-xorg-package"
 install -m 0644 "$project/configs/display-native/10-gts9uwifi-xorg-package.conf" \

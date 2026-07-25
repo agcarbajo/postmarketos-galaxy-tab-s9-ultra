@@ -4275,3 +4275,124 @@ y la topología con el hash del retarget a SD1 (`0c362136…`).
 
 La tablet quedó corriendo los incrementales v0.88 (boot+vendor_boot), que son
 funcionalmente equivalentes; v0.90 es el artefacto reproducible para reinstalar.
+
+## Sesión 91 — pantalla en negro tras reinicio: rootfs al 100 %, no el panel
+
+Síntoma reportado: la tablet se queda en negro tras el logo de Samsung, con el
+guion parpadeando arriba a la izquierda. Parecía un fallo de arranque.
+
+No lo era. El SSH respondía con normalidad (kernel `7.2.0-rc3-dirty`, uptime
+normal), el panel se inicializaba bien (`ana38407 panel id: 80 00 04`), y
+`card1-DSI-1` figuraba como `connected`. Lo que fallaba era la sesión gráfica:
+
+    lightdm.service: Scheduled restart job, restart counter is at 236
+    lightdm[1779]: Error writing X authority: Failed to write X authority
+                   /home/phablet/.Xauthority: No space left on device
+
+`/dev/mmcblk1p2` (3.6 G) estaba al **100 %, 0 bytes disponibles**. Cada arranque
+de Xorg llegaba hasta reservar el framebuffer 2960x1848, la sesión no podía
+escribir `~/.Xauthority`, salía con código 1 y systemd reiniciaba lightdm
+indefinidamente cada ~3.5 s — de ahí el `panel id` repetido en dmesg cada 3.4 s,
+que es la huella del ciclo de reinicio, no de un fallo del panel.
+
+Qué había llenado el disco:
+
+| ruta | tamaño |
+|---|---|
+| `/var/log/journal` | 778 MB (journal sin límite) |
+| `/home/phablet/{v060,v065,rollback-v065}` | ~384 MB en boot/vendor_boot antiguos |
+| `.cache/chromium` + `.config/chromium` | ~230 MB |
+
+Arreglo aplicado (solo datos regenerables; las imágenes de rollback se
+conservan como red de seguridad del usuario):
+
+- `journalctl --vacuum-size=64M` → liberó 722 MB.
+- Caché de Chromium borrada.
+- Resultado: 80 % de uso, 702 MB libres; `NRestarts=0`, `xfce4-session` y
+  `xfdesktop` vivos.
+
+Verificación objetiva del escritorio, no solo del estado de systemd: captura de
+la ventana raíz con `xwd` y análisis de píxeles → 2960x1848 bpp=24, 205 valores
+distintos, 52 % de píxeles no negros. **El escritorio pinta.**
+
+Reproducible: `configs/development-ssh/10-gts9uwifi-journal-cap.conf`
+(`SystemMaxUse=64M`) instalado por `build-wifi-bringup.sh` en
+`/etc/systemd/journald.conf.d/`, para que una sesión larga de depuración no
+pueda repetir esto en una instalación nueva.
+
+Pendiente de decisión de la usuaria: la partición raíz son solo 3.6 G. Ampliarla
+implicaría reparticionar la microSD y no se ha tocado.
+
+
+## Sesión 92 — batería y estado de carga: driver propio para el Silicon Mitus SM5714
+
+**El camino Qualcomm está cerrado.** `pmic_glink` + `qcom_battmgr` es como
+SM8550 reporta batería normalmente, pero `pmic_glink_adsp_data` exige el
+dominio de protección `msm/adsp/charger_pd` vía PDR, y el firmware de Samsung
+solo publica cuatro mapas: `adspr.jsn` (root_pd), `adsps.jsn` (sensor_pd),
+`adspua.jsn` (audio_pd) y `cdspr.jsn`. Nada en `apnhlos` menciona `charger_pd`.
+El DT stock lo confirma: usa `samsung,sec-battery`, `samsung,sm5714-charger` y
+`samsung,sec-direct-charger`, todo desde el AP.
+
+**Hardware real:** Silicon Mitus SM5714, un combo PMIC. Direcciones (de
+`sm5714-private.h`): cargador `0x49`, fuel gauge `0x71`, MUIC `0x25`, y el
+bloque USB-PD en `0x33`. Mainline no tiene NINGÚN driver para el SM5714 (solo
+`extcon-sm5502` para sm5502/5504/5703), así que hay que escribirlo.
+
+**Error de lectura del DT que costó una build (v0.89):** puse el chip en
+`i2c_hub_9` (0x9a4000) porque en el volcado `sm5714@49` aparecía justo encima
+de `i2c@9a4000`. Estaba en el nodo ANTERIOR. `i2cdetect` lo zanjó: en el bus de
+hub_9 responde `0x33` — el bloque USB-PD, que en el DT stock SÍ cuelga de
+9a4000 — y nada en 0x49. El chip está en **`i2c@9a0000` = `i2c_hub_8`**. Lección:
+en un volcado plano, confirmar el nodo padre contando llaves, no por cercanía;
+y `i2cdetect` sobre el bus resuelve la duda en un minuto.
+
+**Driver** `sm5714_battery.c` (nuevo, en `drivers/power/supply/`, integrado como
+el panel: `.c` versionado + Kconfig/Makefile parcheados por el APKBUILD y por
+`build-mainline-kernel.sh`). Es deliberadamente **de solo lectura**: la carga ya
+la gestiona el propio chip y el boot chain, y no merece la pena arriesgarse a
+mal-programar un cargador en hardware real. Enlaza en 0x49 y crea un cliente
+dummy para el fuel gauge en 0x71. Registra dos power supplies: `sm5714-battery`
+y `sm5714-usb`.
+
+Conversiones (del `sm5714_fuelgauge.c` downstream). El fuel gauge expone sus
+medidas por una ventana SRAM: se escribe la dirección en `RADDR` (0x8c) y se lee
+`RDATA` (0x8d), en registros de 16 bits:
+
+| valor | SRAM | conversión |
+|---|---|---|
+| SOC | 0x00 | Q8.8 sin signo, `(raw*10)>>8` en 0,1 % |
+| VBAT | 0x03 | offset 2700 mV, pasos de 10/109 mV |
+| corriente | 0x05 | signo-magnitud, 1/2044 A, bit15 = descarga |
+| temperatura | 0x07 | `((raw&0x7fff)*10*2989)>>11>>8` en 0,1 °C |
+| OCV | 0x01 | `(raw*1000)>>11` mV |
+
+**Bug propio detectado y corregido (v0.91).** Escribí los getters devolviendo el
+valor o un errno en el mismo `int`, así que cualquier corriente NEGATIVA — es
+decir, la batería descargando, el caso normal — se interpretaba como fallo de
+E/S: `power_supply sm5714-battery: driver failed to report 'current_now'
+property: -129000`. Corregido pasando el valor por puntero y reservando el
+retorno para errores reales. Lo mismo aplicaba a la temperatura bajo cero.
+
+**Validado en la tablet** (v0.91, kernel r47, solo se escribió `boot` porque el
+DTS no cambió): `capacity=97%`, `status=Full`, `voltage_now=4,378 V`,
+`current_now=+239 mA`, `temp=35,4 °C`, `sm5714-usb/online=1`. UPower expone
+`battery_sm5714_battery` y `line_power_sm5714_usb`, con `state: fully-charged`,
+`percentage: 97%` y estimación de autonomía. Sin líneas de error en dmesg.
+
+**Los 45 W: NO, y se sabe por qué.** Leyendo los registros del cargador en vivo
+(`i2cget -f -y 1 0x49`): `VBUSCNTL=0x44` da límite de entrada **1800 mA**,
+`CHGCNTL2=0x86` da carga rápida 2093 mA, `STATUS1=0x01` (VBUS_POK),
+`STATUS2=0x38` (CHG_ON + top-off). A 5 V eso son **~9 W**, o sea USB por
+defecto sin negociar nada. Dos razones estructurales:
+
+1. El DT stock declara para este cargador `battery,max_input_voltage = 9000 mV`
+   y `max_input_current = 3000 mA`, o sea **27 W de techo** por esta vía.
+2. Los 45 W reales van por `samsung,sec-direct-charger` (carga directa 2:1) y
+   requieren negociar **PD PPS**, lo que necesita el bloque USB-PD del SM5714 en
+   `0x33` de `i2c_hub_9`, sin driver en mainline. Por eso `i2c_hub_9` queda
+   documentado en el DTS pero deshabilitado.
+
+No se ha podido medir la potencia de pico de carga porque la tablet está al 97 %
+y en top-off (entran ~250 mA, ~1 W). Para medirlo de verdad hay que repetir la
+lectura con la batería baja.

@@ -165,6 +165,20 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    estabilizar el audio se pedirá a la usuaria la prueba física.
    Después: sensores, USB Code 43 y cámaras. UFS permite iterar por SSH sobre
    `boot`/`vendor_boot`; TWRP/Download Mode quedan como recuperación.
+5. **Batería y carga (Tarea 5) — RESUELTO en v0.91 (sesión 92).** El camino
+   Qualcomm (`pmic_glink`/`qcom_battmgr`) está descartado: exige el dominio
+   `msm/adsp/charger_pd` por PDR y el firmware Samsung no lo publica. El
+   hardware real es un **Silicon Mitus SM5714** en `i2c_hub_8` (0x9a0000):
+   cargador 0x49, fuel gauge 0x71, MUIC 0x25; el bloque USB-PD está aparte en
+   `i2c_hub_9` 0x33. Mainline no tiene driver, así que se añade
+   `sm5714_battery.c` (solo lectura, no reprograma la carga) con el mapa de
+   registros del fuente downstream de Samsung. Validado en la tablet:
+   `capacity`, `status`, `voltage_now`, `current_now` y `temp` correctos, y
+   UPower expone batería y línea de alimentación.
+   **Los 45 W no son alcanzables aún:** los registros en vivo dan un límite de
+   entrada de 1800 mA (~9 W a 5 V), el DT stock topa esta vía en 27 W
+   (9 V × 3 A) y los 45 W reales exigen `sec-direct-charger` con negociación
+   **PD PPS**, que necesita el bloque USB-PD del SM5714 — sin driver mainline.
 
 Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
 

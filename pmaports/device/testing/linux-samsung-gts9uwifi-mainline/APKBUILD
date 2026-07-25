@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=46
+pkgrel=47
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -54,6 +54,7 @@ source="
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 	panel-samsung-ana38407.c
+	sm5714_battery.c
 "
 builddir="$srcdir/linux-$_kernelver"
 
@@ -77,6 +78,19 @@ config DRM_PANEL_SAMSUNG_ANA38407\
 	grep -q 'panel-samsung-ana38407.o' drivers/gpu/drm/panel/Makefile || \
 		echo 'obj-$(CONFIG_DRM_PANEL_SAMSUNG_ANA38407) += panel-samsung-ana38407.o' \
 			>> drivers/gpu/drm/panel/Makefile
+
+	# Silicon Mitus SM5714 charger / fuel gauge: same treatment as the panel.
+	cp "$srcdir/sm5714_battery.c" drivers/power/supply/
+	if ! grep -q 'BATTERY_SM5714' drivers/power/supply/Kconfig; then
+		sed -i '/^endif # POWER_SUPPLY$/i \
+config BATTERY_SM5714\
+\ttristate "Silicon Mitus SM5714 charger and fuel gauge"\
+\tdepends on I2C\
+' drivers/power/supply/Kconfig
+	fi
+	grep -q 'sm5714_battery.o' drivers/power/supply/Makefile || \
+		echo 'obj-$(CONFIG_BATTERY_SM5714)	+= sm5714_battery.o' \
+			>> drivers/power/supply/Makefile
 
 	cp "$srcdir/config-mainline.aarch64" .config
 
@@ -121,7 +135,8 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
 2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
-a524518850c93cc7841637560c8a93e61dabddc7c1034f9638e4c4a106c858f7fb8cbe8ff846d4277c02a70d5fecede734543148569eb7e48005c6b660ca0382  config-gts9uwifi.fragment
-567230f49f105bb04897e1725db784fbc5a3bec5a5ec75f70571d9c47dafb738dde536444eba00ec754e161c1b6b6f415cc000e883970bee256a04805b12da87  sm8550-samsung-gts9uwifi.dts
+98600dbd1aac2fc632e83a0fbd3be8b388620e9ff18698605f3151e9fc365b15ef789595a83d9cc8094818f3a835a55a090edb9c8229378ed254c490304ab63e  config-gts9uwifi.fragment
+a71b8279fa98255213f96efe7a3a877cad622a06f08d2861f82a8dbd1e98bfea1d1f5698c9d2ad0b89bda95558b160b6ace18b4f3a3cb77299dd163be9730d51  sm8550-samsung-gts9uwifi.dts
 537c8bed13f3d640479028604a3b26d2368e79df0323971ba1102b6d76e7cc19ae08c13b720b2c2541c4c58e86ef1be553d6a6992cf2ef621b8f66c48f1a7ebe  panel-samsung-ana38407.c
+a90d05ba4c0f98b64992308a9c21ad4ea924122d3a2721a04b9eed8fd0b060b5e0cf8f3450ae036d4fc63de23a5de4cf49416a3d360af9526bd6615672096a10  sm5714_battery.c
 "

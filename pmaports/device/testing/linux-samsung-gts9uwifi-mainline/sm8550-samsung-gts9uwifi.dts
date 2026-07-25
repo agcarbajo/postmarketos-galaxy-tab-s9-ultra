@@ -254,6 +254,20 @@
 		regulator-boot-on;
 	};
 
+	/*
+	 * EB-BX916ABY.  The design figures come from Samsung's own sec-battery
+	 * node (battery,battery_full_capacity = 9800 mAh, chg_float_voltage =
+	 * 4440 mV), not from the marketing "11200 mAh" figure.  The fuel gauge
+	 * reports state of charge itself, so these only feed the time-remaining
+	 * estimate.
+	 */
+	battery: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <9800000>;
+		voltage-max-design-microvolt = <4440000>;
+		voltage-min-design-microvolt = <3400000>;
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
@@ -800,6 +814,34 @@
 		cirrus,gpio-ctrl2 {
 			gpio-ctrl = <2>;
 		};
+	};
+};
+
+/*
+ * SE8 of the same I2C master hub (0x9a0000).  The Silicon Mitus SM5714 combo
+ * PMIC answers here on three addresses: charger at 0x49, fuel gauge at 0x71 and
+ * MUIC at 0x25.  Its USB-PD block sits on the *next* SE instead (i2c_hub_9,
+ * 0x9a4000, address 0x33 - confirmed with i2cdetect); that one stays disabled
+ * until there is a driver for it, which is also what PD/PPS negotiation for
+ * high-wattage charging will need.
+ *
+ * Stock runs both at 400 kHz (qcom,clk-freq-out = <400000>), which is also the
+ * only speed this hub reaches in PIO mode - see the note on i2c_hub_6.
+ */
+&i2c_hub_8 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	/*
+	 * SM8550 normally reports the battery over pmic_glink/qcom_battmgr, but
+	 * that needs a charger_pd protection domain on the ADSP and Samsung's
+	 * firmware ships none - only root_pd, sensor_pd, audio_pd and the CDSP
+	 * root_pd.  The SM5714 is driven from the AP instead.
+	 */
+	charger@49 {
+		compatible = "siliconmitus,sm5714";
+		reg = <0x49>;
+		monitored-battery = <&battery>;
 	};
 };
 

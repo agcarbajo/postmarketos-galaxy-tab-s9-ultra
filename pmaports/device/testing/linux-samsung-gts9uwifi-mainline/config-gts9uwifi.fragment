@@ -183,6 +183,13 @@ CONFIG_KEYBOARD_GPIO=y
 CONFIG_INPUT_PM8941_PWRKEY=y
 CONFIG_POWER_RESET_QCOM_PON=y
 
+# Battery gauge and charger status.  SM8550 normally reports these over
+# pmic_glink/qcom_battmgr, but that path needs a charger_pd protection domain on
+# the ADSP and Samsung's firmware ships none, so the battery comes from the
+# Silicon Mitus SM5714 on the I2C master hub instead.  Built-in for the same
+# reason as everything else here: this port does not autoload modules.
+CONFIG_BATTERY_SM5714=y
+
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.
 # CONFIG_RUST is not set
