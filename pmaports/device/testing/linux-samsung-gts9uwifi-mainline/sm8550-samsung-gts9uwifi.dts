@@ -303,7 +303,17 @@
 			link-name = "Internal DMIC Capture";
 
 			cpu {
-				sound-dai = <&q6apmbedai TX_CODEC_DMA_TX_3>;
+				/*
+				 * The VA macro has its own LPASS DMA lane: its
+				 * capture lands on VA_CODEC_DMA_TX_0, not on the
+				 * TX macro's TX_CODEC_DMA_TX_3 (which is where
+				 * the reference boards take their soundwire mics
+				 * from, and which this tablet does not have).
+				 * Wiring the link to the TX lane leaves the
+				 * backend with no data and arecord fails with
+				 * -EIO.
+				 */
+				sound-dai = <&q6apmbedai VA_CODEC_DMA_TX_0>;
 			};
 
 			codec {
@@ -361,6 +371,28 @@
 			regulator-min-microvolt = <2960000>;
 			regulator-max-microvolt = <3000000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/*
+		 * Digital microphone bias.  Samsung wires the VA macro's
+		 * va-vdd-micb to this LDO (their pm_humu_l10, resource ldob10) at
+		 * 1.8 V; without it the driver falls back to a dummy regulator and
+		 * the DMICs stay unpowered, so capture returns silence.
+		 */
+		vreg_l10b_1p8: ldo10 {
+			regulator-name = "vreg_l10b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			/*
+			 * The VA macro declares vdd-micb as a DAPM regulator
+			 * supply but never puts it in a route, so the widget is
+			 * never powered and the rail stays off even with a
+			 * capture running - the microphones then sit unpowered
+			 * and return digital silence.  Until the driver wires
+			 * that supply into the DMIC paths, keep the rail up.
+			 */
+			regulator-always-on;
 		};
 
 		/* Display panel VDD (1.2 V digital core). */
@@ -1059,6 +1091,16 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&dmic01_default>, <&dmic23_default>,
 		    <&dmic45_default>, <&dmic67_default>;
+	/*
+	 * Without this the driver logs "qcom,dmic-sample-rate dt entry missing"
+	 * and never derives the DMIC clock divider, so the decimators run with
+	 * no clock and capture returns pure silence.  4.8 MHz is what every
+	 * other mainline board with VA-macro DMICs uses and divides cleanly out
+	 * of the VA macro's 19.2 MHz mclk.
+	 */
+	qcom,dmic-sample-rate = <4800000>;
+	/* See vreg_l10b_1p8: the DMIC bias rail Samsung uses for va-vdd-micb. */
+	vdd-micb-supply = <&vreg_l10b_1p8>;
 	status = "okay";
 };
 

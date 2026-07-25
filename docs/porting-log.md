@@ -4159,3 +4159,103 @@ pines TLMM i2s0); (b) comprobar si el LPASS necesita además reloj/pinctrl por l
 vía LPI (`6e80000.pinctrl`) o relojes de `q6prmcc` para el puerto; (c) contrastar
 con `qcs615`/talos-evk, que sí tiene MI2S funcionando con esta misma machine
 driver, qué difiere en su topología.
+
+## 2026-07-25 — sesión 90: AUDIO COMPLETO (altavoces, sistema, micrófono) y botones
+
+Sesión larga y con varios diagnósticos falsos por el camino; lo que sigue es el
+estado verificado físicamente por la usuaria y por medida.
+
+### Altavoces — ✅ SUENAN
+
+Hacían falta **dos cosas a la vez**, y por eso cada una por separado parecía no
+servir:
+
+1. **Topología: `sd_line` = `I2S_SD1` (2), no `I2S_SD0` (1).** El DT de Samsung
+   nombra `tdm0_din` = gpio127 = `i2s0_data0` (entrada al SoC, feedback de los
+   amplificadores) y `tdm0_dout` = gpio128 = `i2s0_data1` (**salida** = el
+   playback). La topología del SM8550-HDK que reutilizamos apunta a SD0, que es
+   la línea de entrada, así que el ADSP transmitía a ninguna parte. Confirmado
+   comparando con **TALOS-EVK (qcs615)**, el único board de linux-firmware que
+   usa MI2S de verdad con esta misma machine driver: su módulo I2S es
+   token-por-token idéntico al nuestro **salvo `SD_LINE_IDX`, que vale 2**. Los
+   SM8550/8650/8750 usan 1 porque su módulo I2S es un vestigio que no emplean.
+   Reproducible: `stage-audioreach-topology.sh` descarga la del HDK (hash pinado,
+   verificado), reapunta ese único token con un parche de **un byte** y verifica
+   el hash resultante.
+2. **La machine driver nunca configuraba el códec.** `sc8280xp_snd_init()` fija
+   el formato del lado CPU en MI2S pero al códec no le decía nada: ni formato ni,
+   sobre todo, **el bit clock al que enganchar su PLL**. Sin eso el CS35L45 no
+   engancha y no saca audio. `set-mi2s-codec-dai-format.patch` añade en el
+   startup de enlaces MI2S `snd_soc_dai_set_fmt(CBC_CFC|I2S|NB_NF)` **y**
+   `snd_soc_dai_set_sysclk(codec_dai, 0, 1536000, SND_SOC_CLOCK_IN)`, que es lo
+   que hace `cs35l45_asp_set_sysclk()` para programar el PLL. OJO: el sysclk va
+   en el **códec**, no en el CPU DAI — probarlo en el CPU (v0.81) rompió la
+   apertura del PCM con `-ENOTSUPP` porque q6apm no implementa `.set_sysclk`; en
+   AudioReach el puerto lo programa el ADSP.
+3. **Los amplificadores perdían la configuración al hibernar.**
+   `cs35l45_runtime_suspend()` los hiberna y `cs35l45_set_pll()` sale antes de
+   tiempo si la **caché** dice que el PLL ya está puesto; tras hibernar el chip
+   vuelve con el PLL borrado pero la caché no, así que nunca se reprograma.
+   Regla udev `90-gts9uwifi-cs35l45-no-hibernate.rules` los mantiene fuera de
+   runtime suspend (en `/usr/lib/udev/rules.d`, que es el directorio que existe
+   en este rootfs; `/etc/udev/rules.d` no).
+
+### Audio de sistema — ✅
+
+Sin UCM, PulseAudio veía una tarjeta que no sabía rutar y se quedaba en
+`auto_null`: nada sonaba en las aplicaciones. El perfil propio
+(`conf.d/sm8550/Samsung-Galaxy-Tab-S9-Ultra.conf` +
+`Qualcomm/sm8550/GTS9U/HiFi.conf`) describe la ruta real (nada que ver con la del
+HDK, que asume WSA/WCD) y con él PulseAudio expone
+`alsa_output.platform-sound.HiFi__Speaker__sink` («Built-in speakers (4x
+CS35L45)») y `..HiFi__Mic__source`. El volumen del escritorio funciona.
+
+Ajustes de nivel: el volumen digital de cada amplificador estaba al 80 % =
+**−10,75 dB**, de ahí que sonara bajo; se fija alto en el `BootSequence`, con
+margen deliberado porque **no está cargado el firmware de protección de altavoces
+de Cirrus** (upstream capa sus altavoces por el mismo motivo). Y se limita el
+deslizador del panel a 100 % (`volume-max`), porque XFCE deja amplificar por
+software por encima de 0 dB y eso satura.
+
+### Micrófono — ✅ CAPTA
+
+Tres causas encadenadas, todas de DT:
+
+1. **Backend equivocado**: el enlace de captura apuntaba a `TX_CODEC_DMA_TX_3`
+   (el carril del TX macro, de donde los boards de referencia sacan sus micros
+   soundwire, que esta tablet no tiene). El VA macro tiene su propio carril DMA:
+   **`VA_CODEC_DMA_TX_0`**. Con el equivocado, `arecord` daba `-EIO`.
+2. **Sin reloj de DMIC**: faltaba `qcom,dmic-sample-rate`; el driver lo avisa
+   (`dt entry missing`) y sin él no deriva el divisor. Puesto a `4800000`, como
+   el resto de boards mainline con DMIC en el VA macro.
+3. **Micrófonos sin alimentar**: el VA macro declara `vdd-micb` como
+   `SND_SOC_DAPM_REGULATOR_SUPPLY` **pero no lo mete en ninguna ruta**, así que el
+   widget nunca se enciende. Medido: el rail seguía con `use=0` con la captura
+   corriendo y el pin de reloj DMIC estático. Samsung lo alimenta desde `ldob10`
+   a 1,8 V → añadido `vreg_l10b_1p8` (mainline no lo define), enlazado como
+   `vdd-micb-supply` y marcado `regulator-always-on` hasta que el driver lo rute.
+
+Resultado medido con música de fondo: **−30,6 dBFS de media, pico 6307, ambos
+canales vivos** (antes: cero absoluto, `peak=0`).
+
+### Botones
+
+- **vol+ / vol− ✅.** Sólo vol+ funcionaba porque va por `gpio-keys` (PM8550
+  GPIO6, built-in). `pwrkey` y `resin` son **hijos** del nodo `pon@1300`, cuyo
+  padre lo maneja `qcom-pon.c` (`POWER_RESET_QCOM_PON`), que estaba en `=m`: el
+  mismo patrón que ya mordió a Wi-Fi, GPU, pinctrl LPI y el proxy de GPIO — este
+  port no autocarga módulos. Built-in y aparecen `pmic_pwrkey`/`pmic_resin`.
+- **power ✅.** El hardware siempre funcionó (contador de IRQ subiendo), pero
+  `xfce4-power-manager` toma un inhibidor `block` de logind sobre la tecla y no
+  tenía acción configurada, así que se la comía en silencio. Configurado a
+  **suspender** (`power-button-action = 1`). Aviso: el valor 4 en XFCE 4.20
+  resultó ser **apagado directo**, no el diálogo.
+
+### Nota de método
+
+La usuaria pidió expresamente que todo sea **replicable en builds**, no parches
+sobre la instalación viva. Todo lo anterior está en fuentes versionadas: DTS,
+fragment de config, parche del kernel (aplicado por `build-mainline-kernel.sh`),
+`stage-audioreach-topology.sh`, `configs/audio/` (UCM + udev, instalados por
+`build-wifi-bringup.sh`) y `configs/display-native/gts9uwifi-xfce-hidpi` (ajustes
+xfconf). Kernel r46, firmware r9, device r24.

@@ -174,8 +174,14 @@ CONFIG_GPIO_SHARED_PROXY=y
 
 # Physical power/volume keys: PMIC PON handles power and volume-down (resin);
 # the board's volume-up line is PM8550 GPIO6 through gpio-keys.
+#
+# pwrkey and resin are children of the PMK8550 pon@1300 node, and that parent is
+# matched by qcom-pon.c (POWER_RESET_QCOM_PON).  Left at its =m default the
+# parent never probes on this port - which does not autoload modules - so the
+# children are never created and only the gpio-keys volume-up works.  Built-in.
 CONFIG_KEYBOARD_GPIO=y
 CONFIG_INPUT_PM8941_PWRKEY=y
+CONFIG_POWER_RESET_QCOM_PON=y
 
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.

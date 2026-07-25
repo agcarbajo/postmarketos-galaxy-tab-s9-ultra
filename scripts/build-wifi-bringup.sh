@@ -47,6 +47,9 @@ mkdir -p \
 	"$overlay/etc/systemd/system/lightdm.service.d" \
 	"$overlay/etc/systemd/system/bluetooth.service.d" \
 	"$overlay/etc/systemd/system/pd-mapper.service.d" \
+	"$overlay/usr/lib/udev/rules.d" \
+	"$overlay/usr/share/alsa/ucm2/conf.d/sm8550" \
+	"$overlay/usr/share/alsa/ucm2/Qualcomm/sm8550/GTS9U" \
 	"$overlay/usr/lib/firmware/ath12k/WCN7850/hw2.0" \
 	"$overlay/usr/lib/firmware/qca" \
 	"$overlay/usr/lib/firmware/qcom" \
@@ -115,6 +118,18 @@ ln -sf ../gts9uwifi-adsp-boot.service \
 # to find its maps and to have someone to serve.
 install -m 0644 "$project/configs/audio/10-gts9uwifi-adsp-order.conf" \
 	"$overlay/etc/systemd/system/pd-mapper.service.d/10-gts9uwifi-adsp-order.conf"
+# Keep the CS35L45 amplifiers awake: hibernation loses their PLL configuration
+# while the driver's regmap cache still claims it is programmed.
+install -m 0644 "$project/configs/audio/90-gts9uwifi-cs35l45-no-hibernate.rules" \
+	"$overlay/usr/lib/udev/rules.d/90-gts9uwifi-cs35l45-no-hibernate.rules"
+# ALSA UCM profile.  Without it the sound server sees a card it cannot route and
+# falls back to a null sink; with it PulseAudio exposes the speakers and the
+# DMICs as ordinary devices, so every application and the desktop volume control
+# just work.  The reference SM8550 profile is useless here (no WSA/WCD codecs).
+install -m 0644 "$project/configs/audio/ucm2/Samsung-Galaxy-Tab-S9-Ultra.conf" \
+	"$overlay/usr/share/alsa/ucm2/conf.d/sm8550/Samsung-Galaxy-Tab-S9-Ultra.conf"
+install -m 0644 "$project/configs/audio/ucm2/HiFi.conf" \
+	"$overlay/usr/share/alsa/ucm2/Qualcomm/sm8550/GTS9U/HiFi.conf"
 install -m 0755 "$project/configs/display-baseline/gts9uwifi-display-handoff" \
 	"$overlay/usr/libexec/gts9uwifi-display-handoff"
 install -m 0644 "$project/configs/display-baseline/20-gts9uwifi-fbdev.conf" \
