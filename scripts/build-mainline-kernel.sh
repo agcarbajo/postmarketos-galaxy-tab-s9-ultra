@@ -79,6 +79,15 @@ if ! grep -q 'clk_set_rate(qmp->pipe_clks\[0\].clk, ULONG_MAX)' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/unpark-pcie0-pipe-mux.patch"
 fi
+# sc8280xp_snd_init() tells the CPU side that the LPASS provides bit clock and
+# frame sync on MI2S, but nothing tells the codec the matching format, so an I2S
+# codec keeps its reset default.  AudioReach programs the port itself, so only
+# the codec side needs setting (q6apm has no .set_sysclk: it returns -ENOTSUPP).
+if ! grep -q 'sc8280xp_snd_startup' \
+	"$kernel_tree/sound/soc/qcom/sc8280xp.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/set-mi2s-codec-dai-format.patch"
+fi
 # Xorg only creates a PRIME GPU screen when MODE_GETRESOURCES succeeds.  Keep
 # the split GPU/DPU topology, but expose an empty KMS resource list on Adreno.
 if sed -n '/static const struct drm_driver msm_gpu_driver/,/^};/p' \

@@ -1,0 +1,54 @@
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -114,8 +114,50 @@
+ 	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
+ }
+ 
++static bool sc8280xp_is_mi2s(int dai_id)
++{
++	switch (dai_id) {
++	case PRIMARY_MI2S_RX ... QUATERNARY_MI2S_TX:
++	case QUINARY_MI2S_RX ... QUINARY_MI2S_TX:
++		return true;
++	default:
++		return false;
++	}
++}
++
++/*
++ * sc8280xp_snd_init() tells the CPU side that the LPASS provides bit clock and
++ * frame sync on MI2S, but nothing ever told the codec the matching format, so
++ * an I2S codec kept whatever its reset default was.  AudioReach programs the
++ * I2S port itself (PARAM_ID_I2S_INTF_CFG from the topology), so no explicit
++ * sysclk request belongs here - q6apm has no .set_sysclk and returns -ENOTSUPP.
++ */
++static int sc8280xp_snd_startup(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct snd_soc_dai *codec_dai;
++	int i, ret;
++
++	if (sc8280xp_is_mi2s(cpu_dai->id)) {
++		for_each_rtd_codec_dais(rtd, i, codec_dai) {
++			ret = snd_soc_dai_set_fmt(codec_dai,
++						  SND_SOC_DAIFMT_CBC_CFC |
++						  SND_SOC_DAIFMT_I2S |
++						  SND_SOC_DAIFMT_NB_NF);
++			if (ret && ret != -ENOTSUPP) {
++				dev_err(rtd->dev, "failed to set codec fmt: %d\n",
++					ret);
++				return ret;
++			}
++		}
++	}
++
++	return qcom_snd_sdw_startup(substream);
++}
++
+ static const struct snd_soc_ops sc8280xp_be_ops = {
+-	.startup = qcom_snd_sdw_startup,
++	.startup = sc8280xp_snd_startup,
+ 	.shutdown = qcom_snd_sdw_shutdown,
+ 	.hw_free = sc8280xp_snd_hw_free,
+ 	.prepare = sc8280xp_snd_prepare,

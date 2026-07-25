@@ -10,11 +10,14 @@
 > enlazan el pinctrl LPASS y el VA macro, y `sound` ya sólo espera «codec dai not
 > found». **Sigue abierto** el I2C de los cuatro CS35L45: el `-110` es un timeout
 > del bus, no del poll OTP. **Resuelto (v0.80/sesión 88):** el GENI i2c-master-hub
-> no ejecuta en modo PIO a 1 MHz FM+; bajando el bus a **400 kHz** (como todos los
-> boards SM8550 upstream que usan el i2c-hub) los cuatro CS35L45 completan el OTP y
-> aparece la tarjeta ALSA `Samsung-Galaxy-Tab-S9-Ultra` (playback + capture). Falta
-> rutar/habilitar la ruta y el firmware DSP para sonido acústico. Sin regresiones;
-> interconnect LPASS aún sin reactivar.
+> no ejecuta en modo PIO a 1 MHz FM+; bajando el bus a **400 kHz** los cuatro
+> CS35L45 completan el OTP y aparece la tarjeta ALSA. **Sesión 89: corrección — la
+> tarjeta existe pero NO hay sonido**, medido acústicamente (el "sonaba" de la
+> sesión 88 se basó sólo en el DAPM y era falso). El amplificador está bien
+> programado (verificado por I2C) pero su PLL nunca engancha: **no le llega bit
+> clock**. El ADSP configura el puerto y arranca el grafo con éxito, pero el SoC no
+> conduce ninguna línea de datos. Siguiente: topología propia para la X910 (la del
+> HDK apunta a la línea SD equivocada y puede errar el `lpaif_type`).
 
 ## Objetivo
 
@@ -79,7 +82,7 @@ demostrarlo en este dispositivo.
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
 | Bluetooth WCN7850 | ✅ **Validado de extremo a extremo (sesión 81)**: QUP SE14, firmware `hmtbtfw20.tlv`, NVM Samsung `hmtnv20.b21`, dirección pública nativa de EFS. Bonds persistentes (Buds2 Pro + móvil), sink A2DP clásico creado y audio real confirmado (YouTube en Chromium por los Buds). Servidor de sonido = PulseAudio 17. HID sin probar por falta de periférico BT |
-| Audio interno | 🟢 **Tarjeta ALSA creada (v0.80)**: `pd-mapper`+mapas `.jsn` desbloquean AudioReach (GPR/APR, pinctrl LPI, VA macro), y bajar el **i2c-hub a 400 kHz** (los CS35L45 no ejecutaban en PIO a 1 MHz FM+) hace que los 4 CS35L45 completen el OTP (REVID A0). Card 0 `Samsung-Galaxy-Tab-S9-Ultra` con playback MultiMedia1/2/6 y capture MultiMedia3/4, y controles por amplificador. **Pendiente:** rutar/habilitar la ruta y firmware DSP para sonido acústico real. Hardware: PRIMARY_MI2S + 4×CS35L45 + DMIC al VA macro, no WCD938x/WSA88x |
+| Audio interno | 🟡 **Tarjeta ALSA sí, sonido NO (v0.80)**: `pd-mapper`+mapas `.jsn` desbloquean AudioReach y el **i2c-hub a 400 kHz** hace que los 4 CS35L45 completen el OTP (REVID A0). Card 0 `Samsung-Galaxy-Tab-S9-Ultra` con playback/capture y controles por amp. **Pero los altavoces están mudos, medido acústicamente** (cero energía a 1 kHz en 22 s). El amp está bien programado (verificado por I2C: PLL 1,536 MHz, 48 kHz, ASP_RX1, GLOBAL_EN) pero su `PLL_LOCK` nunca se activa: **no le llega bit clock**. El ADSP configura el puerto (PRIMARY, ws_src interno) y arranca el grafo (`ret=0`), pero el SoC no conduce ninguna línea de datos. Hardware: PRIMARY_MI2S + 4×CS35L45 + DMIC al VA macro |
 | Botones | 🟡 v0.73: `gpio-keys` de volumen-arriba aparece como `event1`; PON power/resin todavía no crean input. Prueba física aplazada hasta terminar audio |
 
 ## Reto en curso

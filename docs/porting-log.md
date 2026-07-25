@@ -4051,3 +4051,111 @@ Pendiente para tener SONIDO real: montar la ruta ALSA (habilitar los amps, rutar
 DSP de protección de altavoz de Cirrus (o modo passthrough), y UCM. Luego la prueba
 acústica (altavoces captados por el micro de los cascos BT; micros de la tablet
 grabando lo que suena en los cascos). Botones y sensores después.
+
+## 2026-07-25 — sesión 89: la tarjeta ALSA no produce sonido; el fallo está en el puerto I2S del LPASS
+
+**Corrección de la sesión 88.** Allí se afirmó que los altavoces sonaban basándose
+sólo en el DAPM (`AMP: On`) y en que el PCM estaba `RUNNING`. **Era falso.** La
+usuaria no oía nada y exigió verificación acústica propia; al medirla, los
+altavoces están mudos. Queda como norma: **el DAPM no es prueba de audio; sólo
+vale una medida acústica**.
+
+### El instrumento de medida, primero
+
+El método acordado (micro de los cascos junto a la tablet) falló dos veces por
+causas del propio instrumento, y ambas se detectaron midiendo, no suponiendo:
+
+1. El micro de los cascos estaba al **0 % de volumen** en Windows: entregaba
+   silencio digital (-91 dB planos) mientras el micro del PC captaba ruido de sala
+   normal (-76 dB). Corregido por la API de audio (`SetMicVolume.ps1`, ahora 100 %).
+2. Aun al 100 %, el micro de los cascos entrega una señal **constante** de
+   -56,70 dB (varianza ~0,01 dB entre ventanas) incluso reproduciendo un tono por
+   los propios auriculares: **no capta**. El micro del PC (HD Audio) sí varía
+   (-36,0…-36,3 dB con +40 dB de ganancia) y es el instrumento válido.
+
+Con el micro del PC: **cero energía a 1 kHz en 22 s** (baseline -122 dB, sin una
+sola ventana por encima), con el tono a amplitud 30000/32768 y los cuatro amps
+habilitados. Los altavoces **no emiten**. Analizador propio por Goertzel en
+ventanas de 0,5 s (`work/analyze-hda.sh`).
+
+### Dónde está exactamente el fallo
+
+La cadena digital está entera y verificada **leyendo el chip por I2C**, no por
+DAPM: `DEVID=0x0035a460`, `GLOBAL_ENABLES=1`, `ASP_ENABLES1=0x00010000`
+(ASP_RX1_EN), `BLOCK_ENABLES2=0x08000010` (ASP_EN), `GLOBAL_SAMPLE_RATE=0x03`
+(48 kHz), `REFCLK_INPUT=0x370` (PLL para BCLK 1,536 MHz, habilitado). Sin fallos:
+`IRQ1_EINT_1=0`.
+
+Pero **`PLL_LOCK_FLAG` (bit 1 de `IRQ1_EINT_3`) nunca se activa**: el PLL del
+amplificador jamás engancha ⇒ **no le llega bit clock**. Y la reproducción de un
+tono de 16 s termina en ~4 s: el frontend se vacía sin *pacing* real, lo que
+confirma que el puerto no marca reloj.
+
+Del lado del SoC, en cambio, todo se **configura** bien (instrumentación
+`I2SDIAG`/`TRIGDIAG` en `audioreach.c` y `q6apm-lpass-dais.c`, sólo diagnóstico):
+
+```
+I2SDIAG lpaif_type=0 intf_idx=0 sd_line=1 ws_src=1 rate=48000 width=16 ch=2
+TRIGDIAG start dai=16 cmd=1 ret=0
+```
+
+es decir: interfaz PRIMARY, LPASS como maestro de WS/BCLK (`ws_src=1` = interno),
+48 kHz/16 bits/2 canales, y el grafo del backend **arranca con éxito** (`ret=0`).
+Los pines están muxeados (`pin 126→i2s0_sck`, `127→i2s0_data0`, `128→i2s0_data1`,
+`129→i2s0_ws`). Y aun así el SoC **no conduce ninguna línea de datos**: muestreando
+los pads durante la reproducción, `gpio127` alterna pero está en dirección
+**entrada** (lo excitan los amplificadores con su feedback) y `gpio128` está
+quieto y también como entrada.
+
+### Hallazgo lateral: la línea SD de la topología
+
+Del DT stock de Samsung: `tdm0_din` = **gpio127** = `i2s0_data0` (entrada al SoC,
+feedback de los amps) y `tdm0_dout` = **gpio128** = `i2s0_data1` (salida del SoC =
+playback). La topología del SM8550-HDK que reutilizamos fija el módulo I2S sink
+con `sd_line = I2S_SD0 (1)` = gpio127, **la línea de entrada**. Lo correcto para
+la X910 es `I2S_SD1 (2)` = gpio128.
+
+Se probó: parche quirúrgico de **un solo byte** en el binario de topología
+(offset 12513, token `AR_TKN_U32_MODULE_SD_LINE_IDX`=256 del único módulo
+`MODULE_ID_I2S_SINK` en 12432), verificado con `cmp -l` (un byte, 1→2). Tras
+reiniciar, `I2SDIAG` confirma `sd_line=2`… pero **sigue sin haber sonido ni reloj**
+y `gpio128` sigue sin ser conducido. La corrección es coherente con el hardware,
+pero por sí sola no basta; se **revirtió** para no versionar un blob modificado sin
+validar. (Aviso: una primera versión del parche buscó el patrón de bytes sin
+alinear y tocó 16 sitios; se restauró desde la copia pristina del overlay v0.80.)
+
+### Descartado con evidencia en esta sesión (no repetir)
+
+- **Falta `set_sysclk` en la machine driver — NO.** Se probó (v0.81) y **rompió**
+  la apertura del PCM con `-ENOTSUPP`: q6apm no implementa `.set_sysclk`. En
+  AudioReach el puerto lo programa el ADSP (`PARAM_ID_I2S_INTF_CFG`). Los boards
+  de referencia (`qcom,qcs615-sndcard`, misma `sc8280xp.c`) usan MI2S sin pedir
+  reloj.
+- **Runtime PM / hibernación del amp — no es la causa** (aunque sí explica que el
+  chip pierda registros cuando se suspende: con `power/control=on` los conserva).
+- **Configuración del amp — no es la causa**: se escribió a mano por I2C la
+  configuración completa (PLL, sample rate, ASP RX, GLOBAL_EN) y se verificó
+  leyendo el chip; sigue sin sonar.
+- **Módulo I2S ausente de la topología — no**: hay un `MODULE_ID_I2S_SINK` y el
+  grafo arranca.
+
+### Estado y siguiente paso
+
+Cambio reproducible bueno de esta sesión: `set-mi2s-codec-dai-format.patch` para
+`sc8280xp.c` — la machine driver fija el formato del **lado CPU** en MI2S pero
+nunca el del códec, así que un códec I2S se quedaba con su default de reset;
+ahora se le fija `CBC_CFC | I2S | NB_NF`. Es correcto y necesario, pero no es
+suficiente para que haya sonido.
+
+La tablet quedó **restaurada al estado limpio v0.80** (kernel commiteado sin
+instrumentación, topología pristina): tarjeta ALSA presente, cuatro CS35L45
+enlazados, Wi-Fi/pantalla/BT/ADSP y `pd-mapper` sin regresiones.
+
+Siguiente hipótesis a atacar: el puerto MI2S del LPASS no se pone a generar reloj
+pese a que el ADSP acepta la configuración y arranca el grafo. Líneas de trabajo:
+(a) construir una **topología propia** para la X910 (la del HDK puede tener mal no
+sólo la línea SD sino el `lpaif_type`/instancia LPAIF a la que están cableados los
+pines TLMM i2s0); (b) comprobar si el LPASS necesita además reloj/pinctrl por la
+vía LPI (`6e80000.pinctrl`) o relojes de `q6prmcc` para el puerto; (c) contrastar
+con `qcs615`/talos-evk, que sí tiene MI2S funcionando con esta misma machine
+driver, qué difiere en su topología.
