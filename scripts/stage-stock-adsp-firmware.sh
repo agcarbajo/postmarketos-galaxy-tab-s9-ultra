@@ -11,19 +11,17 @@
 # The partition is mounted READ-ONLY.  Nothing on the device is modified.
 #
 # Usage:
-#   scripts/stage-stock-adsp-firmware.sh
+#   GTS9U_HOST=phablet@10.0.0.5 GTS9U_PW=... scripts/stage-stock-adsp-firmware.sh
 # Environment:
-#   GTS9U_HOST   ssh target of the tablet   (default phablet@<TABLET_IP>)
+#   GTS9U_HOST   ssh target of the tablet   (required)
+#   GTS9U_PW     sudo password on the tablet (required)
 #   GTS9U_KEY    ssh private key            (default ~/.ssh/gts9u_pmos)
-#   GTS9U_PW     sudo password on the tablet
 set -eu
 
 project=${PROJECT_ROOT:-"$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"}
 target="$project/pmaports/device/testing/firmware-samsung-gts9uwifi"
 manifest="$target/adsp-firmware.sha512"
-host=${GTS9U_HOST:-"phablet@<TABLET_IP>"}
 key=${GTS9U_KEY:-"$HOME/.ssh/gts9u_pmos"}
-pw=${GTS9U_PW:-2006}
 
 [ -f "$manifest" ] || {
 	echo "missing manifest: $manifest" >&2
@@ -35,6 +33,9 @@ if (cd "$target" && sha512sum -c --status "$manifest") 2>/dev/null; then
 	echo "SM-X910 ADSP firmware already staged and verified."
 	exit 0
 fi
+
+host=${GTS9U_HOST:?set GTS9U_HOST to the ssh target of the tablet}
+pw=${GTS9U_PW:?set GTS9U_PW to the sudo password on the tablet}
 
 echo "Staging ADSP firmware from the device's own apnhlos partition..."
 mkdir -p "$target"

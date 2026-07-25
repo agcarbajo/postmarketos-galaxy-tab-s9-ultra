@@ -41,7 +41,7 @@ pmb config extra_packages openssh
 pmb -E 2048 install \
 	--sector-size 512 \
 	--filesystem ext4 \
-	--password 2006 \
+	--password "${GTS9U_PW:?set GTS9U_PW to the password for the phablet user}" \
 	--add openssh
 
 mkdir -p "$export_dir"
