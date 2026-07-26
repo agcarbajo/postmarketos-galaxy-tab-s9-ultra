@@ -4628,3 +4628,59 @@ reglas). No afectan a nada; pendientes de limpiar si molestan.
 
 Tablet en `192.168.1.145`, conectada sola por el perfil Wi-Fi escrito en la
 tarjeta. Disco: 28,3 G al 12 %.
+
+## Sesión 98 — brillo arreglado; el panel negro en frío sigue abierto
+
+### ✅ Brillo: un solo barrido
+
+El deslizador recorría el panel de oscuro a brillante **dos veces**. El driver
+declaraba `max_brightness = 4095` (12 bits) pero **DCS 0x51 lleva 11 bits
+significativos** en este DDIC: la propia secuencia de encendido de Samsung
+programa `0x51, 0x07, 0xff` = `0x07FF` = 2047 como brillo máximo, y cualquier
+valor con el bit 11 puesto vuelve al fondo del rango. Con `max_brightness =
+0x07ff` queda un barrido único. **Verificado en la tablet.**
+
+### 🔴 Pantalla negra en arranque en frío: NO resuelto
+
+Síntomas reportados: negra tras el logo hasta pulsar el power varias veces; al
+suspender, también hacen falta 2-3 pulsaciones; y a veces artefactos en los
+primeros instantes.
+
+**Señal fiable encontrada:** en arranque en frío el DDIC responde `00 00 00`;
+tras un suspender/reanudar responde `80 00 04`. Medido repetidamente.
+
+**Cuatro hipótesis probadas y DESCARTADAS** (no repetir):
+
+1. **Reintentar la secuencia de encendido conmutando el reset** — sigue
+   `00 00 00` en los tres intentos.
+2. **Ciclo completo de alimentación del panel** (apagar los cuatro raíles 50 ms
+   y volver a subirlos, imitando unprepare/prepare) — sigue `00 00 00`.
+3. **Secuenciar los raíles como el fabricante**: el DT stock
+   (`dsi_panel_pwr_supply`) define `vddio` → `qcom,supply-post-on-sleep = 0x14`
+   (20 ms) → `vdd` → `vci`, y nuestro driver encendía los cuatro a la vez con
+   `regulator_bulk_enable` y dormía **después** — el orden opuesto. **El cambio
+   es objetivamente correcto y se ha dejado**, pero NO arregla ninguno de los
+   síntomas: ni el arranque en frío, ni las pulsaciones múltiples, ni los
+   artefactos.
+4. **Apaño por RTC** (`rtcwake -m mem -s 5` al arrancar, para forzar el ciclo
+   sin tocar el botón) — inviable: `Lockdown: hibernation is restricted` y,
+   sobre todo, **no hay dispositivo RTC** (`/dev/rtc*` y `/sys/class/rtc/`
+   vacíos), así que no existe fuente de despertado por reloj.
+
+**Dato que descarta una pista falsa:** la ausencia de pingüinos y de texto de
+arranque NO es síntoma del panel muerto, es configuración. El bootloader de
+Samsung añade `console=null` **después** de nuestro `console=ttyMSM0` en la
+línea de comandos, y la última gana.
+
+**Dato sobre las pulsaciones múltiples:** con una sola pulsación medida por SSH,
+el sistema **sí despierta** (`PM: suspend exit`), el panel lee `80 00 04`, el
+conector queda `enabled` y el backlight encendido. Es decir, el wakeup funciona;
+lo que falla es que la imagen no aparece. Sospecha razonable: cada pulsación de
+más vuelve a suspender, así que la percepción de "no responde" se realimenta.
+
+**Dónde está el problema, con la evidencia actual:** lo único que hace el resume
+y no hace el arranque es **reinicializar el host DSI y la PHY desde cero**, en
+vez de heredar el estado que dejó el bootloader tras pintar su logo. Eso está en
+`msm_dsi`/`dsi_phy`, no en el driver del panel. Siguiente paso para quien lo
+retome: comparar el camino de `probe`/primer `enable` con el de resume dentro
+del host DSI, buscando qué reset de PHY se omite en frío.
