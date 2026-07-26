@@ -1704,6 +1704,16 @@ lado del workspace.
 - No dejar `CONFIG_INPUT_EVDEV=m` en una build directa que no instala módulos:
   el dispositivo puede registrarse como `input0` sin crear `/dev/input/event*`.
   Desde r8 EVDEV es built-in y el validador lo exige.
+- No retirar `pd_ignore_unused` esperando que eso fuerce un ciclo temprano de
+  `MDSS_GDSC`: v0.99 arrancó con el flag realmente ausente, pero la primera
+  lectura del DDIC siguió siendo `00 00 00`. El apagado de dominios no usados
+  ocurre demasiado tarde, cuando el display ya ha reclamado MDSS.
+- No interpretar el suspend/resume como una llamada adicional a
+  `msm_mdss_reset()`: ese helper solo se ejecuta durante `probe`. La diferencia
+  relevante es el suspend atómico del pipeline seguido por el runtime PM de
+  DPU/DSI/PHY y el colapso genpd del padre MDSS.
+- No repetir `unbind`/`bind` de `msm_dsi`: no recupera el DDIC y desmonta el
+  display sin ofrecer una ruta de recuperación en vivo.
 
 ## Referencias locales
 

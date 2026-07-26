@@ -1,0 +1,52 @@
+From: SM-X910 postmarketOS port <gts9uwifi@example.com>
+Date: Sun, 26 Jul 2026 18:00:00 +0200
+Subject: [PATCH] drm/msm/mdss: optionally power-cycle MDSS before child probe
+
+Some boot chains leave the display power domain in a state which is neither
+usable by the upstream driver nor repaired by the MDSS block reset.  A full
+system suspend fixes the display because genpd power-collapses MDSS before the
+DSI host and PHY are brought up again.
+
+Allow affected boards to request the same clean boundary before DPU/DSI child
+devices are populated.  Keeping this opt-in avoids changing probe behaviour on
+other Qualcomm platforms.
+
+Signed-off-by: SM-X910 postmarketOS port <gts9uwifi@example.com>
+---
+ drivers/gpu/drm/msm/msm_mdss.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/msm_mdss.c b/drivers/gpu/drm/msm/msm_mdss.c
+index 531669198ef2..e2f2462e6097 100644
+--- a/drivers/gpu/drm/msm/msm_mdss.c
++++ b/drivers/gpu/drm/msm/msm_mdss.c
+@@ -480,6 +480,28 @@ static int mdss_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, mdss);
+ 
++	if (device_property_read_bool(dev, "qcom,initial-power-cycle")) {
++		/*
++		 * The runtime-PM status starts suspended.  Resume once so the
++		 * PM core owns the complete parent/genpd state, then suspend
++		 * synchronously to guarantee a real GDSC power collapse before
++		 * any DPU, DSI or PHY child probes.  Their first runtime get will
++		 * bring the hierarchy back from a known-off state.
++		 */
++		ret = pm_runtime_resume_and_get(dev);
++		if (ret < 0) {
++			msm_mdss_destroy(mdss);
++			return ret;
++		}
++
++		ret = pm_runtime_put_sync_suspend(dev);
++		if (ret < 0) {
++			msm_mdss_destroy(mdss);
++			return ret;
++		}
++	}
++
+ 	/*
+ 	 * MDP5/DPU based devices don't have a flat hierarchy. There is a top
+ 	 * level parent: MDSS, and children: MDP5/DPU, DSI, HDMI, eDP etc.
+-- 
+2.50.1

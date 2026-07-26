@@ -4684,3 +4684,70 @@ vez de heredar el estado que dejó el bootloader tras pintar su logo. Eso está 
 `msm_dsi`/`dsi_phy`, no en el driver del panel. Siguiente paso para quien lo
 retome: comparar el camino de `probe`/primer `enable` con el de resume dentro
 del host DSI, buscando qué reset de PHY se omite en frío.
+
+## Sesión 99 — el flag de dominios no es la causa; ciclo explícito de MDSS preparado
+
+Se recuperó el acceso a la X910 por SSH tras el experimento fallido de
+`unbind`/`bind`. La identidad se confirmó con la clave de desarrollo exclusiva
+del dispositivo: hostname `gts9u`, postmarketOS edge, kernel
+`7.2.0-rc3-dirty #74`. La host key cambió después de la reinstalación limpia,
+pero no se confundió con los otros equipos pmOS de la LAN.
+
+### Medida de partida
+
+En un arranque frío, antes de provocar ningún suspend:
+
+- `msm_dpu` enlaza `ae94000.dsi` y registra `card1`;
+- las tres lecturas DCS devuelven `Invalid response cmd`;
+- el DDIC da `00 00 00`;
+- GDM está activo, el conector figura `connected/enabled` y el backlight está
+  encendido;
+- una sola transición `PM: suspend entry (deep)` → `PM: suspend exit` cambia
+  inmediatamente la lectura a `80 00 04`.
+
+El código upstream aclara una imprecisión del diagnóstico anterior:
+`msm_mdss_reset()` se llama únicamente desde `msm_mdss_init()` durante probe.
+El resume profundo no vuelve a invocarlo. Lo exclusivo del suspend es:
+`drm_mode_config_helper_suspend()` desmonta atómicamente el pipeline, los
+callbacks runtime de DPU/DSI/PHY lo apagan y genpd puede colapsar el
+`MDSS_GDSC`; el resume recorre el camino inverso.
+
+### v0.99: retirar `pd_ignore_unused` — negativo
+
+Se construyó una variante de empaquetado que conservaba el kernel y el overlay
+validados de v0.92 y retiraba **solo** `pd_ignore_unused` del cmdline de
+`vendor_boot`. Se escribió exclusivamente `/dev/sda24`, con backup y
+verificación:
+
+- anterior/backup:
+  `c8373ce42c0658c21a4ef9138cf320cfcfd801932401b3d0cbee7659b1f8e262`;
+- v0.99 escrita:
+  `a50807b337b5bbcd9de4130faaa8552e7087085e1e7f1acc321ec5e5738bcce3`.
+
+El arranque confirmó que el flag estaba ausente, pero el DDIC volvió a dar
+`00 00 00`. Hipótesis descartada. El apagado de dominios sin consumidores se
+produce demasiado tarde: MDSS ya está reclamado por el display. Se restauró el
+backup v0.92 y se verificó su hash antes de reiniciar.
+
+### v1.00: ciclo runtime PM del padre antes de crear los hijos — preparada
+
+La siguiente prueba sí reproduce la diferencia estructural sin tocar MMIO ni
+desmontar un display activo:
+
+1. una propiedad opt-in `qcom,initial-power-cycle` solo en el nodo `&mdss` del
+   X910;
+2. `msm_mdss` hace `pm_runtime_resume_and_get()` seguido de
+   `pm_runtime_put_sync_suspend()` antes de `of_platform_populate()`;
+3. así genpd puede llevar `MDSS_GDSC` a off antes de que existan DPU, DSI y PHY;
+   el primer runtime-get de los hijos debe reconstruir la jerarquía desde un
+   estado conocido.
+
+Queda reproducible en
+`power-cycle-mdss-before-populating-children.patch`, DTS y kernel r49. Build
+completa v1.00 con `BUILD_EXIT=0`; el DTB contiene la propiedad y DRM/MSM y el
+panel siguen built-in. Artefacto:
+`postmarketos-edge-gnome-mainline-v1.00-mdss-initial-power-cycle-sm-x910-twrp.zip`,
+SHA-256
+`35b8b74061592f7bf555751ec132ccc1e9c1d4a4e67cf562b6298cf9a950ccba`.
+Todavía **no está validada en hardware**: requiere escribir `boot` y
+`vendor_boot`, siempre con backup, hashes y autorización explícita.

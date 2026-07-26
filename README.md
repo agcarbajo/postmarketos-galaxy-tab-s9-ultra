@@ -13,7 +13,9 @@ as hardware documentation.
 The tablet boots to a full **GNOME** desktop on Wayland at **2960×1848 @
 120 Hz** with GPU acceleration, Wi-Fi, Bluetooth, audio, physical buttons and
 battery reporting. XFCE on Xorg is also supported and was the original target.
-What is left is mostly accessories and the sensor stack: S Pen, cameras,
+The main open regression is the cold-boot display state: the system reaches
+GNOME and SSH, but the panel remains black until one deep suspend/resume. What
+is left after that is mostly accessories and the sensor stack: S Pen, cameras,
 sensors, the keyboard cover, external displays and fast charging.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
@@ -32,7 +34,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 | Component | Status | Notes |
 |---|---|---|
-| **Display** | ✅ | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE |
+| **Display** | 🟡 | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE. Cold boot reads DDIC ID `00 00 00` and stays black until deep suspend/resume; afterwards it reads `80 00 04` |
 | **Desktop** | ✅ | GNOME on Wayland (default) or XFCE on Xorg. GDM needs its greeter accounts pre-created — see below |
 | **GPU** | ✅ | Adreno 740, Mesa/freedreno, OpenGL 4.6. Wayland uses both DRM devices directly; Xorg needs reverse PRIME (`card0` Adreno → `card1` DPU) |
 | **Backlight and DPMS** | ✅ | Software brightness control and screen blanking |
@@ -47,7 +49,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
 | **Charging status** | ✅ | Charging/discharging detected; UPower exposes both battery and line power |
-| **Suspend** | 🟡 | The power button suspends, but panel resume is not validated |
+| **Suspend** | 🟡 | Deep suspend/resume works and is currently the only reliable way to initialise the panel; extra power-button presses can immediately suspend it again |
 | **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
 | **Fast charging (45 W)** | ❌ | Capped at ~9 W. Needs the SM5714 USB-PD block (I²C `0x33`) and PD PPS negotiation |
 | **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`); what is missing is Type-C orientation and DP altmode — the same USB-PD gap as fast charging |

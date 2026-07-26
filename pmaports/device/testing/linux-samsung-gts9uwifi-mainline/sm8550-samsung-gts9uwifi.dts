@@ -1023,6 +1023,12 @@
 };
 
 &mdss {
+	/*
+	 * Samsung's boot chain can leave MDSS_GDSC in a state where the first
+	 * DSI transfer returns zeroes.  A deep suspend repairs it by collapsing
+	 * this parent domain; do the same once before probing DPU/DSI children.
+	 */
+	qcom,initial-power-cycle;
 	status = "okay";
 };
 

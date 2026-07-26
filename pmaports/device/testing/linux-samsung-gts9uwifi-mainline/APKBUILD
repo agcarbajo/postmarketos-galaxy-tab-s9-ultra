@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=48
+pkgrel=49
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -51,6 +51,7 @@ source="
 	build-wcn-pcie-providers-in.patch
 	unpark-pcie0-pipe-mux.patch
 	expose-separate-gpu-kms-resources.patch
+	power-cycle-mdss-before-populating-children.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 	panel-samsung-ana38407.c
@@ -135,8 +136,9 @@ ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f6
 d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
 2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
+18e8a53b3b40f3cf679699c31c48160c31b24c5eae486a4395b9fe9105ac5cc001cef31cdea3054988b46800f834640a1f51497da6e54bd7a5436a1a316bfc19  power-cycle-mdss-before-populating-children.patch
 98600dbd1aac2fc632e83a0fbd3be8b388620e9ff18698605f3151e9fc365b15ef789595a83d9cc8094818f3a835a55a090edb9c8229378ed254c490304ab63e  config-gts9uwifi.fragment
-a71b8279fa98255213f96efe7a3a877cad622a06f08d2861f82a8dbd1e98bfea1d1f5698c9d2ad0b89bda95558b160b6ace18b4f3a3cb77299dd163be9730d51  sm8550-samsung-gts9uwifi.dts
+13a0d47a4a96c9e2113038f8726bc12542b0ce3aedef85093cd2d4e6f646f9d93f39759e30986771143aecc9d5620098b08bee7d713f9d959fd9488e244abcdc  sm8550-samsung-gts9uwifi.dts
 1c0061ca39ef3dd4c3c92bc4a3572c7a8a13668a878eb0b094324c4b5bfde4804af5d331405d5550ab87edb6825af4824e1279d56cfa20e3384fbaf48cc333e9  panel-samsung-ana38407.c
 a90d05ba4c0f98b64992308a9c21ad4ea924122d3a2721a04b9eed8fd0b060b5e0cf8f3450ae036d4fc63de23a5de4cf49416a3d360af9526bd6615672096a10  sm5714_battery.c
 "
