@@ -58,12 +58,16 @@ if [ "$free_sectors" -lt "$MIN_FREE_SECTORS" ]; then
 fi
 
 # ",+" keeps the start and takes every remaining sector.  sfdisk also relocates
-# the GPT backup header, which still sits where the smaller image ended.
+# the GPT backup header, which still sits where the smaller image ended - a
+# stale backup header at the end of a larger card makes different kernels
+# disagree about the layout and read the filesystems at the wrong offsets.
 log "growing partition $part_num to the end of $disk"
 echo ',+' | sfdisk --force --no-reread -N "$part_num" "$disk"
 
-# Tell the kernel about the new size without unmounting anything.
+# Tell the kernel about the new size without unmounting anything, then let udev
+# finish re-creating the /dev/disk/by-* symlinks it drops while doing so.
 partx -u "$disk" 2>/dev/null || partprobe "$disk" 2>/dev/null || true
+udevadm settle --timeout=30 2>/dev/null || true
 
 log "growing the ext4 filesystem (online)"
 resize2fs "$root_src"
