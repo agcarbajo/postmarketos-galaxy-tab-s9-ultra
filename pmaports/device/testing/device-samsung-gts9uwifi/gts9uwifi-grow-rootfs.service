@@ -1,0 +1,17 @@
+[Unit]
+Description=Grow the root filesystem to fill the microSD
+Documentation=https://github.com/agcarbajo/postmarketos-galaxy-tab-s9-ultra
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=local-fs.target sysinit.target
+ConditionPathExists=!/var/lib/gts9uwifi-rootfs-grown
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/gts9uwifi-grow-rootfs
+# Growing is a convenience, never a reason to fail the boot.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=sysinit.target

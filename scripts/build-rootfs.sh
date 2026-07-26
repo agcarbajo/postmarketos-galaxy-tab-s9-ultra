@@ -26,7 +26,8 @@ fi
 pmb config aports "$pmaports"
 pmb config work "$work"
 pmb config device samsung-gts9uwifi
-pmb config ui xfce4
+# GNOME by default; GTS9U_UI=xfce4 still builds the original desktop.
+pmb config ui "${GTS9U_UI:-gnome}"
 pmb config service_manager systemd
 pmb config user phablet
 pmb config hostname gts9u
@@ -38,7 +39,12 @@ pmb config extra_packages openssh
 # initramfs-extra so the early initramfs can fit the X910 8 MiB init_boot
 # partition; the root partition holds the desktop.  No --disk/--sdcard
 # argument is accepted here, so this cannot overwrite a physical microSD.
-pmb -E 2048 install \
+#
+# The image stays small on purpose: it is written to whatever microSD the owner
+# has, and gts9uwifi-grow-rootfs.service expands the root partition and its
+# filesystem to fill the card on first boot.  Sizing the image to one
+# particular card would only move the problem to the next card.
+pmb -E "${GTS9U_EXTRA_MB:-2048}" install \
 	--sector-size 512 \
 	--filesystem ext4 \
 	--password "${GTS9U_PW:?set GTS9U_PW to the password for the phablet user}" \

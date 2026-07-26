@@ -4396,3 +4396,82 @@ defecto sin negociar nada. Dos razones estructurales:
 No se ha podido medir la potencia de pico de carga porque la tablet está al 97 %
 y en top-off (entran ~250 mA, ~1 W). Para medirlo de verdad hay que repetir la
 lectura con la batería baja.
+
+## Sesión 94 — reinstalación completa desde firmware stock: verificada
+
+Prueba end-to-end pedida por la usuaria: flashear firmware stock, arrancar One UI,
+volver a TWRP y reinstalar el port desde cero para comprobar que nada se había
+quedado dependiendo de ajustes en vivo.
+
+**Artefacto:** `postmarketos-edge-xfce-mainline-v0.92-battery-sm-x910-twrp.zip`,
+48.411.085 bytes, SHA-256
+`f0a1d83b74d5cfef2caed373a48727290ab6c7485407078142c0e321c83c0ee2`.
+Se construyó nuevo porque el ZIP más reciente (v0.90) era anterior al driver de
+batería, al arreglo `i2c_hub_8` del DTS y al tope del journal. Verificado por
+dentro antes de instalar: el DTB contiene `siliconmitus,sm5714`, `simple-battery`
+y `9a0000`; el overlay trae las 10 piezas recientes; y el `Image.gz` dentro de
+`boot.img` es exactamente el kernel r47 recién compilado.
+
+**Comprobaciones previas en TWRP (solo lectura), que confirmaron dos predicciones:**
+
+1. `vbmeta` conservaba **flags 2** (verity desactivado), así que el instalador lo
+   preservó en vez de abortar. El riesgo identificado no se materializó.
+2. **El rootfs de la microSD sobrevivió intacto al flasheo stock** (`postmarketOS
+   edge`, 81 % usado): Odin escribe solo particiones UFS y la tarjeta es un
+   dispositivo físico aparte. Confirmado que no hace falta reflashear la SD para
+   reinstalar.
+
+Instalación por `twrp install` vía adb. Arranque a SSH en **40 s**.
+
+### Resultado: todo el hardware sigue funcionando
+
+Pantalla 2960×1848@120 con el escritorio pintando (verificado con `xwd`: 128
+valores distintos), `lightdm` con `NRestarts=0`, táctil Goodix, `pmic_pwrkey`,
+`pmic_resin` y `gpio-keys`, `wlan0` con IP, ADSP `running`, `pd-mapper` vivo, UFS
+enumerada, tope del journal aplicado, y la batería reportando correctamente.
+
+Bluetooth: `hci0` Primary **powered**, dirección nativa de EFS
+`<TABLET_BT_ADDR>`, y —dato interesante— **los bonds sobrevivieron al flasheo
+stock**, porque viven en el rootfs de la microSD, no en la UFS.
+
+Audio: los cuatro CS35L45 responden con DEVID `0x0035a460`, cuatro componentes
+ASoC, la tarjeta `Samsung-Galaxy-Tab-S9-Ultra` con 6 PCMs, y el sink por defecto
+del escritorio es `alsa_output.platform-sound.HiFi__Speaker__sink`.
+
+### Tres falsos negativos de mi propio script de verificación
+
+Merece la pena anotarlos porque los tres son trampas reutilizables:
+
+1. **CS35L45 «0 de 4»** — leía `/sys/kernel/debug/asoc/components` sin `sudo`.
+   Con permisos salen los cuatro.
+2. **«sink de PulseAudio ausente»** y `Default Sink: auto_null` — ejecutar
+   `pactl` por SSH **sin `XDG_RUNTIME_DIR`** no consulta el PulseAudio del
+   escritorio, sino que arranca/consulta otra instancia distinta. El log lo
+   delata: `Unable to autolaunch a dbus-daemon without a $DISPLAY for X11`.
+   Con `XDG_RUNTIME_DIR=/run/user/10000` el sink correcto aparece.
+3. **«bluetooth hci0 caído»** — `hciconfig` **ya no existe** en BlueZ 5. Hay que
+   usar `btmgmt info`.
+
+REGLA: un fallo en el script de verificación no es un fallo del sistema. Antes de
+reportar una regresión, comprobar que la herramienta de medida es válida — el
+mismo error que ya costó una sesión con el micro de los cascos.
+
+`deferred probe pending: snd-sc8280xp: ... error getting cpu dai name` en t=27 s
+es **transitorio y normal**: el ADSP sube a t=21 s y la tarjeta se registra
+después. No es la regresión que parecía.
+
+### Carga: evidencia concreta del techo de 9 W
+
+Con el cargador conectado, la corriente oscila entre **+130 mA y −1075 mA** con
+`status=Charging` y `VBUSCNTL=0x44` (límite de entrada 1800 mA). No es un bug del
+driver: a 5 V el cargador da ~9 W y la tablet con la pantalla encendida a 40 °C
+consume más, así que la batería complementa. Es la demostración práctica de que
+**sin USB-PD no se puede cargar de forma fiable con la pantalla encendida**.
+
+### Pendiente inmediato
+
+El rootfs sigue al **86 %, 502 MB libres**. La microSD es de 29,72 GiB con
+**27,3 GB sin particionar**. Esta prueba NO valida una instalación limpia: el
+rootfs es el acumulado de muchas sesiones. Eso llega con el paso a GNOME +
+tarjeta entera, donde el crecimiento debe leer el tamaño real del disco y no
+codificar 32 GB.

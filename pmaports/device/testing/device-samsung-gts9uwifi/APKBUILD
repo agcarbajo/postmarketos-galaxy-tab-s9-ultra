@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=24
+pkgrel=25
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -11,12 +11,17 @@ options="!check !archcheck"
 depends="
 	android-tools
 	bluez-btmgmt
+	e2fsprogs-extra
+	findmnt
 	firmware-samsung-gts9uwifi
 	kbd
 	linux-samsung-gts9uwifi-mainline
+	lsblk
 	mkbootimg
+	partx
 	pd-mapper
 	postmarketos-base
+	sfdisk
 "
 makedepends="devicepkg-dev"
 source="
@@ -30,6 +35,8 @@ source="
 	gts9uwifi-display-hold.conf
 	gts9uwifi-bluetooth-address
 	gts9uwifi-bluetooth-address.service
+	gts9uwifi-grow-rootfs
+	gts9uwifi-grow-rootfs.service
 	gts9uwifi-lightdm-hidpi
 	gts9uwifi-panel-reinit
 	gts9uwifi-xfce-hidpi
@@ -62,6 +69,16 @@ package() {
 		"$pkgdir/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
 	install -Dm644 "$srcdir/20-gts9uwifi-address.conf" \
 		"$pkgdir/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
+	# The rootfs image is built without knowing the size of the target card,
+	# so it grows itself once, on the device, at first boot.
+	install -Dm755 "$srcdir/gts9uwifi-grow-rootfs" \
+		"$pkgdir/usr/libexec/gts9uwifi-grow-rootfs"
+	install -Dm644 "$srcdir/gts9uwifi-grow-rootfs.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-grow-rootfs.service"
+	install -d "$pkgdir/usr/lib/systemd/system/sysinit.target.wants"
+	ln -s ../gts9uwifi-grow-rootfs.service \
+		"$pkgdir/usr/lib/systemd/system/sysinit.target.wants/gts9uwifi-grow-rootfs.service"
+
 	install -Dm755 "$srcdir/gts9uwifi-lightdm-hidpi" \
 		"$pkgdir/usr/libexec/gts9uwifi-lightdm-hidpi"
 	install -Dm755 "$srcdir/gts9uwifi-panel-reinit" \
@@ -95,4 +112,6 @@ aa676db16e619570d79bccc7984ee83dfb933ad9de68280bfc0b6486fdb3eb4853dc4a12dcc4ebca
 40fdf12f831c37512e633c728ceab528335448964dfe67c75c1e2bf221ff4ea8889728728beef0239a0b74e496f3310103874d9826ad9e7c922dcfd2d9ceb572  gts9uwifi-xfce-hidpi.desktop
 b714a0eaf237ec81b3a75f11d49b65e19110884342c2465d3a5b7fdd01c4f38856e04ba47945f1ab3c1d00a243df7607ed37851d30faeeacf4660dac70265af8  kernel-cmdline.conf
 f6e4d2350c78e06a5094db5c1dd40c22d53496e4128ca66017c4959c89fdbec0434aaf5ac3f50d5b47166d3e486435bf69b97d9311608c224372bf1513086a79  slick-greeter.conf
+f408b589be77639cc1285b8371a9e95ceb72e963f1c5837110a2bb9015ad72e49190b35179453d54ccd123a8bde9cdc9fc732ff180f68bffbc0f80765afe8173  gts9uwifi-grow-rootfs
+dc6be78f5bf7d5b87bd8eb54ba8af47e9cd3817d82af43a6b786ca2d9b516a28b74a30c88072e1a4de7077113cfe514a888d365111126c52d34bf7baee61cc23  gts9uwifi-grow-rootfs.service
 "
