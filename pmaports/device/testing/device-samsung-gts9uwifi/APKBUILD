@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=27
+pkgrel=28
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -41,6 +41,8 @@ source="
 	gts9uwifi-grow-rootfs.service
 	gts9uwifi-lightdm-hidpi
 	gts9uwifi-panel-reinit
+	gts9uwifi-panel-coldboot-recover
+	gts9uwifi-panel-coldboot-recover.service
 	gts9uwifi-xfce-hidpi
 	gts9uwifi-xfce-hidpi.desktop
 	kernel-cmdline.conf
@@ -95,6 +97,13 @@ package() {
 		"$pkgdir/usr/libexec/gts9uwifi-lightdm-hidpi"
 	install -Dm755 "$srcdir/gts9uwifi-panel-reinit" \
 		"$pkgdir/usr/libexec/gts9uwifi-panel-reinit"
+	install -Dm755 "$srcdir/gts9uwifi-panel-coldboot-recover" \
+		"$pkgdir/usr/libexec/gts9uwifi-panel-coldboot-recover"
+	install -Dm644 "$srcdir/gts9uwifi-panel-coldboot-recover.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-panel-coldboot-recover.service"
+	install -d "$pkgdir/usr/lib/systemd/system/graphical.target.wants"
+	ln -s ../gts9uwifi-panel-coldboot-recover.service \
+		"$pkgdir/usr/lib/systemd/system/graphical.target.wants/gts9uwifi-panel-coldboot-recover.service"
 	install -Dm644 "$srcdir/20-gts9uwifi-panel-reinit.conf" \
 		"$pkgdir/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
 	install -Dm644 "$srcdir/20-gts9uwifi-display.conf" \
@@ -124,6 +133,8 @@ da000da7bca1ed93742e8f0859d6ec61ada8f4ec56aa2a0221c1a6081fbe87a321c9781943499191
 53d745b90b8e7db7858ad1812350548668569461c435353e70c3c3abd8def386da83ca97bfe9eb181f97ccdcf1891ecb6d957a511002b7ab51e3d3b9acfc9759  gts9uwifi-grow-rootfs.service
 8e1df7ebb571e5f256cc1d24405354f631bef8988c02f461f58f99e7c9b5b92235ce2f4681e947cb55b82390f2caa60be4b6bdd7564b1b78980b62343b78658a  gts9uwifi-lightdm-hidpi
 6a783ea53920063350527fd8e84521b1cc3820f7ff087e4a2540ebdb2b41657b53aea19609bc9c6f599fe52ed2c16f61ac0690a8825f9f4b8c41493d9050e19a  gts9uwifi-panel-reinit
+93ad7c7358d7c68bfb57096f65ff94d6a87a0decccbc5ded14c72d04f5b8d3eb558a3160cadd5675767190d24e3cf4a4bb1753e92e553dc5baa0e92a0638357b  gts9uwifi-panel-coldboot-recover
+c3b0c428118db1b168a748a0c8f476e1f1480609782fe13922fa5f8dd106fe9b39b45130426b17f6b467087cee42f61d99b84c9631e1057de977cc7817851bd5  gts9uwifi-panel-coldboot-recover.service
 5de3d212b958ff947e87119a3b82a9d21a64b7d23b3e47cd088d706fb084fb4352834d8469e719211ba71592223a5ea3587a572df5f9e7d7a8777a5a9f3c1c51  gts9uwifi-xfce-hidpi
 40fdf12f831c37512e633c728ceab528335448964dfe67c75c1e2bf221ff4ea8889728728beef0239a0b74e496f3310103874d9826ad9e7c922dcfd2d9ceb572  gts9uwifi-xfce-hidpi.desktop
 b714a0eaf237ec81b3a75f11d49b65e19110884342c2465d3a5b7fdd01c4f38856e04ba47945f1ab3c1d00a243df7607ed37851d30faeeacf4660dac70265af8  kernel-cmdline.conf

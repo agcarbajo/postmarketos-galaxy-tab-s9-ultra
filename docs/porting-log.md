@@ -4773,3 +4773,66 @@ independientemente del fallo del DDIC. La siguiente build añade un parámetro
 opt-in `ignore_console_null`, vuelve a declarar `console=tty0` y conserva la
 consola serie. El comportamiento estándar de printk no cambia sin ese
 parámetro.
+
+## Sesión 100 — ✅ recuperación automática del panel antes de GDM
+
+### v1.01: consola restaurada e instrumento PM disponible
+
+Kernel r50 (`#76`) con `CONFIG_PM_DEBUG=y`; `PM_SLEEP_DEBUG` queda seleccionado
+automáticamente. El cmdline declara `console=tty0 console=ttyMSM0` y
+`ignore_console_null`; el pequeño parche de printk hace que el
+`console=null` que ABL añade después sea un no-op solo cuando se pide
+explícitamente.
+
+Validación:
+
+- `/sys/class/tty/console/active` = `tty0 ttyMSM0`;
+- `/proc/consoles` marca ambas como enabled;
+- no aparece `ttynull`;
+- `/sys/power/pm_test` ofrece `core processors platform devices freezer`.
+
+Que aun así no se vieran pingüinos ni verbose no fue un fallo de esta parte:
+el panel seguía con ID `00 00 00`, así que ninguna consola podía hacer visible
+su framebuffer. El sistema, audio y botones estaban activos detrás de la
+pantalla negra, tal como observó la usuaria desde el principio.
+
+### La frontera exacta: `devices` falla, `platform` funciona
+
+Pruebas en arranque frío, sin pulsar power:
+
+1. `pm_test=devices` volvió solo después de la espera interna de cinco segundos,
+   pero las tres lecturas DCS siguieron fallando y el ID quedó `00 00 00`.
+2. Tras otro arranque frío, `pm_test=platform` volvió solo en ocho segundos y
+   la primera lectura del panel fue **`80 00 04`**.
+
+Por tanto no basta con suspender los drivers. La fase mínima que repara el
+handoff de Samsung incluye los callbacks de plataforma, pero no necesita
+desconectar CPUs, entrar en el core suspend real, RTC ni wake físico.
+
+### v1.02: servicio reproducible
+
+Se añadió `gts9uwifi-panel-coldboot-recover` y su unidad systemd al paquete de
+dispositivo r28, a `configs/display-native/` y al overlay del ZIP:
+
+- `After=local-fs.target`;
+- `Before=display-manager.service`;
+- espera dos segundos;
+- selecciona `platform`, escribe `mem`, vuelve automáticamente y restaura
+  siempre `pm_test=none`;
+- solo se ejecuta si existe `/sys/power/pm_test`.
+
+Primer arranque automático medido:
+
+```text
+19:00:39  panel id: 00 00 00
+19:00:44  recovery: running the automatic platform suspend/resume cycle
+19:00:57  recovery: platform cycle returned
+19:00:57  panel id: 80 00 04
+19:00:57  PM: suspend exit
+```
+
+La unidad terminó `Result=success`, `ExecMainStatus=0`; después arrancó GDM. Al
+final: `pm_test=[none]`, DSI `enabled`, backlight activo, Wi-Fi/SSH operativo.
+El arreglo ya no depende de una modificación manual de la instalación: está en
+el paquete y en el ZIP v1.02. Falta únicamente la confirmación visual de la
+usuaria antes de cambiar la tabla del README de amarillo a verde.

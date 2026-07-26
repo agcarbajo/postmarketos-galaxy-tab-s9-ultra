@@ -57,6 +57,7 @@ mkdir -p \
 	"$overlay/usr/lib/firmware/qcom/sm8550" \
 	"$overlay/usr/libexec" \
 	"$overlay/usr/lib/systemd/system" \
+	"$overlay/usr/lib/systemd/system/graphical.target.wants" \
 	"$overlay/usr/lib/systemd/system/multi-user.target.wants" \
 	"$overlay/usr/share/gts9uwifi/packages" \
 	"$overlay/usr/share/X11/xorg.conf.d" \
@@ -152,6 +153,12 @@ install -m 0644 "$project/configs/display-native/20-gts9uwifi-panel-reinit.conf"
 	"$overlay/etc/systemd/system/lightdm.service.d/20-gts9uwifi-panel-reinit.conf"
 install -m 0644 "$project/configs/display-native/20-gts9uwifi-display.conf" \
 	"$overlay/etc/lightdm/lightdm.conf.d/20-gts9uwifi-display.conf"
+install -m 0755 "$project/configs/display-native/gts9uwifi-panel-coldboot-recover" \
+	"$overlay/usr/libexec/gts9uwifi-panel-coldboot-recover"
+install -m 0644 "$project/configs/display-native/gts9uwifi-panel-coldboot-recover.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-panel-coldboot-recover.service"
+ln -sf ../gts9uwifi-panel-coldboot-recover.service \
+	"$overlay/usr/lib/systemd/system/graphical.target.wants/gts9uwifi-panel-coldboot-recover.service"
 install -m 0755 "$project/configs/display-native/gts9uwifi-lightdm-hidpi" \
 	"$overlay/usr/libexec/gts9uwifi-lightdm-hidpi"
 install -m 0644 "$project/configs/display-native/slick-greeter.conf" \

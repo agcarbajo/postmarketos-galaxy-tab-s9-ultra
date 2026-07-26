@@ -1718,6 +1718,14 @@ lado del workspace.
   ejecutó un ciclo runtime PM explícito del padre antes de crear DPU/DSI/PHY,
   arrancó con el kernel nuevo y aun así el primer ID fue `00 00 00`. El orden
   que repara el panel necesita que el pipeline DRM completo ya exista.
+- `pm_test=devices` NO recupera el panel: vuelve automáticamente pero el ID
+  sigue en `00 00 00`. `pm_test=platform` SÍ lo recupera a `80 00 04`; esa es
+  la frontera mínima medida. No hace falta RTC porque el propio modo de prueba
+  espera cinco segundos y retorna.
+- Aunque `ignore_console_null` consigue que `tty0` y `ttyMSM0` queden activas,
+  no puede mostrar verbose mientras el DDIC siga en `00 00 00`: el framebuffer
+  console funciona, pero el panel físico aún no acepta imagen. No volver a
+  confundir ausencia visual con ausencia de consola.
 
 ## Referencias locales
 
