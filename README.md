@@ -10,10 +10,16 @@ as hardware documentation.
 
 ## Status
 
-The tablet boots to a full XFCE desktop at **2960×1848 @ 120 Hz** with GPU
-acceleration, Wi-Fi, Bluetooth, audio, physical buttons and battery reporting.
+The tablet boots to a full **GNOME** desktop on Wayland at **2960×1848 @
+120 Hz** with GPU acceleration, Wi-Fi, Bluetooth, audio, physical buttons and
+battery reporting. XFCE on Xorg is also supported and was the original target.
 What is left is mostly accessories and the sensor stack: S Pen, cameras,
 sensors, the keyboard cover, external displays and fast charging.
+
+Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
+as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
+reverse-PRIME plumbing that Xorg needs applies on Wayland. GNOME picks 200%
+scaling on its own and looks right.
 
 Everything marked ✅ has been **verified on the real hardware**, not inferred
 from a driver binding. Audio, for instance, was only accepted after being
@@ -27,7 +33,8 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | Component | Status | Notes |
 |---|---|---|
 | **Display** | ✅ | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE |
-| **GPU** | ✅ | Adreno 740, Mesa/freedreno, OpenGL 4.6. Scanout via reverse PRIME (`card0` Adreno → `card1` DPU) |
+| **Desktop** | ✅ | GNOME on Wayland (default) or XFCE on Xorg. GDM needs its greeter accounts pre-created — see below |
+| **GPU** | ✅ | Adreno 740, Mesa/freedreno, OpenGL 4.6. Wayland uses both DRM devices directly; Xorg needs reverse PRIME (`card0` Adreno → `card1` DPU) |
 | **Backlight and DPMS** | ✅ | Software brightness control and screen blanking |
 | **Touchscreen** | ✅ | Goodix Berlin, 16-byte Samsung event layout |
 | **Buttons** | ✅ | Volume up/down, and power (suspends) |
@@ -80,6 +87,33 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 │                              Wi-Fi, vendor_boot, TWRP
 └── docs/                      port documentation
 ```
+
+## Installing
+
+Two steps, always:
+
+1. **Write the rootfs image to a microSD.** Wipe any previous partition table
+   first (`sgdisk --zap-all`): a stale GPT backup header from a larger layout
+   left at the end of the card makes different kernels disagree about where the
+   partitions are, and the filesystems get read at the wrong offsets. Verify
+   the write by hashing back what landed on the card before rebooting.
+2. **Flash the TWRP ZIP.** It writes `boot`, `init_boot`, `vendor_boot` and
+   `dtbo`, and applies the overlay onto the card — the GPU, ADSP and audio
+   firmware live there, not in the device package, so a freshly written card
+   has no working GPU until this step.
+
+The root partition grows itself to fill whatever card it was written to on
+first boot, so the image stays small and is not tied to one card size.
+
+### GNOME and GDM
+
+GDM 47+ runs its greeter as a per-display user `gdm-greeter-<N>` and asks
+`systemd-userdbd` to allocate it on demand. **Alpine builds systemd without
+userdbd**, so that path does not exist and GDM crash-loops on a black screen,
+logging `User 'gdm-greeter-2' not preallocated and system lacks userdb`.
+
+The device package works around it by pre-creating those accounts in the range
+systemd itself reserves for dynamic users (61184–65519). Nothing to do by hand.
 
 ## Firmware
 

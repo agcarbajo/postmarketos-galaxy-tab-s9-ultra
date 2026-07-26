@@ -4560,3 +4560,71 @@ hay SSH. Canales usados esta sesión, por orden de utilidad:
 - **IPv6 link-local sobre RNDIS**: el sistema real expone RNDIS; el vecino
   `fe80::…%<idx>` responde a ping y `sshd` contesta, aunque sin DHCP. Windows
   necesita asignar a mano el driver *Remote NDIS Compatible Device*.
+
+## Sesión 97 — ✅ GNOME FUNCIONANDO, confirmado por la usuaria
+
+Escritorio GNOME sobre Wayland en la Tab S9 Ultra, con **todo lo anterior
+intacto**: Wi-Fi, Bluetooth, audio, botones, batería, GPU y brillo. La usuaria
+confirma que el escalado se pone solo al **200 % y se ve perfecto**.
+
+### La causa del bloqueo, sacada del binario
+
+`strings /usr/sbin/gdm` da el mecanismo exacto. GDM ≥ 47 tiene un
+`GdmDynamicUserStore` (`../daemon/gdm-dynamic-user-store.c`) que necesita una
+cuenta por pantalla llamada **`gdm-greeter-<N>`** (formato `%s-%lu`) y la
+resuelve por dos vías:
+
+1. `getpwnam()` — si la cuenta existe ya, es *preallocated* y la usa.
+2. Si no, pide a **`systemd-userdbd`** que la cree al vuelo.
+
+**Alpine compila systemd sin `userdbd`** (systemd 261.2-r0: sin binario
+`/usr/lib/systemd/systemd-userdbd`, sin unidad, sin `userdbctl`; ningún paquete
+de pmOS/Alpine lo provee, comprobado contra los cuatro índices). Y el
+`.pre-install` del paquete gdm sólo crea `gdm-greeter` **sin número**, que nunca
+es el nombre que GDM busca. Resultado: `User 'gdm-greeter-2' not preallocated
+and system lacks userdb` en bucle — 75.120 veces en un journal de 240 MB — y
+`gdm.service: Failed with result 'core-dump'`.
+
+**Arreglo:** pre-crear las cuentas numeradas, que es exactamente lo que espera
+la vía 1. Diez cuentas `gdm-greeter-1..10` con UID/GID en **61184-65519**, el
+rango que systemd reserva para usuarios dinámicos, así que no colisionan con
+nada de Alpine. Home en `/var/lib/gdm-greeter-N`: GDM aborta explícitamente si
+el home está en `/home` o en la raíz (`Dynamic user home '%s' is in /home or is
+root! Aborting.`). Reproducible en el paquete de dispositivo r27:
+`gts9uwifi-gdm-greeter-users` + unidad oneshot `Before=display-manager.service`
+con `ConditionPathExists=/usr/sbin/gdm`, así que las imágenes XFCE la ignoran.
+
+Bug propio por el camino: la primera versión del script topaba la búsqueda de
+IDs libres en 1000 y devolvía siempre el mismo, dejando UID duplicados del 5 al
+10. Lo cazó la comprobación de duplicados del propio script.
+
+### Segundo problema: firmware de GPU ausente
+
+`adreno 3d00000.gpu: failed to load a740_sqe.fw` (-40) y `MESA: get-param
+failed! -6`. El firmware del Adreno lo instala el **overlay del ZIP**, no el
+paquete de dispositivo, y una tarjeta recién escrita no lo tiene. Tras aplicar
+el ZIP: `loaded qcom/a740_sqe.fw` y `loaded qcom/gmu_gen70200.bin`.
+
+**Instalar este port son SIEMPRE dos pasos: tarjeta + ZIP.** Documentado en el
+README.
+
+### Hallazgo importante: mutter no necesita reverse PRIME
+
+    gnome-shell: Added device '/dev/dri/card0' (msm) using non-atomic mode setting
+    gnome-shell: Added device '/dev/dri/card1' (msm-kms) using atomic mode setting
+    gnome-shell: Created gbm renderer for '/dev/dri/card0'
+    gnome-shell: Created gbm renderer for '/dev/dri/card1'
+
+**Mutter maneja la topología GPU/DPU partida por sí solo**, abriendo las dos
+tarjetas. Todo el andamiaje de X11 (paquete Xorg parcheado r10,
+`--setprovideroutputsource`, el hook de LightDM) es innecesario en Wayland. Era
+el riesgo que más me preocupaba y resultó ser lo más sencillo.
+
+### Estado
+
+`systemctl is-system-running` = **degraded** por tres unidades inocuas:
+`proc-sys-fs-binfmt_misc` (módulo no compilado) y `nftables.service` (sin
+reglas). No afectan a nada; pendientes de limpiar si molestan.
+
+Tablet en `192.168.1.145`, conectada sola por el perfil Wi-Fi escrito en la
+tarjeta. Disco: 28,3 G al 12 %.

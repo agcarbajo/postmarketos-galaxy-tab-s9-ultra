@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=26
+pkgrel=27
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -35,6 +35,8 @@ source="
 	gts9uwifi-display-hold.conf
 	gts9uwifi-bluetooth-address
 	gts9uwifi-bluetooth-address.service
+	gts9uwifi-gdm-greeter-users
+	gts9uwifi-gdm-greeter-users.service
 	gts9uwifi-grow-rootfs
 	gts9uwifi-grow-rootfs.service
 	gts9uwifi-lightdm-hidpi
@@ -69,6 +71,16 @@ package() {
 		"$pkgdir/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
 	install -Dm644 "$srcdir/20-gts9uwifi-address.conf" \
 		"$pkgdir/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
+	# GDM >= 47 runs its greeter as "gdm-greeter-<N>" and asks systemd-userdbd
+	# to create that account on demand.  Alpine builds systemd without userdbd,
+	# so GDM crash-loops on a black screen; pre-allocate the accounts instead.
+	install -Dm755 "$srcdir/gts9uwifi-gdm-greeter-users" \
+		"$pkgdir/usr/libexec/gts9uwifi-gdm-greeter-users"
+	install -Dm644 "$srcdir/gts9uwifi-gdm-greeter-users.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-gdm-greeter-users.service"
+	ln -s ../gts9uwifi-gdm-greeter-users.service \
+		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-gdm-greeter-users.service"
+
 	# The rootfs image is built without knowing the size of the target card,
 	# so it grows itself once, on the device, at first boot.
 	install -Dm755 "$srcdir/gts9uwifi-grow-rootfs" \
@@ -106,6 +118,8 @@ b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e
 aa676db16e619570d79bccc7984ee83dfb933ad9de68280bfc0b6486fdb3eb4853dc4a12dcc4ebcafdc9120d15ca2f78e4091cbc99a44c5bcc67a054614a91dd  gts9uwifi-display-hold.conf
 844bed4ad2faa859e70a3a274bd66dc482554249fb4d1e29e2e4aee7baa9aa2de3b24ccf981c3d5ba243747a64fb73e5978040e6013e79b5c02b632c59eb5de2  gts9uwifi-bluetooth-address
 2ab9657ccc015f613d6b16d2d52c03e92f3279f8dd49a50312e92a5e0fc5ce6701c3a5d1573c7c6852cc6c56c28a43a8317e1e5a431fa7d91089ffafd7a33ff2  gts9uwifi-bluetooth-address.service
+9d75ae2feb855f2ed2fdadc14cec4bf8d3afa43ba88310b3a420a69c917162f20f72dd24750eedff3e437d8a081385a35a77f0e4ece38d3c0cd60e20b5e09888  gts9uwifi-gdm-greeter-users
+c98e78740862099de19b5d8bf9a8b411ce5a873a48b84480cccb7c6a6f37edec38c4f863d99d559f59f272ddc2ab9d5682fbd00450ab112a2b8e780b32e03131  gts9uwifi-gdm-greeter-users.service
 da000da7bca1ed93742e8f0859d6ec61ada8f4ec56aa2a0221c1a6081fbe87a321c9781943499191601c0df26db979d7d9d3b7b28228e9d5db509d0861de8f89  gts9uwifi-grow-rootfs
 53d745b90b8e7db7858ad1812350548668569461c435353e70c3c3abd8def386da83ca97bfe9eb181f97ccdcf1891ecb6d957a511002b7ab51e3d3b9acfc9759  gts9uwifi-grow-rootfs.service
 8e1df7ebb571e5f256cc1d24405354f631bef8988c02f461f58f99e7c9b5b92235ce2f4681e947cb55b82390f2caa60be4b6bdd7564b1b78980b62343b78658a  gts9uwifi-lightdm-hidpi
