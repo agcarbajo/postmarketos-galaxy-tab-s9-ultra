@@ -25,12 +25,38 @@
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
 
+/*
+ * DCS 0x51 carries 11 significant bits on this DDIC, not 12: Samsung's own
+ * power-on sequence programs 0x07ff as "full brightness", and anything with bit
+ * 11 set wraps back to the bottom of the range.  Declaring 4095 made the
+ * desktop's slider sweep the panel from dark to bright twice.
+ */
+#define ANA38407_MAX_BRIGHTNESS		0x07ff
+
+/* Revision D, as read back by the bootloader (lcd_id=0x800004). */
+static const u8 ana38407_expected_id[3] = { 0x80, 0x00, 0x04 };
+
+/*
+ * On a cold boot the DDIC answers 00:00:00 and emits black, even though the
+ * link is up and DRM reports the connector enabled; a suspend/resume then
+ * recovers it and the id reads 80:00:04.  So the id is a reliable signal, and
+ * the fault is not in this driver: replaying the init sequence, toggling reset
+ * and even dropping the panel supplies the way unprepare/prepare does were all
+ * measured to leave it at 00:00:00.  What differs on resume is that the DSI
+ * host and PHY are re-initialised from scratch, rather than inherited from the
+ * state the bootloader left behind after painting its logo.
+ *
+ * Log the mismatch so the cause is visible, but do not burn boot time cycling
+ * the panel for a fix that does not work at this level.
+ */
+
 struct ana38407 {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
 	struct drm_dsc_config dsc;
 	struct regulator_bulk_data *supplies;
 	struct gpio_desc *reset_gpio;
+	u8 id[3];
 };
 
 /*
@@ -48,6 +74,35 @@ static const struct regulator_bulk_data ana38407_supplies[] = {
 static inline struct ana38407 *to_ana38407(struct drm_panel *panel)
 {
 	return container_of(panel, struct ana38407, panel);
+}
+
+/*
+ * Samsung sequences these rails rather than raising them together: its
+ * dsi_panel_pwr_supply brings up vddio first and then waits
+ * qcom,supply-post-on-sleep = 0x14 (20 ms) before vdd and vci, with avdd - the
+ * AMOLED ELVDD behind a load switch - after them.
+ *
+ * Enabling all four at once and sleeping afterwards, which is what a plain
+ * regulator_bulk_enable() does, left the DDIC unreliable at every enable: a
+ * cold boot came up black, a resume often needed two or three attempts, and
+ * the first frames sometimes showed artefacts.
+ */
+static int ana38407_power_on(struct ana38407 *ctx)
+{
+	int ret;
+
+	ret = regulator_enable(ctx->supplies[0].consumer);	/* vddio */
+	if (ret)
+		return ret;
+
+	msleep(20);
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(ana38407_supplies) - 1,
+				    &ctx->supplies[1]);		/* vdd, vci, avdd */
+	if (ret)
+		regulator_disable(ctx->supplies[0].consumer);
+
+	return ret;
 }
 
 /* Pack a signed DSC range BPG offset into the 6-bit field. */
@@ -105,10 +160,15 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x11);
 	mipi_dsi_msleep(&dsi_ctx, 120);
 
-	/* Diagnostic: confirm the DDIC answers on the DSI link. */
+	/*
+	 * Confirm the DDIC answers on the DSI link.  Kept here, right after
+	 * sleep-out, because that is where it reliably responds; prepare()
+	 * checks the result and retries the whole sequence if it is wrong.
+	 */
 	mipi_dsi_dcs_read(ctx->dsi, 0xda, &id[0], 1);
 	mipi_dsi_dcs_read(ctx->dsi, 0xdb, &id[1], 1);
 	mipi_dsi_dcs_read(ctx->dsi, 0xdc, &id[2], 1);
+	memcpy(ctx->id, id, sizeof(ctx->id));
 	dev_info(&ctx->dsi->dev, "ana38407 panel id: %02x %02x %02x\n",
 		 id[0], id[1], id[2]);
 
@@ -205,12 +265,9 @@ static int ana38407_prepare(struct drm_panel *panel)
 	struct ana38407 *ctx = to_ana38407(panel);
 	int ret;
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(ana38407_supplies), ctx->supplies);
+	ret = ana38407_power_on(ctx);
 	if (ret)
 		return ret;
-
-	/* qcom,supply-post-on-sleep = 20 ms (vddio) */
-	usleep_range(20000, 21000);
 
 	ana38407_reset(ctx);
 
@@ -220,6 +277,13 @@ static int ana38407_prepare(struct drm_panel *panel)
 		regulator_bulk_disable(ARRAY_SIZE(ana38407_supplies), ctx->supplies);
 		return ret;
 	}
+
+	if (memcmp(ctx->id, ana38407_expected_id, sizeof(ctx->id)))
+		dev_warn(&ctx->dsi->dev,
+			 "panel id %02x %02x %02x, expected %02x %02x %02x: the panel will stay dark until a suspend/resume re-initialises the DSI host\n",
+			 ctx->id[0], ctx->id[1], ctx->id[2],
+			 ana38407_expected_id[0], ana38407_expected_id[1],
+			 ana38407_expected_id[2]);
 
 	return 0;
 }
@@ -314,8 +378,8 @@ static struct backlight_device *ana38407_create_backlight(struct mipi_dsi_device
 	struct device *dev = &dsi->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
-		.brightness = 2047,
-		.max_brightness = 4095,		/* 12-bit DCS 0x51 */
+		.brightness = ANA38407_MAX_BRIGHTNESS,
+		.max_brightness = ANA38407_MAX_BRIGHTNESS,
 	};
 
 	return devm_backlight_device_register(dev, dev_name(dev), dev, dsi,
