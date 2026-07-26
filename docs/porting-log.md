@@ -4475,3 +4475,88 @@ El rootfs sigue al **86 %, 502 MB libres**. La microSD es de 29,72 GiB con
 rootfs es el acumulado de muchas sesiones. Eso llega con el paso a GNOME +
 tarjeta entera, donde el crecimiento debe leer el tamaño real del disco y no
 codificar 32 GB.
+
+## Sesión 96 — GNOME no arranca: gdm necesita systemd-userdbd, que Alpine no compila
+
+Instalación limpia con GNOME sobre la microSD entera. Tres fallos encadenados,
+dos míos y uno upstream.
+
+### 1. GPT de respaldo obsoleta (mío)
+
+Al estirar la partición con `sfdisk`, la GPT de respaldo quedó al final de los
+29,7 GB. Escribir después una imagen de 5,5 GB pone una GPT primaria nueva pero
+**no borra la de respaldo del final**. La tarjeta quedó con dos tablas
+contradictorias y cada kernel resolvía una distinta: el del initramfs veía el
+diseño de la imagen (p2 = 4,6 GB) y el de TWRP el antiguo (p2 = 29,2 GB). Los
+sistemas de ficheros se leían en offsets equivocados: `invalid block`,
+`gzip: invalid magic`, y arranque a la shell de depuración.
+
+Perseguí durante un buen rato hipótesis falsas (tarjeta muerta, imagen corrupta,
+lector defectuoso) porque comparaba hashes de regiones que cada kernel situaba
+en sitios distintos. Descartadas con medidas: la tarjeta escribe y retiene bien
+en dos zonas distintas, y la imagen pasa `e2fsck` limpio.
+
+**REGLA:** antes de escribir una imagen pequeña sobre una tarjeta que tuvo
+particiones mayores, `sgdisk --zap-all`. Y **verificar el hash de lo escrito
+antes de reiniciar** — el paso que faltó y que habría ahorrado horas.
+
+Escritura buena: `sgdisk --zap-all`, `adb push` de la imagen a `/tmp` (tmpfs de
+7,1 GB), `dd` y `sha256sum` de los 5250 MiB escritos contra la imagen. Coincide.
+
+### 2. El servicio de crecimiento rompía el arranque (mío)
+
+`gts9uwifi-grow-rootfs` corría `Before=local-fs.target`. Reescribir la tabla de
+particiones hace que udev retire y recree todos los dispositivos del disco —
+justo mientras systemd esperaba `/dev/disk/by-uuid/…` de la partición de
+arranque:
+
+    16:52:24.903  Expecting device /dev/disk/by-uuid/b645a225-…
+    16:52:25.673  gts9uwifi-grow-rootfs: growing partition 2 …
+    16:53:53.316  Timed out waiting for device
+                  local-fs.target: Job failed with result 'dependency'
+
+`graphical.target`: **cero menciones**. La pantalla negra parecía mutter
+fallando con la topología GPU/DPU partida y no lo era: GNOME no llegó a
+ejecutarse. Arreglado moviendo la unidad a `After=local-fs.target` /
+`WantedBy=multi-user.target` y añadiendo `udevadm settle`. ext4 redimensiona en
+caliente, así que no había nada que ganar ejecutándolo pronto.
+
+**El crecimiento en sí FUNCIONA**: 4,6 GB → 29,2 GB, sistema de ficheros de 28 G
+al 7 %, sin nada hardcodeado, verificado en hardware.
+
+### 3. gdm no puede arrancar (upstream, no nuestro)
+
+Con lo anterior resuelto el sistema llega a `multi-user.target`, `sshd` responde
+y **gnome-shell llega a ejecutarse e inicializa KMS**
+(`Added device '/dev/dri/card0' (msm)`, `KMS thread`). Pero gdm entra en bucle;
+este par de mensajes aparece **75.120 veces** en un journal de 240 MB:
+
+    Gdm: Failed to allocate UID for greeter: User 'gdm-greeter-2'
+         not preallocated and system lacks userdb
+    Gdm: GdmDisplay: Session never registered, failing
+    → gdm.service: Failed with result 'core-dump'
+
+Causa comprobada en el rootfs: **systemd 261.2-r0 de Alpine no incluye
+`systemd-userdbd`** — no existe el binario `/usr/lib/systemd/systemd-userdbd`,
+ni unidad, ni `userdbctl`. GDM 50 (`999950.0-r5`) lo necesita para el usuario
+dinámico del greeter. No es habilitable: no está.
+
+Segundo problema, independiente y menor: **falta el firmware de la GPU**
+(`a740_sqe.fw`, error -40, y `MESA: get-param failed! -6`). Lo instala el
+**overlay del ZIP**, no el paquete de dispositivo, y una instalación limpia de
+tarjeta no lo recibe. Recordatorio: instalar la imagen del rootfs es SIEMPRE de
+dos pasos — tarjeta + ZIP.
+
+### Acceso a una instalación limpia
+
+Un rootfs recién instalado no tiene ni Wi-Fi ni `authorized_keys`, así que no
+hay SSH. Canales usados esta sesión, por orden de utilidad:
+
+- **TWRP + adb**: el más fiable; monta la tarjeta y permite leer journals.
+- **Consola serie por USB**: sólo la ofrece la *shell de depuración del
+  initramfs* (COM6 a 115200). `setup_usb_storage_configfs` reconfigura el gadget
+  y **se lleva por delante el puerto serie** — no ejecutarlo si es tu único
+  canal.
+- **IPv6 link-local sobre RNDIS**: el sistema real expone RNDIS; el vecino
+  `fe80::…%<idx>` responde a ping y `sshd` contesta, aunque sin DHCP. Windows
+  necesita asignar a mano el driver *Remote NDIS Compatible Device*.
