@@ -4749,5 +4749,27 @@ panel siguen built-in. Artefacto:
 `postmarketos-edge-gnome-mainline-v1.00-mdss-initial-power-cycle-sm-x910-twrp.zip`,
 SHA-256
 `35b8b74061592f7bf555751ec132ccc1e9c1d4a4e67cf562b6298cf9a950ccba`.
-Todavía **no está validada en hardware**: requiere escribir `boot` y
-`vendor_boot`, siempre con backup, hashes y autorización explícita.
+
+Validación en hardware: se escribieron solo `boot` y `vendor_boot`, con backup
+y hash antes y después. El kernel nuevo `#75` arrancó, GDM y SSH subieron, y el
+cmdline/DTS eran los esperados. Resultado: otra vez tres
+`msm_dsi_host_cmd_rx:Invalid response cmd` y DDIC `00 00 00`. Por tanto, un
+colapso del padre **antes** de construir el pipeline tampoco reproduce el
+resume. Se restauraron ambas imágenes anteriores y sus hashes se verificaron.
+El parche y la propiedad se retiran de la siguiente revisión; no repetir.
+
+### Siguiente instrumento: `pm_test=devices`
+
+El kernel r48 no expone `/sys/power/pm_test` porque `CONFIG_PM_DEBUG` está
+deshabilitado. Activarlo proporciona el nivel `devices`: al escribir
+`devices` y solicitar `mem`, el núcleo ejecuta los callbacks completos de
+suspend/resume de los dispositivos y vuelve automáticamente tras unos
+segundos, sin RTC ni pulsación física. Es la prueba más directa de la secuencia
+que falta, con DRM ya construido.
+
+En paralelo se prepara recuperar el diagnóstico visual. ABL añade
+`console=null` después del vendor cmdline; por eso no hay verbose ni pingüinos,
+independientemente del fallo del DDIC. La siguiente build añade un parámetro
+opt-in `ignore_console_null`, vuelve a declarar `console=tty0` y conserva la
+consola serie. El comportamiento estándar de printk no cambia sin ese
+parámetro.

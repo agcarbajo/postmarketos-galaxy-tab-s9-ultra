@@ -6,6 +6,7 @@ CONFIG_DRM_SIMPLEDRM=y
 CONFIG_DRM_FBDEV_EMULATION=y
 CONFIG_FB=y
 CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_PM_DEBUG=y
 
 # Root filesystem on the external microSD must not depend on modules.
 CONFIG_MMC=y

@@ -1714,6 +1714,10 @@ lado del workspace.
   DPU/DSI/PHY y el colapso genpd del padre MDSS.
 - No repetir `unbind`/`bind` de `msm_dsi`: no recupera el DDIC y desmonta el
   display sin ofrecer una ruta de recuperación en vivo.
+- No basta con colapsar `MDSS_GDSC` antes de `of_platform_populate()`: v1.00
+  ejecutó un ciclo runtime PM explícito del padre antes de crear DPU/DSI/PHY,
+  arrancó con el kernel nuevo y aun así el primer ID fue `00 00 00`. El orden
+  que repara el panel necesita que el pipeline DRM completo ya exista.
 
 ## Referencias locales
 
