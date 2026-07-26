@@ -36,7 +36,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 | Component | Status | Notes |
 |---|---|---|
-| **Display** | 🟡 | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE. Cold boot reads `00 00 00`; an automatic platform-level suspend test before GDM recovers it to `80 00 04`. Journal validation complete; final visual confirmation pending |
+| **Display** | ✅ | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE. Cold boot reads `00 00 00`; an automatic platform-level suspend test before GDM recovers it to `80 00 04`. Confirmed visually: the screen now turns on by itself |
 | **Desktop** | ✅ | GNOME on Wayland (default) or XFCE on Xorg. GDM needs its greeter accounts pre-created — see below |
 | **GPU** | ✅ | Adreno 740, Mesa/freedreno, OpenGL 4.6. Wayland uses both DRM devices directly; Xorg needs reverse PRIME (`card0` Adreno → `card1` DPU) |
 | **Backlight and DPMS** | ✅ | Software brightness control and screen blanking |

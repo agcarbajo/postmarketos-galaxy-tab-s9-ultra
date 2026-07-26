@@ -4834,5 +4834,8 @@ Primer arranque automático medido:
 La unidad terminó `Result=success`, `ExecMainStatus=0`; después arrancó GDM. Al
 final: `pm_test=[none]`, DSI `enabled`, backlight activo, Wi-Fi/SSH operativo.
 El arreglo ya no depende de una modificación manual de la instalación: está en
-el paquete y en el ZIP v1.02. Falta únicamente la confirmación visual de la
-usuaria antes de cambiar la tabla del README de amarillo a verde.
+el paquete y en el ZIP v1.02.
+
+**Confirmación física final de la usuaria:** en el siguiente arranque la
+pantalla se encendió sola, sin pulsar power. El display vuelve a figurar como
+✅ en el README.
