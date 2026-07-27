@@ -210,5 +210,8 @@ Samsung DSC mainline:
 4. `unprepare`: sleep-in, reset y apagado de rails.
 
 La primera prueba automática de v1.08 dejó una sola lectura `80 00 04`, un
-solo servicio de wake y ningún timer residual. Falta la validación física de
-los artefactos y de aperturas rápidas antes de considerarlo resuelto.
+solo servicio de wake y ningún timer residual. La validación física posterior
+confirmó que los artefactos cromáticos desaparecieron y que abrir la funda
+vuelve a encender el panel de forma fiable. La demora visible de 2–3 segundos
+coincide con el resume profundo, la reanudación de DRM y el margen del
+compositor; no se pierde el evento Hall.

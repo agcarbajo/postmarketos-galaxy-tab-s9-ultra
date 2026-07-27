@@ -5083,3 +5083,88 @@ El SSH se interrumpió durante la prueba porque WLAN se suspende y reapareció
 automáticamente después; no fue una caída del sistema. Los artefactos y las
 aperturas rápidas quedan pendientes de confirmación física antes de marcar
 display/funda como ✅.
+
+## Sesión 106 — v1.09: recuperación SSC serializada tras resume
+
+### Validación física final de v1.08
+
+La usuaria confirmó que ya no aparecen los artefactos cromáticos, que cerrar
+la funda suspende de forma consistente y que abrirla vuelve a encender el
+panel. El intervalo visible de 2–3 segundos no es una pérdida del evento Hall:
+coincide con la duración medida del `PM: suspend exit`, la reanudación de DRM y
+el segundo de margen del compositor. Display, suspend y funda pasan a ✅.
+
+### Regresión de rotación y causa raíz
+
+Durante las pruebas repetidas de tapa desaparecieron la autorrotación y su
+control de GNOME. No era una regresión de Mutter ni de la matriz. La evidencia
+en vivo fue:
+
+- `iio-sensor-proxy` inactivo y sin owner D-Bus;
+- `ssccli` devolvía `SSC QMI Service not found`;
+- la unidad inicial había agotado sus 45 intentos;
+- el journal contenía muchas unidades
+  `gts9uwifi-sensors-resume-<timestamp>` simultáneas;
+- dos de ellas intentaron arrancar sensorspd mientras `suspend.target` lo
+  estaba deteniendo y fallaron con `Transaction ... is destructive`;
+- las restantes reiniciaron repetidamente sensorspd y agotaron sus ventanas
+  de descubrimiento.
+
+El hook de sensores repetía el mismo antipatrón que se había eliminado del
+wake gráfico: un `systemd-run --on-active=2s` anónimo por cada resume. La
+apertura y cierre rápidos permitían que sobreviviesen varios a la vez.
+
+### Arreglo reproducible
+
+El paquete de dispositivo r37 convierte
+`gts9uwifi-wait-sensor-proxy.service` en la única unidad de recuperación:
+
+- el hook `pre` la detiene, cancelando también su espera o descubrimiento;
+- el hook `post` reinicia esa misma unidad sin bloquear;
+- la unidad arranca después de
+  `gts9uwifi-panel-coldboot-recover.service` y antes del display manager;
+- `gts9uwifi-sensors-resume` reinicia, no solo arranca, sensorspd, porque una
+  protección marcada `active` puede conservar un cliente FastRPC/QMI obsoleto
+  tras una prueba PM.
+
+Tras instalar exactamente esos ficheros desde las fuentes y reiniciar:
+
+- la recuperación fría del panel terminó a 29,8 s;
+- sensorspd se reinició de forma limpia a 35,2 s;
+- SSC entregó una medida real al primer intento a 37,1 s;
+- SensorProxy publicó `HasAccelerometer=true`;
+- GDM, NetworkManager, SSH, sensorspd e iio-sensor-proxy quedaron activos;
+- no existía ninguna unidad transitoria antigua.
+
+Un ciclo adicional `pm_test=platform` volvió con una sola recuperación, SSC
+listo al primer intento y ningún conflicto. Un segundo suspend solicitado solo
+un segundo después fue correctamente rechazado por systemd con `Action suspend
+already in progress`; el script de prueba dejó temporalmente `pm_test=platform`
+al abortar, se corrigió inmediatamente a `[none]` y se verificó el estado. Esto
+también acota por qué una apertura física necesita unos segundos.
+
+### Build v1.09
+
+El kernel y el DTB no cambian respecto a v1.08; se reutilizaron byte a byte y
+se regeneraron el overlay, bundle y ZIP. La validación dirigida terminó con
+`V109_VALIDATION_OK`, incluido CRC:
+
+- `Image.gz`:
+  `706363f2eef47e767b38f4b1961c85a834434269216133c33011257b95941e95`;
+- DTB:
+  `e89bf016e1040416cc84f910ad83cdd7110a720b54d0d39c0531685da7d3dec8`;
+- `boot.img`:
+  `8b12cde37b0610d09017d41a866e69f2fa4b3e0e5c24a307826166dc2199279a`;
+- `vendor_boot.img`:
+  `809fb3fb62ca99bff4bbc2e2069140e02b3800a7dafcb0edf2b828897d14493e`;
+- ZIP
+  `postmarketos-edge-gnome-mainline-v1.09-sensor-resume-sm-x910-twrp.zip`:
+  `e7afb90084b248e9091279b015177098dd9c5dc39adfecd5b58e5322b4c12ce6`.
+
+La instalación viva ya contiene los mismos tres ficheros del overlay; no fue
+necesario escribir ninguna partición UFS. El ZIP queda para instalaciones
+limpias y para reproducir el estado completo.
+
+**Confirmación física final:** tras el reinicio volvió a aparecer el control
+de bloqueo de rotación y GNOME autorrota correctamente en todas las posiciones.
+La regresión queda cerrada.

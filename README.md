@@ -17,13 +17,17 @@ Samsung's cold-boot hand-off leaves the panel unreachable, so the first DCS
 read returns `00 00 00`. The device package now runs one automatic
 platform-level suspend/resume before starting the display manager; the DDIC
 then reads `80 00 04` and GNOME starts without requiring power-button presses.
-Resume is still being hardened: v1.08 delays DCS `DISPLAY_ON` until the DRM
-enable phase and replaces overlapping compositor wake timers with one
-cancellable service. Automated cycles pass, but the intermittent coloured
-DSC artefacts reported on physical wake still need final user validation.
+Resume is stable with v1.08: it delays DCS `DISPLAY_ON` until the DRM enable
+phase and replaces overlapping compositor wake timers with one cancellable
+service. The cover now suspends and wakes the tablet reliably, including rapid
+cycles, and the previously intermittent coloured DSC artefacts are gone.
+Waking takes about 2–3 seconds because the platform must complete a deep
+suspend/resume transaction before DRM and the Wayland session are ready.
 The Qualcomm SSC sensor protection domain is now running as well:
 accelerometer, gyroscope, magnetometer and compass are live, GNOME rotates the
-desktop automatically, and the book-cover Hall switch reports `SW_LID`.
+desktop automatically, and the book-cover Hall switch reports `SW_LID`. v1.09
+also serializes SSC recovery so rapid lid cycles cannot leave competing
+FastRPC restarts behind.
 What is left is mostly accessories and the unfinished parts of the sensor
 stack: ambient light, S Pen, cameras, the keyboard cover, external displays
 and fast charging.
@@ -44,7 +48,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 | Component | Status | Notes |
 |---|---|---|
-| **Display** | 🟡 | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE. Cold boot recovery is automatic. v1.08 fixes overlapping wake requests and implements the stock delayed `DISPLAY_ON`; final physical validation of intermittent resume artefacts is pending |
+| **Display** | ✅ | ANA38407 / AMSA46AS02, 2960×1848 @ 120 Hz, DSI command mode + DSC + TE. Cold boot recovery is automatic. v1.08 fixes overlapping wake requests and implements the stock delayed `DISPLAY_ON`; repeated physical wake tests no longer show coloured DSC artefacts |
 | **Desktop** | ✅ | GNOME on Wayland (default) or XFCE on Xorg. GDM needs its greeter accounts pre-created — see below |
 | **GPU** | ✅ | Adreno 740, Mesa/freedreno, OpenGL 4.6. Wayland uses both DRM devices directly; Xorg needs reverse PRIME (`card0` Adreno → `card1` DPU) |
 | **Backlight and DPMS** | ✅ | Software brightness control and screen blanking |
@@ -59,12 +63,12 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
 | **Charging status** | ✅ | Charging/discharging detected; UPower exposes both battery and line power |
-| **Suspend** | 🟡 | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. The SSC bridge and SensorProxy are restarted after resume |
+| **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
 | **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
 | **Fast charging (45 W)** | ❌ | Capped at ~9 W. Needs the SM5714 USB-PD block (I²C `0x33`) and PD PPS negotiation |
 | **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`); what is missing is Type-C orientation and DP altmode — the same USB-PD gap as fast charging |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
-| **Cover / lid detection** | 🟡 | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session. v1.08 cancels stale compositor wakes between rapid cycles; reliable wake on every opening still needs final physical confirmation |
+| **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
 | **Keyboard cover (pogo pins)** | ❌ | Bridged by an STM32 microcontroller (`stm,stm32_pogo`) at I²C `0x2a`, exposing keypad and touchpad. No mainline driver |
 | **Fingerprint reader** | ❌ | EgisTec EL7xx (`etspi,el7xx`) over SPI. No mainline driver |
 | **Camera flash / torch** | ❌ | `qcom,pm8350c-flash-led` on the PMIC. Mainline has `leds-qcom-flash` (`qcom,spmi-flash-led`) for this family |
@@ -77,17 +81,20 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 ## Current focus
 
-The immediate milestone is physical validation of v1.08 across rapid
-cover-open and power-button resume cycles. The previous implementation could
-leave anonymous wake timers queued for 7–16 seconds; a stale request could
-race the following suspend. The panel also displayed command-mode DSC data
-before its delayed `DISPLAY_ON` point, producing coloured noise while newly
-damaged regions such as GNOME's top bar remained valid.
+The next sensor milestone is to make the STK31610 ambient-light device produce
+real lux samples. Its SSC service, SUID and attributes are present, but the DSP
+accepts both on-change and continuous requests without sending a measurement.
+The native and generated Samsung registry data were already compared and are
+equivalent for this sensor, so copying private calibration data from `persist`
+is not a valid next step.
 
-After resume is stable, the next sensor milestone is to make the STK31610
-ambient-light device produce real lux samples. Its SSC service, SUID and
-attributes are present, but the DSP accepts both on-change and continuous
-requests without sending a measurement.
+v1.09 closes a separate suspend regression found while validating the cover:
+the old sensor hook created one anonymous delayed unit per resume. Rapid lid
+cycles could therefore leave several helpers racing to restart sensorspd,
+causing `SSC QMI Service not found` and removing GNOME's rotation control.
+Sensor recovery now uses one cancellable service, starts after cold-boot panel
+recovery, and has been validated across a clean boot, a platform resume and
+physical autorotation in every orientation.
 
 ## Documentation
 

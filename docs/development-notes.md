@@ -1502,6 +1502,14 @@ lado del workspace.
 - La suspensión profunda apaga sensorspd. libssc 0.4.4 no recupera su cliente
   QMI, por lo que tras resume hay que arrancar de nuevo la protección, esperar
   SSC y reiniciar SensorProxy. Mutter debe reclamar el nuevo owner D-Bus.
+- La recuperación de SSC debe usar una sola unidad systemd cancelable. Un
+  `systemd-run --on-active` anónimo por resume deja varias instancias vivas en
+  ciclos rápidos; estas compiten con `suspend.target`, reinician sensorspd de
+  forma solapada y terminan en `SSC QMI Service not found`. El hook `pre`
+  detiene `gts9uwifi-wait-sensor-proxy.service` y el `post` reinicia esa misma
+  unidad. En arranque debe ejecutarse después de la recuperación fría del
+  panel y reiniciar sensorspd aunque figure activo. v1.09 restaura físicamente
+  tanto el control de bloqueo de GNOME como la autorrotación continua.
 - Acelerómetro, giroscopio, magnetómetro y brújula producen datos reales.
   GNOME autorrota correctamente con
   `ACCEL_MOUNT_MATRIX=0,1,0;-1,0,0;0,0,1`. Es una medida física validada;
@@ -1513,8 +1521,10 @@ lado del workspace.
   Sin la tercera parte rota una vez y se detiene.
 - El Hall de la funda es TLMM GPIO107 activo bajo y se publica como `SW_LID`.
   `HoldoffTimeoutSec=0` es necesario: el valor por defecto de 30 segundos hace
-  que cierres válidos parezcan intermitentes. Cerrar ya suspende; la apertura
-  automática sigue pendiente de validación repetida en el greeter.
+  que cierres válidos parezcan intermitentes. Cerrar suspende y abrir despierta
+  de forma físicamente validada tanto en el greeter como en sesión. La demora
+  visible de 2–3 segundos es la duración del resume profundo y del wake de DRM,
+  no un evento Hall perdido.
 - El ALS Sensortek STK31610 se descubre, pero no produce lux. Se descartaron
   on-change, polling/DRI, petición continua a 5 Hz y divergencias del registro
   nativo. El registro `persist` y el generado son semánticamente iguales para
