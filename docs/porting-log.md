@@ -4839,3 +4839,166 @@ el paquete y en el ZIP v1.02.
 **Confirmación física final de la usuaria:** en el siguiente arranque la
 pantalla se encendió sola, sin pulsar power. El display vuelve a figurar como
 ✅ en el README.
+
+## Sesión 101 — SSC/ADSP: aparecen los sensores reales del X910
+
+El bring-up se hizo sobre el mismo ADSP ya usado por audio, pero arrancando su
+protección `sensorspd` mediante FastRPC. El primer bloqueo seguía el patrón
+repetido de este port: `CONFIG_QCOM_FASTRPC=m` no sirve porque no se instala ni
+autocarga el árbol genérico de módulos. Al pasarlo a `=y` apareció
+`/dev/fastrpc-adsp` y `hexagonrpcd` pudo adjuntar `INIT_ATTACH_SNS`.
+
+El árbol HexagonFS se genera reproduciblemente con
+`stage-stock-sensor-hexagonfs.sh`: copia la configuración Samsung, ejecuta
+`sscregistrygen -p MTP -s 519`, fija la identidad del SoC que mainline no
+publica con las rutas Android y añade únicamente los skels del DSP cuyos hashes
+están fijados. No incorpora `persist`, calibraciones por dispositivo ni blobs
+al repositorio. El servicio usa una variante empaquetada de `hexagonrpcd`
+0.4.0-r4 que implementa las escrituras mínimas de registro que espera el
+firmware Samsung, siempre confinadas al directorio de la microSD.
+
+Dos detalles de placa fueron necesarios:
+
+- los raíles stock de sensores PM8550B L1=1,8 V y L16=3,0 V quedan votados
+  mientras no exista soporte de suministros auxiliares en q6v5 PAS;
+- el `remoteproc_adsp` selecciona el pinctrl stock de los hubs I²C SE3/SE4,
+  pero los controladores GENI del AP permanecen deshabilitados. Activarlos
+  entregaba los buses a Linux y el SE3 veía el SM5440, pero ninguno de los
+  STK31610 respondía: SSC, no el AP, es el propietario correcto.
+
+La publicación es lenta. El QMI aparece antes de que termine el descubrimiento
+de registro/hardware y un iio-sensor-proxy arrancado demasiado pronto sale con
+`No sensors`. `gts9uwifi-wait-sensor-proxy` espera una medida real de
+acelerómetro antes de iniciarlo. Tras suspensión profunda, sensorspd se detiene
+y libssc 0.4.4 no reconecta el cliente QMI existente; un hook posterior vuelve
+a arrancar la protección, espera SSC y reinicia SensorProxy.
+
+Medidas reales, no solo atributos:
+
+- acelerómetro LSM6DSO con muestras continuas;
+- giroscopio con valores que cambian al mover la tablet;
+- magnetómetro AK0991x y brújula con rumbo real (aproximadamente 140° en una
+  de las pruebas).
+
+## Sesión 102 — Hall de la funda y política de suspensión
+
+El FDT Samsung identifica el Hall principal de la funda en TLMM GPIO107,
+activo bajo y con debounce de 50 ms. Se añadió al `gpio-keys` ya usado por
+volumen como un interruptor estándar `SW_LID`, con wakeup. Los eventos de
+cierre y apertura se midieron repetidamente en el dispositivo y la usuaria
+confirmó que cerrar la tapa puede apagar/suspender la tablet.
+
+La aparente intermitencia de los cierres siguientes tenía una causa en
+userspace: logind aplica por defecto `HoldoffTimeoutSec=30`, pensado para
+descubrir bases/docks durante el arranque o resume. En una tablet con un Hall
+directo solo descarta cierres válidos. La política de placa fija el holdoff a
+cero y aplica `HandleLidSwitch=suspend` también con alimentación externa,
+docked y en el greeter. El helper de display ya existente vuelve a encender el
+panel después del resume. Falta todavía repetir físicamente suficientes ciclos
+en el greeter para dar por totalmente estable el despertar al abrir; por eso
+la funda queda 🟡, no ✅.
+
+## Sesión 103 — autorrotación GNOME: dos carreras de Mutter y matriz X910
+
+iio-sensor-proxy 3.9-r3 publica ahora la actualización completa de propiedades
+cuando termina el descubrimiento lento de SSC. Sin ella GNOME cacheaba
+`HasAccelerometer=false` y nunca sabía que debía reclamar el sensor.
+
+Mutter 50.2-r4 corrige tres problemas observados:
+
+1. `meta_orientation_manager_uninhibit_tracking()` podía decrementar el
+   contador desde cero cuando el panel ya estaba gestionado, dejándolo
+   negativo y sin volver a sincronizar la reclamación D-Bus.
+2. Después de suspender, un nuevo owner de SensorProxy no puede heredar la
+   reclamación del proceso anterior; se reinician los estados cacheados para
+   emitir un `ClaimAccelerometer` real.
+3. Si el sensor aparece después de que el panel integrado ya esté gestionado,
+   la ruta de compatibilidad de la primera orientación añadía un inhibidor
+   sintético que nunca tendría una transición posterior capaz de retirarlo.
+   El síntoma exacto era girar una vez y quedarse bloqueado. Esa ruta se
+   conserva únicamente cuando el panel sigue sin gestionar.
+
+Con lo anterior la rotación era continua, pero todas las posiciones estaban
+desplazadas 90° a la derecha. El registro SSC entrega una matriz nula y libssc
+cae correctamente a identidad. Una regla de placa aplica a
+`fastrpc-adsp` la matriz empírica
+`0,1,0;-1,0,0;0,0,1` en la segunda etapa de iio-sensor-proxy.
+
+**Confirmación física de la usuaria:** la tablet ya gira correctamente en todas
+las posiciones. Esta matriz queda validada y no debe sustituirse por una
+deducción teórica de los JSON stock.
+
+## Sesión 104 — ALS STK31610: servicio visible, pero sin muestras
+
+SSC descubre exactamente un SUID `ambient_light`, nombre `stk_stk31610`,
+fabricante Sensortek, rango anunciado 5 Hz y estado available. GNOME ve
+`HasAmbientLight=true`, pero `LightLevel` permanece en 0 lux y el brillo no
+cambia al tapar físicamente el sensor ni al apagar la luz de la habitación.
+
+Se probaron y descartaron:
+
+- petición normal `on-change`;
+- registro `is_dri=1` y modo de polling `is_dri=0`;
+- seleccionar otro SUID (solo existe uno);
+- una variante diagnóstica de libssc que fuerza la petición continua estándar
+  de 5 Hz. El DSP aceptó la configuración QMI pero no envió ninguna indicación
+  de medida durante 30 segundos.
+
+Para descartar que `sscregistrygen` hubiese perdido datos, se montó la
+partición `persist` **solo lectura con `ro,noload`**, se copió fuera de Git su
+registro de sensores y se desmontó. El registro nativo contiene 148 ficheros y
+el generado 136; los 12 ausentes son exclusivamente tablas dinámicas de
+calibración del giroscopio. Todos los ficheros STK31610 están presentes y sus
+únicas diferencias son la representación JSON equivalente `1`/`1.0` y
+`5000`/`5000.0`. Copiar `persist` no arreglaría el ALS y además rompería la
+separación de calibraciones privadas.
+
+La variante diagnóstica de libssc fue retirada y el dispositivo volvió a
+`libssc=0.4.4-r0`. El brillo automático queda pendiente por debajo de GNOME,
+iio-sensor-proxy y el formato del registro. `proximity` devuelve
+`Unable to initialize ... UNKNOWN`; la configuración Samsung del X910 no crea
+un hijo proximity para el STK31610, así que no se anuncia como hardware
+disponible.
+
+### Consolidación v1.07
+
+La build limpia v1.07 terminó con `BUILD_EXIT=0` y validación dirigida
+`V107_VALIDATION_OK`. El overlay contiene la matriz, la política de funda, los
+hooks de resume y solo los paquetes de producción; no contiene ningún APK
+libssc diagnóstico. Hashes:
+
+- `Image.gz`:
+  `85d4b60f7814e24087948411de541c4ec9811bb5d1c2ea61b6cd9b449f7b8294`;
+- DTB:
+  `e89bf016e1040416cc84f910ad83cdd7110a720b54d0d39c0531685da7d3dec8`;
+- `boot.img`:
+  `c7ccbc8a3a1e290142b07b70e15a566e1899ca38d325d16864063710f9147a82`;
+- `vendor_boot.img`:
+  `ce3bd326c2de4444177141b4e5a742f55840ae0f8904856469a9002f431de380`;
+- ZIP de 51.762.561 bytes:
+  `postmarketos-edge-gnome-mainline-v1.07-sensors-autorotation-lid-sm-x910-twrp.zip`,
+  SHA-256
+  `548b4bfe714e2624a83fe6694bbe9f8de24a898fab77fed82d3ac71a6039f6e0`.
+
+Con la autorización permanente limitada a `boot` y `vendor_boot`, se
+respaldaron ambas particiones, se comprobaron las rutas exactas
+`sda21`/`sda24`, se escribieron con `conv=fsync` y la lectura posterior
+coincidió con los hashes anteriores. El overlay reproducible se aplicó a la
+microSD y el equipo reinició por sí solo.
+
+Validación en vivo de v1.07, kernel `#81`:
+
+- GDM, NetworkManager, SSH, sensorspd e iio-sensor-proxy activos;
+- el ciclo de panel cambió `00 00 00` a `80 00 04` antes de GDM;
+- FastRPC + SSC listos tras dos intentos y acelerómetro con medidas reales;
+- pinctrl SE3/SE4 reclamado por `6800000.remoteproc`;
+- matriz udev efectiva
+  `ACCEL_MOUNT_MATRIX=0,1,0;-1,0,0;0,0,1`;
+- logind efectivo con `HandleLidSwitch=suspend` y `HoldoffTimeoutSec=0`;
+- `gpio-keys` expone `SW=1`;
+- paquetes de producción: hexagonrpcd r4, iio-sensor-proxy r3, Mutter r4 y
+  libssc oficial r0.
+
+La rotación correcta ya estaba confirmada físicamente por la usuaria con esta
+misma regla. Falta solo repetir el despertar al abrir la funda después de esta
+consolidación para subir su estado de 🟡 a ✅.

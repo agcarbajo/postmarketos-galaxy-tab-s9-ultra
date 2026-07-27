@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# system-sleep hooks run in the suspend transaction.  Queue the potentially
+# slow SSC discovery only after the post-resume hook returns.
+
+if [ "$1" = post ]; then
+	unit="gts9uwifi-sensors-resume-$(date +%s)"
+	systemd-run --quiet --collect \
+		--unit="$unit" \
+		--on-active=2s \
+		/usr/libexec/gts9uwifi-sensors-resume || true
+fi

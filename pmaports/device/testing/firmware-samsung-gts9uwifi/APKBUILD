@@ -1,7 +1,7 @@
 maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=firmware-samsung-gts9uwifi
 pkgver=1
-pkgrel=9
+pkgrel=10
 pkgdesc="Stock Wi-Fi, Bluetooth, ADSP, PD maps and CS35L45 firmware for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 url="https://www.samsung.com/"
 arch="aarch64"
@@ -79,6 +79,7 @@ source="
 	adsps.jsn
 	adspua.jsn
 	cdspr.jsn
+	sensor-hexagonfs.tar.gz
 "
 
 package() {
@@ -143,6 +144,14 @@ package() {
 	for map in adspr.jsn adsps.jsn adspua.jsn cdspr.jsn; do
 		install -Dm644 "$srcdir/$map" "$adsp/$map"
 	done
+
+	# HexagonFS tree consumed by hexagonrpcd when it attaches the Samsung
+	# sensor protection domain.  It is generated deterministically from the
+	# X910 stock vendor sensor JSONs; no writable persist data or per-device
+	# calibration is embedded in the package.
+	mkdir -p "$pkgdir/usr/share/qcom/sm8550/Samsung/gts9uwifi"
+	cp -a "$srcdir/sensor-hexagonfs/." \
+		"$pkgdir/usr/share/qcom/sm8550/Samsung/gts9uwifi/"
 }
 
 sha512sums="
@@ -217,4 +226,5 @@ a026d6a9188f7cc0e1bc0b572206b5651aefbfdfd86eeed1b14151031814f9714191140dd9c9fb4e
 00bdba8e7e4d7ee30806fc245f5101c7b66ec4b92833d9be99326f977d8fd4f9712b16184ea330359820768dc54758744d857d8dd7209e7f0a2231ab196435f2  adsps.jsn
 0d4ed22c7eb1866f43032e5cf6ac2f196f02c3dc8220c49124d8e2c52bea559f63fa505e7fa60aba2c04ab6b1f08528306d60a31bd5426e16df3eb3e86f9a483  adspua.jsn
 30faec8d016ce554c5f576ffd94c8d4d320d0481cc4eef736f061307349f8fabedf5833b958e9cae86345450dfe84cf56ef935615926e728f527c54d2ec363d0  cdspr.jsn
+b8a29aa8638126e2c5b57a376b6412914e0c778ebb7b30c912413eb47d43f861b616a27f002009ffbc4c88250021c808e4c5c7c5ebd9042dbf6d11ff54cfddd5  sensor-hexagonfs.tar.gz
 "

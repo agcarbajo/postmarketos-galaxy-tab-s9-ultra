@@ -271,7 +271,7 @@
 	gpio-keys {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
-		pinctrl-0 = <&volume_up_n>;
+		pinctrl-0 = <&volume_up_n>, <&hall_cover_n>;
 
 		key-volume-up {
 			label = "Volume Up";
@@ -279,6 +279,21 @@
 			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
 			debounce-interval = <15>;
 			linux,can-disable;
+			wakeup-source;
+		};
+
+		/*
+		 * Samsung's stock hall_ic node identifies the book-cover magnet
+		 * on TLMM GPIO107, active low, with a 50 ms debounce.  Report the
+		 * standard SW_LID event so logind and GNOME can blank/suspend on
+		 * close without a device-specific daemon.
+		 */
+		switch-lid {
+			label = "Book Cover";
+			linux,input-type = <EV_SW>;
+			linux,code = <SW_LID>;
+			gpios = <&tlmm 107 GPIO_ACTIVE_LOW>;
+			debounce-interval = <50>;
 			wakeup-source;
 		};
 	};
@@ -361,6 +376,22 @@
 	regulators-0 {
 		compatible = "qcom,pm8550-rpmh-regulators";
 		qcom,pmic-id = "b";
+
+		/*
+		 * Sensor VDD. Samsung's remoteproc-adsp node votes PM8550B L1 at
+		 * 1.8 V as sensor_vdd while the sensors protection domain runs.
+		 * Mainline qcom_q6v5_pas only manages cx/px supplies, so keep the
+		 * exact stock rail enabled until generic auxiliary-supply handling
+		 * exists in that driver. On the X910, omitting both sensor rails
+		 * correlates with the sensors PD watchdog during SSC bring-up.
+		 */
+		vreg_l1b_1p8: ldo1 {
+			regulator-name = "vreg_l1b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-always-on;
+		};
 
 		/* NXP PTN3222 eUSB2 3.1 V rail, exact X910 stock voltage. */
 		vreg_l5b_3p104: ldo5 {
@@ -448,6 +479,19 @@
 			regulator-allow-set-load;
 			regulator-allowed-modes = <RPMH_REGULATOR_MODE_LPM
 						   RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/*
+		 * Sensor VDDIO. The stock ADSP node requests PM8550B L16 at
+		 * 3.0 V (sensor_vddio-uV-uA = <3000000 0>); see L1 above for why
+		 * this is temporarily an always-on board rail.
+		 */
+		vreg_l16b_3p0: ldo16 {
+			regulator-name = "vreg_l16b_3p0";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+			regulator-always-on;
 		};
 
 		/* Internal UFS VCC (memory core). */
@@ -629,6 +673,14 @@
 	 * does not access the TrustZone-owned TLMM registers.
 	 */
 	gpio-reserved-ranges = <36 4>;
+
+	hall_cover_n: hall-cover-n-state {
+		pins = "gpio107";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-disable;
+	};
 
 	/* Panel tear-effect (TE) line routed to the MDP vsync input. */
 	sde_te: sde-te-state {
@@ -1149,6 +1201,17 @@
 &remoteproc_adsp {
 	firmware-name = "qcom/sm8550/adsp.mdt",
 			"qcom/sm8550/adsp_dtb.mdt";
+	/*
+	 * SSC owns sensor-hub SE3/SE4, but the upstream hub nodes are disabled
+	 * by default and therefore do not select their TLMM states.  Make the
+	 * ADSP remoteproc the pinctrl consumer: this applies the stock mux while
+	 * leaving the GENI engines under firmware ownership.  Enabling the AP
+	 * geni_i2c drivers instead loaded/reinitialised both SEs; their adapters
+	 * worked (SE3 reached the stock SM5440 at 0x63) but neither STK31610
+	 * answered at 0x48 and SSC emitted no ALS sample.
+	 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&hub_i2c3_data_clk>, <&hub_i2c4_data_clk>;
 	/*
 	 * Bring-up: drop the LPASS interconnect path.  The upstream node votes
 	 * bandwidth over <&lpass_lpicx_noc MASTER_LPASS_PROC ... &mc_virt

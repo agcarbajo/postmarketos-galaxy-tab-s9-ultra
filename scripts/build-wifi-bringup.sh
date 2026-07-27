@@ -10,7 +10,15 @@ overlay="$base/out/rootfs-overlay-v$version"
 initramfs_overlay="$base/out/initramfs-overlay-v$version"
 artifact=${ARTIFACT:-"$project/artifacts/postmarketos-edge-xfce-mainline-v$version-wcn7850-pcie-cold-reset-sm-x910-twrp.zip"}
 firmware="$project/pmaports/device/testing/firmware-samsung-gts9uwifi"
+sensor_packages="$base/cache/sensor-userspace"
 xorg_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/xorg-server-999921.1.23-r10.apk"
+iio_sensor_proxy_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-3.9-r3.apk"
+iio_sensor_proxy_systemd_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-systemd-3.9-r3.apk"
+iio_sensor_proxy_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-udev-3.9-r3.apk"
+mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r4.apk"
+mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r4.apk"
+mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r4.apk"
+mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r4.apk"
 
 if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	# Packaging-only recovery after a late overlay/bundle failure.  Never use
@@ -19,11 +27,29 @@ if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	test -f "$kernel/sm8550-samsung-gts9uwifi.dtb"
 	test -d "$kernel/modules-root"
 	test -f "$xorg_apk"
+	test -f "$iio_sensor_proxy_apk"
+	test -f "$iio_sensor_proxy_systemd_apk"
+	test -f "$iio_sensor_proxy_udev_apk"
+	test -f "$mutter_apk"
+	test -f "$mutter_lang_apk"
+	test -f "$mutter_schemas_apk"
+	test -f "$mutter_udev_apk"
 else
 	bash "$project/scripts/stage-gpu-firmware.sh"
 	bash "$project/scripts/stage-stock-audio-firmware.sh"
+	bash "$project/scripts/stage-stock-sensor-hexagonfs.sh"
+	bash "$project/scripts/stage-sensor-userspace.sh"
 	bash "$project/scripts/stage-audioreach-topology.sh"
-	bash "$project/scripts/build-custom-xorg.sh"
+	if [ "${SKIP_XORG_BUILD:-0}" = 1 ]; then
+		# GNOME/Wayland does not consume this legacy reverse-PRIME package.
+		# Sensor-only builds may reuse the already validated r10 APK when an
+		# unrelated edge toolchain transition prevents rebuilding Xorg.
+		test -f "$xorg_apk"
+	else
+		bash "$project/scripts/build-custom-xorg.sh"
+	fi
+	bash "$project/scripts/build-custom-iio-sensor-proxy.sh"
+	bash "$project/scripts/build-custom-mutter.sh"
 
 	KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
 		bash "$project/scripts/build-mainline-kernel.sh"
@@ -47,6 +73,8 @@ mkdir -p \
 	"$overlay/etc/systemd/system/lightdm.service.d" \
 	"$overlay/etc/systemd/system/bluetooth.service.d" \
 	"$overlay/etc/systemd/system/pd-mapper.service.d" \
+	"$overlay/etc/systemd/system/hexagonrpcd-adsp-sensorspd.service.d" \
+	"$overlay/etc/systemd/logind.conf.d" \
 	"$overlay/etc/systemd/journald.conf.d" \
 	"$overlay/usr/lib/udev/rules.d" \
 	"$overlay/usr/share/alsa/ucm2/conf.d/sm8550" \
@@ -56,10 +84,13 @@ mkdir -p \
 	"$overlay/usr/lib/firmware/qcom" \
 	"$overlay/usr/lib/firmware/qcom/sm8550" \
 	"$overlay/usr/libexec" \
+	"$overlay/usr/share/glib-2.0/schemas" \
 	"$overlay/usr/lib/systemd/system" \
+	"$overlay/usr/lib/systemd/system-sleep" \
 	"$overlay/usr/lib/systemd/system/graphical.target.wants" \
 	"$overlay/usr/lib/systemd/system/multi-user.target.wants" \
 	"$overlay/usr/share/gts9uwifi/packages" \
+	"$overlay/usr/share/qcom/sm8550/Samsung/gts9uwifi" \
 	"$overlay/usr/share/X11/xorg.conf.d" \
 	"$initramfs_overlay/usr/lib/firmware/qca"
 
@@ -97,6 +128,65 @@ for f in adspr.jsn adsps.jsn adspua.jsn cdspr.jsn; do
 	install -m 0644 "$firmware/$f" \
 		"$overlay/usr/lib/firmware/qcom/sm8550/$f"
 done
+# Sensor HexagonFS: board-specific JSON configuration and a deterministic
+# registry generated from Samsung's MTP/SoC-519 selectors.  It intentionally
+# contains no copy of writable persist or per-device calibration.
+tar -xzf "$firmware/sensor-hexagonfs.tar.gz" \
+	-C "$overlay/usr/share/qcom/sm8550/Samsung/gts9uwifi" \
+	--strip-components=1
+# The current microSD image predates hexagonrpcd. Bundle the signed Alpine APKs
+# and install them locally on first boot; freshly generated rootfs images also
+# pull these through the device package dependencies.
+for package in "$sensor_packages"/hexagonrpcd-*.apk; do
+	install -m 0644 "$package" \
+		"$overlay/usr/share/gts9uwifi/packages/${package##*/}"
+done
+install -m 0644 "$iio_sensor_proxy_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${iio_sensor_proxy_apk##*/}"
+install -m 0644 "$iio_sensor_proxy_systemd_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${iio_sensor_proxy_systemd_apk##*/}"
+install -m 0644 "$iio_sensor_proxy_udev_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${iio_sensor_proxy_udev_apk##*/}"
+install -m 0644 "$mutter_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${mutter_apk##*/}"
+install -m 0644 "$mutter_lang_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${mutter_lang_apk##*/}"
+install -m 0644 "$mutter_schemas_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${mutter_schemas_apk##*/}"
+install -m 0644 "$mutter_udev_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${mutter_udev_apk##*/}"
+install -m 0755 "$project/configs/sensors/gts9uwifi-install-sensor-packages" \
+	"$overlay/usr/libexec/gts9uwifi-install-sensor-packages"
+install -m 0644 "$project/configs/sensors/gts9uwifi-install-sensor-packages.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-install-sensor-packages.service"
+ln -sf ../gts9uwifi-install-sensor-packages.service \
+	"$overlay/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-install-sensor-packages.service"
+install -m 0644 "$project/configs/sensors/10-gts9uwifi-hexagonfs.conf" \
+	"$overlay/etc/systemd/system/hexagonrpcd-adsp-sensorspd.service.d/10-gts9uwifi-hexagonfs.conf"
+install -m 0644 "$project/configs/sensors/10-gts9uwifi-lid.conf" \
+	"$overlay/etc/systemd/logind.conf.d/10-gts9uwifi-lid.conf"
+install -m 0644 "$project/configs/sensors/61-gts9uwifi-sensor-mount-matrix.rules" \
+	"$overlay/usr/lib/udev/rules.d/61-gts9uwifi-sensor-mount-matrix.rules"
+install -m 0755 "$project/configs/sensors/gts9uwifi-wait-sensor-proxy" \
+	"$overlay/usr/libexec/gts9uwifi-wait-sensor-proxy"
+install -m 0644 "$project/configs/sensors/gts9uwifi-wait-sensor-proxy.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-wait-sensor-proxy.service"
+ln -sf ../gts9uwifi-wait-sensor-proxy.service \
+	"$overlay/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-wait-sensor-proxy.service"
+install -m 0755 "$project/configs/sensors/gts9uwifi-sensors-resume" \
+	"$overlay/usr/libexec/gts9uwifi-sensors-resume"
+install -m 0755 "$project/configs/sensors/gts9uwifi-sensors-resume-system-sleep" \
+	"$overlay/usr/lib/systemd/system-sleep/gts9uwifi-sensors-resume"
+install -m 0755 "$project/configs/display-native/gts9uwifi-display-wake" \
+	"$overlay/usr/libexec/gts9uwifi-display-wake"
+install -m 0755 "$project/configs/display-native/gts9uwifi-display-wake-system-sleep" \
+	"$overlay/usr/lib/systemd/system-sleep/gts9uwifi-display-wake"
+install -m 0644 "$project/configs/sensors/99_gts9uwifi-sensors.gschema.override" \
+	"$overlay/usr/share/glib-2.0/schemas/99_gts9uwifi-sensors.gschema.override"
+install -m 0644 "$project/configs/sensors/gts9uwifi-compile-sensor-schemas.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-compile-sensor-schemas.service"
+ln -sf ../gts9uwifi-compile-sensor-schemas.service \
+	"$overlay/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-compile-sensor-schemas.service"
 install -m 0644 "$project/configs/development-ssh/00-gts9uwifi-development-key.conf" \
 	"$overlay/etc/ssh/sshd_config.d/00-gts9uwifi-development-key.conf"
 install -m 0644 "$project/configs/development-ssh/phablet.authorized_keys" \

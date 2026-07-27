@@ -149,6 +149,13 @@ CONFIG_QCOM_PDR_MSG=y
 CONFIG_RPMSG_QCOM_GLINK_SMEM=y
 CONFIG_QRTR_SMD=y
 
+# Samsung's sensor protection domain is started by userspace through FastRPC.
+# Mainline defaults this to =m, but this port deliberately has no generic module
+# tree or autoloading.  Without a built-in FastRPC driver the ADSP announces
+# fastrpcglink-apps-dsp yet /dev/fastrpc-adsp never exists, hexagonrpcd cannot
+# attach sensorspd, and SSC QMI service 0x190 is never published.
+CONFIG_QCOM_FASTRPC=y
+
 # Internal audio, step 2: AudioReach/GPR, the SM8550 machine card, the X910's
 # real CS35L45 I2C/MI2S speaker path, and the LPASS VA macro used by its DMICs.
 # The generic mainline config leaves the entire graph at =m; this port does not

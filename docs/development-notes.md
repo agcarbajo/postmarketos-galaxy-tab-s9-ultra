@@ -1483,6 +1483,45 @@ lado del workspace.
   imágenes, permisos e instalador pasaron; se copió a `/sdcard` y la única
   comparación local/tablet coincide.
 
+## Sensores Qualcomm SSC y funda
+
+- Los sensores integrados no son dispositivos IIO/I²C del AP. Corren dentro de
+  la protección `sensorspd` del ADSP y se alcanzan por FastRPC + QMI SSC.
+  `CONFIG_QCOM_FASTRPC` debe ser `=y`: como módulo no existe
+  `/dev/fastrpc-adsp` en este port.
+- El árbol HexagonFS se genera desde los JSON stock con los selectores reales
+  `MTP`/SoC 519 y los skels DSP verificados. La caché escrita por Samsung queda
+  en el directorio de placa de la microSD; nunca se monta `persist` para
+  escritura ni se versionan calibraciones por dispositivo.
+- SSC es dueño de SE3/SE4. El `remoteproc_adsp` debe seleccionar sus pinctrl,
+  pero no hay que habilitar los controladores GENI I²C del AP: hacerlo disputa
+  los buses sin producir muestras del ALS.
+- El descubrimiento de SSC tarda más que la publicación inicial de QMI.
+  Esperar una **muestra real** de acelerómetro antes de iniciar
+  iio-sensor-proxy evita que este salga prematuramente con `No sensors`.
+- La suspensión profunda apaga sensorspd. libssc 0.4.4 no recupera su cliente
+  QMI, por lo que tras resume hay que arrancar de nuevo la protección, esperar
+  SSC y reiniciar SensorProxy. Mutter debe reclamar el nuevo owner D-Bus.
+- Acelerómetro, giroscopio, magnetómetro y brújula producen datos reales.
+  GNOME autorrota correctamente con
+  `ACCEL_MOUNT_MATRIX=0,1,0;-1,0,0;0,0,1`. Es una medida física validada;
+  conservarla aunque la lectura aislada de los JSON stock sugiera otra etapa
+  de coordenadas.
+- Mutter 50.2 necesita el parche r4 de este port: protege el contador de
+  inhibidores, invalida la reclamación cuando cambia el owner de SensorProxy y
+  no añade el inhibidor inicial sintético si el panel ya estaba gestionado.
+  Sin la tercera parte rota una vez y se detiene.
+- El Hall de la funda es TLMM GPIO107 activo bajo y se publica como `SW_LID`.
+  `HoldoffTimeoutSec=0` es necesario: el valor por defecto de 30 segundos hace
+  que cierres válidos parezcan intermitentes. Cerrar ya suspende; la apertura
+  automática sigue pendiente de validación repetida en el greeter.
+- El ALS Sensortek STK31610 se descubre, pero no produce lux. Se descartaron
+  on-change, polling/DRI, petición continua a 5 Hz y divergencias del registro
+  nativo. El registro `persist` y el generado son semánticamente iguales para
+  todos los ficheros STK31610. No mantener un fork diagnóstico de libssc.
+- El X910 no expone un sensor proximity: el SSC devuelve UNKNOWN y sus JSON
+  stock solo configuran el hijo `ambient_light`.
+
 ## Lo que no ha funcionado / no repetir
 
 - No dejar `dev_info` por evento dentro de `dwc3_process_event_entry()`,
@@ -1726,6 +1765,18 @@ lado del workspace.
   no puede mostrar verbose mientras el DDIC siga en `00 00 00`: el framebuffer
   console funciona, pero el panel físico aún no acepta imagen. No volver a
   confundir ausencia visual con ausencia de consola.
+- No forzar el STK31610 de `on-change` a continuo esperando que aparezcan
+  medidas: el DSP acepta la petición estándar de 5 Hz pero no entrega ni una
+  indicación en 30 segundos. La variante de libssc era diagnóstica y fue
+  retirada.
+- No copiar el registro de sensores completo desde `persist`: para STK31610 es
+  semánticamente idéntico al generado; las únicas 12 entradas ausentes son
+  calibraciones dinámicas del giroscopio. Además, `persist` contiene datos
+  propios del dispositivo y se mantiene siempre `ro,noload`.
+- No habilitar los controladores AP de los hubs I²C SE3/SE4 para buscar el ALS.
+  Esos buses pertenecen a SSC; Linux puede inicializar el SE3 y ver otro
+  periférico, pero los STK31610 no responden y el firmware deja de ser el dueño
+  coherente del bus.
 
 ## Referencias locales
 

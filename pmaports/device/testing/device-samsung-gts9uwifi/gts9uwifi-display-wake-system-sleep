@@ -1,0 +1,14 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# system-sleep hooks run while user.slice is frozen.  Queue the compositor call
+# in the system manager so it executes only after this post-resume hook returns
+# and the graphical session has thawed.
+
+if [ "$1" = post ]; then
+	unit="gts9uwifi-display-wake-$(date +%s)"
+	systemd-run --quiet --collect \
+		--unit="$unit" \
+		--on-active=1s \
+		/usr/libexec/gts9uwifi-display-wake || true
+fi

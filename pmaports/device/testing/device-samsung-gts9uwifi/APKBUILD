@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=28
+pkgrel=35
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -14,10 +14,17 @@ depends="
 	e2fsprogs-extra
 	findmnt
 	firmware-samsung-gts9uwifi
+	hexagonrpcd=0.4.0-r4
+	hexagonrpcd-systemd=0.4.0-r4
+	hexagonrpcd-udev=0.4.0-r4
+	iio-sensor-proxy=3.9-r3
+	iio-sensor-proxy-systemd=3.9-r3
+	iio-sensor-proxy-udev=3.9-r3
 	kbd
 	linux-samsung-gts9uwifi-mainline
 	lsblk
 	mkbootimg
+	mutter=999950.2-r4
 	partx
 	pd-mapper
 	postmarketos-base
@@ -25,16 +32,21 @@ depends="
 "
 makedepends="devicepkg-dev"
 source="
+	99_gts9uwifi-sensors.gschema.override
 	20-gts9uwifi-fbdev.conf
 	20-gts9uwifi-address.conf
 	20-gts9uwifi-display.conf
 	20-gts9uwifi-panel-reinit.conf
+	61-gts9uwifi-sensor-mount-matrix.rules
 	deviceinfo
 	gts9uwifi-display-handoff
 	gts9uwifi-display-handoff.service
 	gts9uwifi-display-hold.conf
+	gts9uwifi-display-wake
+	gts9uwifi-display-wake-system-sleep
 	gts9uwifi-bluetooth-address
 	gts9uwifi-bluetooth-address.service
+	gts9uwifi-compile-sensor-schemas.service
 	gts9uwifi-gdm-greeter-users
 	gts9uwifi-gdm-greeter-users.service
 	gts9uwifi-grow-rootfs
@@ -43,9 +55,15 @@ source="
 	gts9uwifi-panel-reinit
 	gts9uwifi-panel-coldboot-recover
 	gts9uwifi-panel-coldboot-recover.service
+	gts9uwifi-sensors-resume
+	gts9uwifi-sensors-resume-system-sleep
+	gts9uwifi-wait-sensor-proxy
+	gts9uwifi-wait-sensor-proxy.service
 	gts9uwifi-xfce-hidpi
 	gts9uwifi-xfce-hidpi.desktop
 	kernel-cmdline.conf
+	10-gts9uwifi-hexagonfs.conf
+	10-gts9uwifi-lid.conf
 	slick-greeter.conf
 "
 
@@ -56,6 +74,8 @@ build() {
 package() {
 	devicepkg_package "$startdir" "$pkgname"
 
+	install -Dm644 "$srcdir/99_gts9uwifi-sensors.gschema.override" \
+		"$pkgdir/usr/share/glib-2.0/schemas/99_gts9uwifi-sensors.gschema.override"
 	install -Dm644 "$srcdir/20-gts9uwifi-fbdev.conf" \
 		"$pkgdir/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 	install -Dm755 "$srcdir/gts9uwifi-display-handoff" \
@@ -67,12 +87,20 @@ package() {
 		"$pkgdir/usr/lib/systemd/system/graphical.target.wants/gts9uwifi-display-handoff.service"
 	install -Dm644 "$srcdir/gts9uwifi-display-hold.conf" \
 		"$pkgdir/usr/lib/modprobe.d/gts9uwifi-display-hold.conf"
+	install -Dm755 "$srcdir/gts9uwifi-display-wake" \
+		"$pkgdir/usr/libexec/gts9uwifi-display-wake"
+	install -Dm755 "$srcdir/gts9uwifi-display-wake-system-sleep" \
+		"$pkgdir/usr/lib/systemd/system-sleep/gts9uwifi-display-wake"
 	install -Dm755 "$srcdir/gts9uwifi-bluetooth-address" \
 		"$pkgdir/usr/libexec/gts9uwifi-bluetooth-address"
 	install -Dm644 "$srcdir/gts9uwifi-bluetooth-address.service" \
 		"$pkgdir/usr/lib/systemd/system/gts9uwifi-bluetooth-address.service"
 	install -Dm644 "$srcdir/20-gts9uwifi-address.conf" \
 		"$pkgdir/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
+	install -Dm644 "$srcdir/gts9uwifi-compile-sensor-schemas.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-compile-sensor-schemas.service"
+	ln -s ../gts9uwifi-compile-sensor-schemas.service \
+		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-compile-sensor-schemas.service"
 	# GDM >= 47 runs its greeter as "gdm-greeter-<N>" and asks systemd-userdbd
 	# to create that account on demand.  Alpine builds systemd without userdbd,
 	# so GDM crash-loops on a black screen; pre-allocate the accounts instead.
@@ -114,19 +142,47 @@ package() {
 		"$pkgdir/etc/xdg/autostart/gts9uwifi-xfce-hidpi.desktop"
 	install -Dm644 "$srcdir/slick-greeter.conf" \
 		"$pkgdir/etc/lightdm/slick-greeter.conf"
+
+	install -Dm644 "$srcdir/10-gts9uwifi-hexagonfs.conf" \
+		"$pkgdir/etc/systemd/system/hexagonrpcd-adsp-sensorspd.service.d/10-gts9uwifi-hexagonfs.conf"
+	install -Dm644 "$srcdir/10-gts9uwifi-lid.conf" \
+		"$pkgdir/etc/systemd/logind.conf.d/10-gts9uwifi-lid.conf"
+	install -Dm644 "$srcdir/61-gts9uwifi-sensor-mount-matrix.rules" \
+		"$pkgdir/usr/lib/udev/rules.d/61-gts9uwifi-sensor-mount-matrix.rules"
+	ln -s ../hexagonrpcd-adsp-sensorspd.service \
+		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/hexagonrpcd-adsp-sensorspd.service"
+	install -Dm755 "$srcdir/gts9uwifi-sensors-resume" \
+		"$pkgdir/usr/libexec/gts9uwifi-sensors-resume"
+	install -Dm755 "$srcdir/gts9uwifi-sensors-resume-system-sleep" \
+		"$pkgdir/usr/lib/systemd/system-sleep/gts9uwifi-sensors-resume"
+
+	# The sensor PD publishes QRTR immediately but needs about a minute to
+	# finish registry/hardware discovery. Starting iio-sensor-proxy earlier
+	# makes it exit with "No sensors", and GNOME never retries it.
+	install -Dm755 "$srcdir/gts9uwifi-wait-sensor-proxy" \
+		"$pkgdir/usr/libexec/gts9uwifi-wait-sensor-proxy"
+	install -Dm644 "$srcdir/gts9uwifi-wait-sensor-proxy.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-wait-sensor-proxy.service"
+	ln -s ../gts9uwifi-wait-sensor-proxy.service \
+		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-wait-sensor-proxy.service"
 }
 
 sha512sums="
+9eaec2d07a3fef93f32f3a8b2c0d75f6bc33fb9939fe7c87afe2c9f3146839ac9c296dc8ab4213ffda09ff63cd9a26e3dce6f5f8293357a3a4ce8cabe404f764  99_gts9uwifi-sensors.gschema.override
 c2fffc648f136ba6f7611f918f0914ce90377cbfbb49d5b9be456091ce43a793d5b59c5828a7f1e9095692f0019eb0f30c67eb9b24cf010636b53f59f5da4e34  20-gts9uwifi-fbdev.conf
 6ec4f2e7c65cc6569f53ce2c3d60e3f71bd1e98567ce807cb6fc60a64e70dab9dc76aeb13050822db92cd3318e0e58dcd08e49fe94bbb6bc7663292e4b45b2f5  20-gts9uwifi-address.conf
 89d013c3b56a331527a1e21e3e90449a4506fc4247cff54eceb0120e35bb402f91866887b4eef94f932fdf296512f33c8cc26cd4620a9853efa23d58b3c00ac8  20-gts9uwifi-display.conf
 5f7c50bf4b26c7435628fb9dbcef8a2eaf511a90dcb38c43f5272a5f1768a85d6ceadb14c93424b274406b04fd3e547e6c20ba77e8a08c0addf490bf610ac15d  20-gts9uwifi-panel-reinit.conf
+231ae50f297ec98925cba9824c7b9bc1d223ff1da474830d4df359bfe4ddf8c8475af13013470fdd21a267befa7c2f9436528917625cfb29af9e3d74e3030dab  61-gts9uwifi-sensor-mount-matrix.rules
 75b642beea4cf983a553e9f7de6987880f6debe91c1a4f3a5b9d77dd41f4d99f5ced2e4852db5055446cc194ca3d3f6653db37f77fc423b4247cd1a229410f87  deviceinfo
 79c03d4c8a779d3951fa2d0699cad083d4329381c16036e16b581a49d1d7db82b46cf28404d86cdc615dc2608b37c46deb357a3f6c70c9b4eb2281c374105d75  gts9uwifi-display-handoff
 b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e2d219667f79172827dbda2f7440d1dc6367cb8a9a3597987  gts9uwifi-display-handoff.service
 aa676db16e619570d79bccc7984ee83dfb933ad9de68280bfc0b6486fdb3eb4853dc4a12dcc4ebcafdc9120d15ca2f78e4091cbc99a44c5bcc67a054614a91dd  gts9uwifi-display-hold.conf
+fffb01e597a94e7537379173d3825e7384225a91803b77aee6e07e1f227a51a99f38b16273bb20546c8f277d1f776e8c9282795ca76546df5a1f9208aa5a3df6  gts9uwifi-display-wake
+6e6d400e0a52deac5f73de6e4cca31c6f25052fca4f774785e53567b585938ed440ec3c8ddcce4c0cc1e6e17457baadd296135780621cda1461f251ef9817245  gts9uwifi-display-wake-system-sleep
 844bed4ad2faa859e70a3a274bd66dc482554249fb4d1e29e2e4aee7baa9aa2de3b24ccf981c3d5ba243747a64fb73e5978040e6013e79b5c02b632c59eb5de2  gts9uwifi-bluetooth-address
 2ab9657ccc015f613d6b16d2d52c03e92f3279f8dd49a50312e92a5e0fc5ce6701c3a5d1573c7c6852cc6c56c28a43a8317e1e5a431fa7d91089ffafd7a33ff2  gts9uwifi-bluetooth-address.service
+944bb183f79b788e508b57b427deea8c7c5c56b5838fbc7325f6c65cbae393668f831c32b8ad86060afbd4a0c6bae53ebf8269da904d9796c27ea129736ca006  gts9uwifi-compile-sensor-schemas.service
 9d75ae2feb855f2ed2fdadc14cec4bf8d3afa43ba88310b3a420a69c917162f20f72dd24750eedff3e437d8a081385a35a77f0e4ece38d3c0cd60e20b5e09888  gts9uwifi-gdm-greeter-users
 c98e78740862099de19b5d8bf9a8b411ce5a873a48b84480cccb7c6a6f37edec38c4f863d99d559f59f272ddc2ab9d5682fbd00450ab112a2b8e780b32e03131  gts9uwifi-gdm-greeter-users.service
 da000da7bca1ed93742e8f0859d6ec61ada8f4ec56aa2a0221c1a6081fbe87a321c9781943499191601c0df26db979d7d9d3b7b28228e9d5db509d0861de8f89  gts9uwifi-grow-rootfs
@@ -135,8 +191,14 @@ da000da7bca1ed93742e8f0859d6ec61ada8f4ec56aa2a0221c1a6081fbe87a321c9781943499191
 6a783ea53920063350527fd8e84521b1cc3820f7ff087e4a2540ebdb2b41657b53aea19609bc9c6f599fe52ed2c16f61ac0690a8825f9f4b8c41493d9050e19a  gts9uwifi-panel-reinit
 93ad7c7358d7c68bfb57096f65ff94d6a87a0decccbc5ded14c72d04f5b8d3eb558a3160cadd5675767190d24e3cf4a4bb1753e92e553dc5baa0e92a0638357b  gts9uwifi-panel-coldboot-recover
 c3b0c428118db1b168a748a0c8f476e1f1480609782fe13922fa5f8dd106fe9b39b45130426b17f6b467087cee42f61d99b84c9631e1057de977cc7817851bd5  gts9uwifi-panel-coldboot-recover.service
+39b75c4c50970f7938633ee526b511d61edaee70307877c20555f8b15e3274e73316f89dee811dc206f5eaf2017ea28bf71513ef90e70ef86fe7948f76088794  gts9uwifi-sensors-resume
+dd420cbf546a5f4310158579bf4db4849cd1b44ce3ffec2d6866730ad41535047fc667afaef5ae97a2d1ad9c35a5b45b1e17cdeb9e0d4e2199aec21c9302af1b  gts9uwifi-sensors-resume-system-sleep
+05d20cf1a73b6e0e0b2c3dfcf1c772efba3c5faf3db1c382ec824073ca0a16f5aa11f9cc096c0cda1cbcff5fe3bf81125b8fbfdd230c461ef4fea3018f02c8f7  gts9uwifi-wait-sensor-proxy
+526fbf2c1b55865d4be7b4afa160a36d45618297d614fd178f4ca622d7cd49b4bafc60a06fccc3b9971babc9f08801487090f8a3623de396fe8c87d781ec4bbd  gts9uwifi-wait-sensor-proxy.service
 5de3d212b958ff947e87119a3b82a9d21a64b7d23b3e47cd088d706fb084fb4352834d8469e719211ba71592223a5ea3587a572df5f9e7d7a8777a5a9f3c1c51  gts9uwifi-xfce-hidpi
 40fdf12f831c37512e633c728ceab528335448964dfe67c75c1e2bf221ff4ea8889728728beef0239a0b74e496f3310103874d9826ad9e7c922dcfd2d9ceb572  gts9uwifi-xfce-hidpi.desktop
 b714a0eaf237ec81b3a75f11d49b65e19110884342c2465d3a5b7fdd01c4f38856e04ba47945f1ab3c1d00a243df7607ed37851d30faeeacf4660dac70265af8  kernel-cmdline.conf
+075981146deabbf9af8a76d902ae691ef1433052f158facb6bba6ba1099d0ee196068bf8217bbc364b4f583d301b6dabff036699189516bc8a84d4171d536f08  10-gts9uwifi-hexagonfs.conf
+6ff4a03a2e6147b77fbd0613a3be90fb0b9e49da69b591cee126f5c181251d9a2b5727828afa21f82e21ea3d4809154d148bf2d5bc4e6a24ee1fa3fd7e8e4f5d  10-gts9uwifi-lid.conf
 f6e4d2350c78e06a5094db5c1dd40c22d53496e4128ca66017c4959c89fdbec0434aaf5ac3f50d5b47166d3e486435bf69b97d9311608c224372bf1513086a79  slick-greeter.conf
 "

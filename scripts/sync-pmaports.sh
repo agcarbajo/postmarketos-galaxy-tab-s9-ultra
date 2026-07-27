@@ -11,13 +11,24 @@ test -d "$project/pmaports/device/testing"
 for package in \
 	device-samsung-gts9uwifi \
 	firmware-samsung-gts9uwifi \
+	hexagonrpcd \
 	linux-samsung-gts9uwifi-mainline; do
 	mkdir -p "$target/device/testing/$package"
 	cp -a "$project/pmaports/device/testing/$package/." \
 		"$target/device/testing/$package/"
 done
 
+mkdir -p "$target/extra-repos/systemd/mutter"
+cp -a "$project/pmaports/extra-repos/systemd/mutter/." \
+	"$target/extra-repos/systemd/mutter/"
+mkdir -p "$target/extra-repos/systemd/iio-sensor-proxy"
+cp -a "$project/pmaports/extra-repos/systemd/iio-sensor-proxy/." \
+	"$target/extra-repos/systemd/iio-sensor-proxy/"
+
 git -C "$target" status --short -- \
 	device/testing/device-samsung-gts9uwifi \
 	device/testing/firmware-samsung-gts9uwifi \
-	device/testing/linux-samsung-gts9uwifi-mainline
+	device/testing/hexagonrpcd \
+	device/testing/linux-samsung-gts9uwifi-mainline \
+	extra-repos/systemd/iio-sensor-proxy \
+	extra-repos/systemd/mutter

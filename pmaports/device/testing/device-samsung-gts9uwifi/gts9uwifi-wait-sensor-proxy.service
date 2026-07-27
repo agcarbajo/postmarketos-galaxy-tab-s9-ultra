@@ -1,0 +1,14 @@
+[Unit]
+Description=Wait for Qualcomm SSC before starting the desktop sensor proxy
+Requires=hexagonrpcd-adsp-sensorspd.service
+After=gts9uwifi-install-sensor-packages.service
+After=hexagonrpcd-adsp-sensorspd.service
+Before=display-manager.service
+ConditionPathExists=/usr/bin/ssccli
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/gts9uwifi-wait-sensor-proxy
+
+[Install]
+WantedBy=multi-user.target

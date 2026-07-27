@@ -17,8 +17,12 @@ Samsung's cold-boot hand-off leaves the panel unreachable, so the first DCS
 read returns `00 00 00`. The device package now runs one automatic
 platform-level suspend/resume before starting the display manager; the DDIC
 then reads `80 00 04` and GNOME starts without requiring power-button presses.
-What is left is mostly accessories and the sensor stack: S Pen, cameras,
-sensors, the keyboard cover, external displays and fast charging.
+The Qualcomm SSC sensor protection domain is now running as well:
+accelerometer, gyroscope, magnetometer and compass are live, GNOME rotates the
+desktop automatically, and the book-cover Hall switch reports `SW_LID`.
+What is left is mostly accessories and the unfinished parts of the sensor
+stack: ambient light, S Pen, cameras, the keyboard cover, external displays
+and fast charging.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -51,20 +55,31 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
 | **Charging status** | ✅ | Charging/discharging detected; UPower exposes both battery and line power |
-| **Suspend** | 🟡 | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press |
+| **Suspend** | 🟡 | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. The SSC bridge and SensorProxy are restarted after resume |
 | **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
 | **Fast charging (45 W)** | ❌ | Capped at ~9 W. Needs the SM5714 USB-PD block (I²C `0x33`) and PD PPS negotiation |
 | **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`); what is missing is Type-C orientation and DP altmode — the same USB-PD gap as fast charging |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
-| **Cover / lid detection** | ❌ | Two hall switches on plain GPIOs (`hall_ic`): one for the cover, one for the S Pen. Should be reachable through `gpio-keys`, like volume-up already is |
+| **Cover / lid detection** | 🟡 | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID` and closing the cover suspends the tablet. The 30-second logind holdoff is disabled; reliable automatic wake on every opening still needs a final physical check |
 | **Keyboard cover (pogo pins)** | ❌ | Bridged by an STM32 microcontroller (`stm,stm32_pogo`) at I²C `0x2a`, exposing keypad and touchpad. No mainline driver |
 | **Fingerprint reader** | ❌ | EgisTec EL7xx (`etspi,el7xx`) over SPI. No mainline driver |
 | **Camera flash / torch** | ❌ | `qcom,pm8350c-flash-led` on the PMIC. Mainline has `leds-qcom-flash` (`qcom,spmi-flash-led`) for this family |
 | **Cameras** | ❌ | Not started |
-| **Sensors** | ❌ | Run on the ADSP sensor protection domain (`adsps.jsn`) and are exposed over QMI; the whole SSC stack is missing |
-| **Automatic brightness** | ❌ | Depends on the sensor stack above: no discrete ambient-light node exists, the ALS is behind the sensor PD |
+| **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix |
+| **Proximity sensor** | — | The stock X910 SSC configuration does not instantiate a proximity child; `ssccli` reports it unavailable |
+| **Automatic brightness** | ❌ | The SSC discovers one Sensortek STK31610 ALS, but it emits no measurements. On-change, continuous/polling requests and the native Samsung registry were tested without a light sample |
 | **Speaker protection** | ❌ | Cirrus DSP firmware is not loaded, which is why hardware volume is kept conservative |
 | **Modem** | — | Not applicable: Wi-Fi-only model |
+
+## Current focus
+
+The next sensor milestone is to make the STK31610 ambient-light device produce
+real lux samples. Its SSC service, SUID and attributes are present, but the DSP
+accepts both on-change and continuous requests without sending a measurement.
+The generated registry already matches Samsung's read-only `persist` registry,
+so the remaining fault is below GNOME and iio-sensor-proxy. The cover-open
+wake path also needs repeated physical validation at both the greeter and the
+logged-in desktop.
 
 ## Documentation
 
