@@ -1777,6 +1777,17 @@ lado del workspace.
   Esos buses pertenecen a SSC; Linux puede inicializar el SE3 y ver otro
   periférico, pero los STK31610 no responden y el firmware deja de ser el dueño
   coherente del bus.
+- No interpretar una apertura rápida fallida como pérdida del evento Hall:
+  se midió `Lid opened` incluso 0,13 s después de `PM: suspend entry` y el
+  kernel completó el resume. El fallo observado estaba en la cola gráfica.
+- No volver a usar timers anónimos `systemd-run --on-active` para despertar el
+  display. Se retrasaron entre 7 y 16 segundos y una petición antigua llegó a
+  solaparse con el siguiente suspend. Desde v1.08 hay una sola unidad
+  cancelable: `pre` la detiene y `post` la reinicia.
+- El ANA38407 stock declara `samsung,delayed-display-on`. Mostrarlo desde
+  `prepare` permite que el panel vea el flujo DSC antes de que el bridge esté
+  habilitado y puede dejar ruido de colores en GRAM. v1.08 mantiene `0x29` en
+  `.enable`, `0x28` en `.disable` y reserva sleep-in/rails para `.unprepare`.
 
 ## Referencias locales
 

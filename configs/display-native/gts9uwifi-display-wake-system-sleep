@@ -1,14 +1,17 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 #
-# system-sleep hooks run while user.slice is frozen.  Queue the compositor call
-# in the system manager so it executes only after this post-resume hook returns
-# and the graphical session has thawed.
+# system-sleep hooks run while user.slice is frozen.  A real system service is
+# used instead of an anonymous timer: a new suspend can then cancel a wake left
+# over from the preceding cycle.  This matters when the cover is opened and
+# closed again within a few seconds.
 
-if [ "$1" = post ]; then
-	unit="gts9uwifi-display-wake-$(date +%s)"
-	systemd-run --quiet --collect \
-		--unit="$unit" \
-		--on-active=1s \
-		/usr/libexec/gts9uwifi-display-wake || true
-fi
+case "$1" in
+	pre)
+		systemctl stop gts9uwifi-display-wake.service 2>/dev/null || true
+		;;
+	post)
+		systemctl restart --no-block gts9uwifi-display-wake.service ||
+			true
+		;;
+esac

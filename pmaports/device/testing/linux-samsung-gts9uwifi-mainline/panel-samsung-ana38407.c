@@ -239,22 +239,51 @@ static int ana38407_on(struct ana38407 *ctx)
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xc3, 0x02);
 	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
 
-	mipi_dsi_msleep(&dsi_ctx, 50);
-
-	/* display on */
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x29);
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
+	/*
+	 * The stock panel declares samsung,delayed-display-on: complete the
+	 * initialisation here, but keep the OLED dark until the bridge's enable
+	 * phase, when the DPU/DSI command-mode stream is ready.  Sending 0x29
+	 * from prepare exposed unsynchronised DSC data after resume: the shell's
+	 * freshly damaged top bar was valid while the rest of the panel GRAM
+	 * contained coloured noise.
+	 */
+	mipi_dsi_msleep(&dsi_ctx, 100);
 
 	return dsi_ctx.accum_err;
 }
 
-static int ana38407_off(struct ana38407 *ctx)
+static int ana38407_enable(struct drm_panel *panel)
+{
+	struct ana38407 *ctx = to_ana38407(panel);
+	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
+
+	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0x5a, 0x5a);
+	mipi_dsi_dcs_set_display_on_multi(&dsi_ctx);
+	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf0, 0xa5, 0xa5);
+	mipi_dsi_msleep(&dsi_ctx, 20);
+
+	return dsi_ctx.accum_err;
+}
+
+static int ana38407_disable(struct drm_panel *panel)
+{
+	struct ana38407 *ctx = to_ana38407(panel);
+	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
+
+	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+	mipi_dsi_dcs_set_display_off_multi(&dsi_ctx);
+	mipi_dsi_msleep(&dsi_ctx, 20);
+
+	return dsi_ctx.accum_err;
+}
+
+static int ana38407_sleep_in(struct ana38407 *ctx)
 {
 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
 
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x28);	/* display off */
-	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x10);	/* sleep in */
+	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+	mipi_dsi_dcs_enter_sleep_mode_multi(&dsi_ctx);
 	mipi_dsi_msleep(&dsi_ctx, 120);
 
 	return dsi_ctx.accum_err;
@@ -292,7 +321,7 @@ static int ana38407_unprepare(struct drm_panel *panel)
 {
 	struct ana38407 *ctx = to_ana38407(panel);
 
-	ana38407_off(ctx);
+	ana38407_sleep_in(ctx);
 	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
 	regulator_bulk_disable(ARRAY_SIZE(ana38407_supplies), ctx->supplies);
 
@@ -352,6 +381,8 @@ static int ana38407_get_modes(struct drm_panel *panel,
 
 static const struct drm_panel_funcs ana38407_panel_funcs = {
 	.prepare = ana38407_prepare,
+	.enable = ana38407_enable,
+	.disable = ana38407_disable,
 	.unprepare = ana38407_unprepare,
 	.get_modes = ana38407_get_modes,
 };

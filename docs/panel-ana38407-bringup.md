@@ -177,3 +177,38 @@ GPL-2.0 (kernel) — el .dat/mdnie son datos de calibración propietarios.
 - El hook actualizado se validó tras un reinicio completo con Xorg r10 reverse
   PRIME: recuperó por sí solo XFCE a 2960×1848@120. Después `glmark2` acelerado
   por FD740 se vio físicamente en el panel, sin error DSI/DRM.
+
+## Encendido diferido y carreras de resume (sesión 105, v1.08)
+
+La usuaria confirmó que `SW_LID` suspende de forma consistente tanto en GDM
+como dentro de GNOME, pero una apertura antes de 2–3 segundos podía no devolver
+imagen. Algunas reanudaciones por funda o power mostraban ruido de colores en
+casi todo el panel, mientras la barra superior de GNOME seguía siendo legible.
+Ese patrón es coherente con GRAM/flujo DSC desincronizado, no con un fallo de
+composición, alimentación o identificación del DDIC.
+
+El journal mostró dos problemas independientes:
+
+- la apertura rápida sí llegaba al kernel y provocaba `PM: suspend exit`; no se
+  estaba perdiendo el evento Hall;
+- los `systemd-run --on-active=1s` anónimos podían ejecutarse 7–16 segundos
+  después y sobrevivir hasta el siguiente cierre. En ciclos rápidos llegaron a
+  coincidir dos peticiones `PowerSaveMode=0` y dos nuevos `prepare`.
+
+v1.08 reemplaza esos timers por un único servicio cancelable: el hook `pre`
+detiene cualquier wake pendiente y el `post` reinicia la unidad, cuya espera
+de un segundo también queda cancelada por el siguiente suspend.
+
+Además, el DT stock declara `samsung,delayed-display-on`. El driver mainline
+enviaba hasta v1.07 `0x29 DISPLAY_ON` dentro de `prepare`, antes de la fase
+`enable` del bridge. v1.08 separa el ciclo según la API DRM y otros paneles
+Samsung DSC mainline:
+
+1. `prepare`: rails, reset, sleep-out, configuración rev-D, TE y PPS DSC;
+2. `enable`: `DISPLAY_ON` cuando el pipeline DPU/DSI ya está listo;
+3. `disable`: `DISPLAY_OFF`;
+4. `unprepare`: sleep-in, reset y apagado de rails.
+
+La primera prueba automática de v1.08 dejó una sola lectura `80 00 04`, un
+solo servicio de wake y ningún timer residual. Falta la validación física de
+los artefactos y de aperturas rápidas antes de considerarlo resuelto.

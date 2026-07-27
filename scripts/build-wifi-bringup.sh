@@ -179,6 +179,8 @@ install -m 0755 "$project/configs/sensors/gts9uwifi-sensors-resume-system-sleep"
 	"$overlay/usr/lib/systemd/system-sleep/gts9uwifi-sensors-resume"
 install -m 0755 "$project/configs/display-native/gts9uwifi-display-wake" \
 	"$overlay/usr/libexec/gts9uwifi-display-wake"
+install -m 0644 "$project/configs/display-native/gts9uwifi-display-wake.service" \
+	"$overlay/usr/lib/systemd/system/gts9uwifi-display-wake.service"
 install -m 0755 "$project/configs/display-native/gts9uwifi-display-wake-system-sleep" \
 	"$overlay/usr/lib/systemd/system-sleep/gts9uwifi-display-wake"
 install -m 0644 "$project/configs/sensors/99_gts9uwifi-sensors.gschema.override" \

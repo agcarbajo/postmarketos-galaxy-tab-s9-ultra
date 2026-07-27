@@ -5002,3 +5002,84 @@ Validación en vivo de v1.07, kernel `#81`:
 La rotación correcta ya estaba confirmada físicamente por la usuaria con esta
 misma regla. Falta solo repetir el despertar al abrir la funda después de esta
 consolidación para subir su estado de 🟡 a ✅.
+
+## Sesión 105 — v1.08: carrera de wake y `DISPLAY_ON` diferido
+
+### Evidencia física recibida
+
+La usuaria confirmó que cerrar la funda suspende de forma consistente tanto
+en el greeter como dentro de la sesión. La apertura todavía fallaba a veces,
+especialmente al abrir antes de 2–3 segundos. También aparecían ocasionalmente
+artefactos al despertar con la funda o con power.
+
+La fotografía `20260727_140432.jpg` muestra ruido cromático en casi toda la
+superficie, pero la barra superior de GNOME permanece legible. Por tanto la
+GPU/composición no estaba muerta: el patrón apunta al contenido de GRAM o al
+flujo DSC de comando desincronizado durante el encendido del DDIC.
+
+### El Hall no pierde la apertura; el wake gráfico sí tenía una carrera
+
+El journal de v1.07 contiene aperturas rápidas correctamente recibidas. Un
+caso extremo:
+
+```text
+[10601.344] PM: suspend entry (deep)
+[10601.470] Lid opened.
+[10603.572] PM: suspend exit
+[10604.008] ana38407 panel id: 80 00 04
+```
+
+El problema medido estaba después: el hook creaba un timer anónimo con
+`systemd-run --on-active=1s`, pero algunas ejecuciones llegaron 7–16 segundos
+después. En secuencias rápidas quedaron wakes del ciclo anterior activos
+durante el cierre siguiente; se observan dos helpers simultáneos y prepares
+adicionales.
+
+El hook reproducible usa ahora `gts9uwifi-display-wake.service`. En `pre`
+detiene la unidad (incluido su `ExecStartPre=/bin/sleep 1`) y en `post` la
+reinicia sin bloquear. Así solo la reanudación más reciente puede solicitar
+`PowerSaveMode=0`.
+
+### Respeto de `samsung,delayed-display-on`
+
+El FDT stock del X910 declara explícitamente `samsung,delayed-display-on`.
+Hasta v1.07 el driver enviaba `0x29 DISPLAY_ON` al final de `.prepare`, antes
+de que la cadena DRM llegase a `.enable`. Se separó el ciclo igual que en
+paneles Samsung DSC mainline:
+
+- `.prepare`: alimentación, reset, secuencia rev-D, TE y PPS;
+- `.enable`: `DISPLAY_ON`, después de que DPU/DSI estén preparados;
+- `.disable`: `DISPLAY_OFF`;
+- `.unprepare`: sleep-in y apagado.
+
+La pausa stock previa a display-on también pasa de 50 a 100 ms. El objeto del
+panel compila aislado y la compilación completa desde worktree limpio terminó
+con `BUILD_EXIT=0`.
+
+### Build e instalación
+
+Paquetes: kernel r54 y dispositivo r36. La validación real terminó con
+`V108_VALIDATION_OK`, incluido CRC del ZIP:
+
+- `Image.gz`: `706363f2eef47e767b38f4b1961c85a834434269216133c33011257b95941e95`;
+- DTB sin cambios:
+  `e89bf016e1040416cc84f910ad83cdd7110a720b54d0d39c0531685da7d3dec8`;
+- `boot.img`: `8b12cde37b0610d09017d41a866e69f2fa4b3e0e5c24a307826166dc2199279a`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.08-panel-resume-lid-sm-x910-twrp.zip`:
+  `19d79d44f693d5991acac15f07e513823f4418598c5ba650679dcf0c772b4c32`.
+
+Con la autorización permanente se escribió únicamente `boot` (`sda21`), tras
+backup y verificación, y se aplicó el overlay a la microSD. `vendor_boot` no
+se tocó porque el DTB no cambió. En vivo:
+
+- kernel `7.2.0-rc3-dirty #82`;
+- hash leído de `sda21` idéntico al origen;
+- recuperación fría automática `00 00 00 → 80 00 04`;
+- GDM, NetworkManager y SSH activos;
+- un ciclo `pm_test=platform` posterior produjo una sola lectura
+  `80 00 04`, un único servicio wake y ningún timer residual.
+
+El SSH se interrumpió durante la prueba porque WLAN se suspende y reapareció
+automáticamente después; no fue una caída del sistema. Los artefactos y las
+aperturas rápidas quedan pendientes de confirmación física antes de marcar
+display/funda como ✅.

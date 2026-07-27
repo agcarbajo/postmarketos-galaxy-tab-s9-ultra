@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=35
+pkgrel=36
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -43,6 +43,7 @@ source="
 	gts9uwifi-display-handoff.service
 	gts9uwifi-display-hold.conf
 	gts9uwifi-display-wake
+	gts9uwifi-display-wake.service
 	gts9uwifi-display-wake-system-sleep
 	gts9uwifi-bluetooth-address
 	gts9uwifi-bluetooth-address.service
@@ -89,6 +90,8 @@ package() {
 		"$pkgdir/usr/lib/modprobe.d/gts9uwifi-display-hold.conf"
 	install -Dm755 "$srcdir/gts9uwifi-display-wake" \
 		"$pkgdir/usr/libexec/gts9uwifi-display-wake"
+	install -Dm644 "$srcdir/gts9uwifi-display-wake.service" \
+		"$pkgdir/usr/lib/systemd/system/gts9uwifi-display-wake.service"
 	install -Dm755 "$srcdir/gts9uwifi-display-wake-system-sleep" \
 		"$pkgdir/usr/lib/systemd/system-sleep/gts9uwifi-display-wake"
 	install -Dm755 "$srcdir/gts9uwifi-bluetooth-address" \
@@ -179,7 +182,8 @@ c2fffc648f136ba6f7611f918f0914ce90377cbfbb49d5b9be456091ce43a793d5b59c5828a7f1e9
 b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e2d219667f79172827dbda2f7440d1dc6367cb8a9a3597987  gts9uwifi-display-handoff.service
 aa676db16e619570d79bccc7984ee83dfb933ad9de68280bfc0b6486fdb3eb4853dc4a12dcc4ebcafdc9120d15ca2f78e4091cbc99a44c5bcc67a054614a91dd  gts9uwifi-display-hold.conf
 fffb01e597a94e7537379173d3825e7384225a91803b77aee6e07e1f227a51a99f38b16273bb20546c8f277d1f776e8c9282795ca76546df5a1f9208aa5a3df6  gts9uwifi-display-wake
-6e6d400e0a52deac5f73de6e4cca31c6f25052fca4f774785e53567b585938ed440ec3c8ddcce4c0cc1e6e17457baadd296135780621cda1461f251ef9817245  gts9uwifi-display-wake-system-sleep
+fedf9e2ae77a470324b92c3c18bf7bec0c0edc8810dc860ca23c117387a6a7e6968967fa8e40bbcf1556bab0ec623d1b7189658fd4e053656fadd5c86086944a  gts9uwifi-display-wake.service
+b5eef035befc90a863279c4790d0766f0807f063c5ddc88a986f7574a03b916d79fec847a193fcc1f020f2055ef5456a36668df7dc566f605819e47b44f3da90  gts9uwifi-display-wake-system-sleep
 844bed4ad2faa859e70a3a274bd66dc482554249fb4d1e29e2e4aee7baa9aa2de3b24ccf981c3d5ba243747a64fb73e5978040e6013e79b5c02b632c59eb5de2  gts9uwifi-bluetooth-address
 2ab9657ccc015f613d6b16d2d52c03e92f3279f8dd49a50312e92a5e0fc5ce6701c3a5d1573c7c6852cc6c56c28a43a8317e1e5a431fa7d91089ffafd7a33ff2  gts9uwifi-bluetooth-address.service
 944bb183f79b788e508b57b427deea8c7c5c56b5838fbc7325f6c65cbae393668f831c32b8ad86060afbd4a0c6bae53ebf8269da904d9796c27ea129736ca006  gts9uwifi-compile-sensor-schemas.service
