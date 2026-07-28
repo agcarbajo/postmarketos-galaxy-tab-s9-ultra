@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=37
+pkgrel=38
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -24,7 +24,7 @@ depends="
 	linux-samsung-gts9uwifi-mainline
 	lsblk
 	mkbootimg
-	mutter=999950.2-r4
+	mutter=999950.2-r5
 	partx
 	pd-mapper
 	postmarketos-base

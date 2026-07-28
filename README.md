@@ -30,7 +30,10 @@ also serializes SSC recovery so rapid lid cycles cannot leave competing
 FastRPC restarts behind.
 What is left is mostly accessories and the unfinished parts of the sensor
 stack: ambient light, S Pen, cameras, the keyboard cover, external displays
-and fast charging.
+and fast charging. v1.14 also fixes two desktop-polish issues: a persisted
+rotation lock no longer needs to be toggled after login, and the SM5714 driver
+now restores the charging path that Samsung's shutdown sequence can leave
+disabled.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -62,7 +65,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Microphones** | ✅ | DMICs through the VA macro, capture measured at −30.6 dBFS |
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
-| **Charging status** | ✅ | Charging/discharging detected; UPower exposes both battery and line power |
+| **Charging status** | ✅ | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and stock 1.8 A / 2.1 A limits when needed, and notifies UPower within about one second. Recovery from an injected disabled state was measured on hardware |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
 | **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
 | **Fast charging (45 W)** | ❌ | Capped at ~9 W. Needs the SM5714 USB-PD block (I²C `0x33`) and PD PPS negotiation |
@@ -73,7 +76,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Fingerprint reader** | ❌ | EgisTec EL7xx (`etspi,el7xx`) over SPI. No mainline driver |
 | **Camera flash / torch** | ❌ | `qcom,pm8350c-flash-led` on the PMIC. Mainline has `leds-qcom-flash` (`qcom,spmi-flash-led`) for this family |
 | **Cameras** | ❌ | Not started |
-| **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix |
+| **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix; Mutter r5 keeps a persisted orientation lock independent from late panel/sensor inhibitors |
 | **Proximity sensor** | — | The stock X910 SSC configuration does not instantiate a proximity child; `ssccli` reports it unavailable |
 | **Automatic brightness** | ❌ | SSC discovers both Sensortek STK31610 instances, but neither emits a lux sample. Standard streaming modes, native registry data, Samsung's physical/DHR/register tests, sensor rails, QUP hub clocks and Samsung panel-state notifications have all been measured without success. The remaining boundary is inside the DSP's STK bus transaction, for which mainline currently exposes no diagnostic trace |
 | **Speaker protection** | ❌ | Cirrus DSP firmware is not loaded, which is why hardware volume is kept conservative |
@@ -81,32 +84,27 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 ## Current focus
 
-The next sensor milestone is still to make either STK31610 ambient-light
-instance produce real lux samples. The diagnostic boundary is now narrow: SSC
-publishes both SUIDs and their correct Samsung attributes, accepts the client
-request and returns the exact factory DHR/register events, but their 64-byte
-data blocks are all zero and no measurement event follows. Pinctrl ownership,
-1.8/3.0 V rails and registry contents have been verified. Giving the buses to
-the AP, forcing QUP clocks, changing DRI/polling modes and sending Samsung's
-panel-state/brightness preamble did not change that result and were rolled
-back.
+The next milestone is to finish the USB path. The tablet can expose a secondary
+USB channel, but Windows still frequently sees the X910 as
+`VID_0000&PID_0002` with a descriptor-request failure / Code 43 instead of a
+stable composite gadget. The next investigation will start from the already
+documented NXP PTN3222 eUSB2 repeater, DWC3 peripheral mode and EP0 descriptor
+evidence; it must not reintroduce general module autoloading or repeat the
+discarded reset/polarity experiments.
 
-The Galaxy A52/A72 note about disabling automatic brightness is about panel
-artefacts while changing brightness; its port contains no working SSC ALS
-implementation to transplant. Xiaomi Pad 6 does use the same Qualcomm
-HexagonFS/libssc architecture, but its TCS3701/TSL2522/BU27030 registry values
-are sensor-specific and conflict with the native STK31610 registry from this
-X910. The stock X910 kernel configuration also proves that Samsung's optional
-DDI COPR and panel-brightness notification features were not compiled, so
-adding either to the mainline panel driver would be unjustified.
+Automatic brightness is deliberately parked rather than declared solved. SSC
+publishes both native STK31610 SUIDs and accepts Samsung's factory requests,
+but returns zero-filled DHR/register blocks and never emits lux. Rail, pinctrl,
+registry, polling/DRI, QUP-clock and panel-notification experiments were all
+measured and rolled back. Neither the Galaxy A52/A72 note nor Xiaomi Pad 6
+contains a compatible STK31610 implementation to transplant.
 
-v1.09 closes a separate suspend regression found while validating the cover:
-the old sensor hook created one anonymous delayed unit per resume. Rapid lid
-cycles could therefore leave several helpers racing to restart sensorspd,
-causing `SSC QMI Service not found` and removing GNOME's rotation control.
-Sensor recovery now uses one cancellable service, starts after cold-boot panel
-recovery, and has been validated across a clean boot, a platform resume and
-physical autorotation in every orientation.
+v1.14 closes the current polish work. Mutter keeps the persisted user rotation
+lock separate from the anonymous panel-management inhibitor count, so a late
+accelerometer can no longer consume the lock while the UI still says it is
+enabled. The SM5714 driver now reads cable type from its MUIC, restores Q4 and
+the known stock current limits, polls once per second for prompt UPower updates
+and cancels I2C polling across suspend.
 
 ## Documentation
 

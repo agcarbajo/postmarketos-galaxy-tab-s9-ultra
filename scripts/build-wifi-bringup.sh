@@ -15,10 +15,10 @@ xorg_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/xorg-server-99992
 iio_sensor_proxy_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-3.9-r3.apk"
 iio_sensor_proxy_systemd_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-systemd-3.9-r3.apk"
 iio_sensor_proxy_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-udev-3.9-r3.apk"
-mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r4.apk"
-mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r4.apk"
-mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r4.apk"
-mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r4.apk"
+mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r5.apk"
+mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r5.apk"
+mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r5.apk"
+mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r5.apk"
 
 if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	# Packaging-only recovery after a late overlay/bundle failure.  Never use

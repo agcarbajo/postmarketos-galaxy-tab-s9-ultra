@@ -18,6 +18,6 @@ done
 "$base/pmbootstrap/pmbootstrap.py" --as-root \
 	build --arch aarch64 --force mutter
 
-apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r4.apk"
+apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r5.apk"
 test -f "$apk"
 printf '%s\n' "$apk"

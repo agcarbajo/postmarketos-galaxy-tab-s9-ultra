@@ -5328,3 +5328,106 @@ El bloqueo queda dentro de la transacción I²C ejecutada por el driver STK del
 DSP. Para avanzar hace falta una traza DSP válida o documentación/registros del
 STK31610; seguir alterando recursos AP sin una observación nueva solo repetiría
 experimentos ya medidos.
+
+## Sesión 109 — v1.14: bloqueo de giro persistente y carga SM5714 real
+
+### Bloqueo de giro: carrera entre el ajuste y el panel
+
+El síntoma era muy concreto: si GNOME arrancaba con
+`orientation-lock=true`, el control visual aparecía bloqueado pero había que
+activarlo y desactivarlo una vez para que el bloqueo se aplicase realmente.
+No era una pérdida del valor en dconf: se verificó `true` antes y después de
+reiniciar.
+
+La causa estaba en `MetaOrientationManager`. Mutter sumaba al mismo
+`inhibited_count` tanto el bloqueo persistente del usuario como los inhibidores
+temporales del panel. En esta tablet el acelerómetro aparece tarde. La
+transición posterior a panel administrado ejecutaba un `uninhibit` y consumía
+el conteo que representaba el bloqueo del usuario; la UI seguía mostrando el
+valor guardado, pero el compositor ya no estaba inhibido hasta el doble toggle.
+
+Mutter r5 conserva `orientation_locked` como condición independiente en
+`sync_accelerometer_claimed()` y usa el contador solo para inhibidores
+anónimos. Los cambios del ajuste llaman directamente a la sincronización. El
+parche se aplicó sobre Mutter 50.2 y el paquete ARM64 compiló correctamente.
+
+La primera instalación viva de r5 pareció correcta, pero tras reiniciar volvió
+a aparecer r4. La causa no era el parche: el rootfs conservaba
+`gts9uwifi-install-sensor-packages` r4 y reinstalaba silenciosamente sus cuatro
+APK durante cada arranque. Se actualizaron de forma reproducible el instalador
+y el contenido de `/usr/share/gts9uwifi/packages`; después de otro reinicio se
+verificó `mutter-999950.2-r5` y el valor persistente seguía en `true`. El ZIP
+v1.14 contiene ya esa misma combinación. Queda la confirmación física
+interactiva tras entrar en la sesión, porque la tablet estaba en el greeter al
+cerrar esta iteración.
+
+### La carga no era solo una indicación tardía
+
+Con el cable conectado, el estado inicial medido era:
+
+- `sm5714-usb/online=1`, pero batería `Not charging`;
+- corriente de batería alrededor de −0,6 A;
+- MUIC `DEVICE_TYPE1=0x04`, es decir DCP;
+- cargador `CNTL1=0x64`: `ENQ4FET` apagado;
+- `VBUSCNTL=0x10` (500 mA) y `CHGCNTL2=0x07` (mínimo);
+- watchdog deshabilitado, por lo que no era el culpable.
+
+Samsung deja ese estado seguro al apagar y el driver mainline anterior era
+deliberadamente de solo lectura, así que nunca cerraba el camino de carga. Una
+prueba viva reprodujo la rampa del downstream: bajar primero el límite de
+entrada, programar la corriente rápida, esperar, activar Q4 y restaurar el
+límite DCP. La corriente pasó de descarga a +1,07…1,25 A de forma sostenida.
+
+El driver r57 añade:
+
+- cliente MUIC en 0x25 y clasificación `SDP`/`CDP`/`DCP`;
+- límites conservadores por tipo de fuente;
+- para DCP, los valores stock medidos `VBUSCNTL=0x44` (1800 mA) y
+  `CHGCNTL2=0x86` (2100 mA);
+- restauración de Q4 tanto en probe como desde el sondeo;
+- sondeo cada segundo y `power_supply_changed()` para USB y batería;
+- cancelación/reinicio del delayed work en suspend/resume, eliminando la
+  transferencia I²C que antes aparecía con el bus suspendido.
+
+Hubo tres errores de desarrollo que se detectaron antes de cerrar la sesión:
+
+1. la primera compilación usó la API antigua de `power_supply_desc` con un
+   array y `num_usb_types`; Linux 7.2 usa una máscara `u32 usb_types`. Se
+   corrigió y el objeto compiló;
+2. el primer script de escritura UFS canalizaba la contraseña y el script
+   remoto por el mismo stdin. Terminó con código cero sin escribir. La auditoría
+   posterior detectó el hash antiguo y kernel `#82`, así que no se dio por
+   válido. El script corregido copia primero un fichero remoto, verifica
+   backup/origen/destino y solo después reinicia;
+3. la revisión final encontró que el work se reprogramaba accidentalmente con
+   retardo cero en vez de `SM5714_POLL_INTERVAL_MS`. Funcionalmente cargaba,
+   pero habría martilleado I²C y consumido CPU. Se corrigió a 1000 ms, se
+   relinkó y volvió a validar antes del commit.
+
+La primera conversión de 2093 mA produjo `0x85` por truncamiento. Aunque ya
+cargaba, se ajustó a 2100 mA para reproducir exactamente el `0x86` que programa
+el bootloader stock. La prueba final inyectó de nuevo el estado averiado
+(`CNTL1=0x64`, `0x10`, `0x07`): en dos segundos el propio driver restauró
+`CNTL1=0x6c`, `0x44`, `0x86`, publicó `Charging` y registró
+`enabled charging for USB type 2 (1800 mA input, 2100 mA fast)`. UPower pasó a
+`state: charging` con una actualización nueva.
+
+### Build y estado vivo
+
+Paquetes: kernel r57, device r38 y Mutter r5. La build completa partió de un
+worktree limpio, terminó con `BUILD_EXIT=0` y pasó la validación dirigida y CRC.
+Después del ajuste exacto de corriente se relinkó el kernel y se reempaquetó el
+mismo número de versión:
+
+- `Image.gz`: `8f1908922c84d7edb19f1d2d61889982ce9466e26c26307ceb11c60dc88a72f5`;
+- `boot.img`: `f268b293fee52c786cdb4e6d9adabc91fc4919738c84ba09b78ea74d0e766eb6`;
+- `vendor_boot.img`: `6f40db1800e272880187730573f48d91c92d99fdbaca8489618888e176278bfd`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.14-rotation-charge-sm-x910-twrp.zip`:
+  `fe9857f0831f41dd2d7324cacd2ab162aad853512e1400abc28fdf8741ec7f3d`.
+
+Con la autorización permanente se escribió únicamente `boot` (`sda21`), con
+backup y hash de lectura idéntico. La tablet corre kernel `#89`, reconoce el
+MUIC, clasifica el cable como DCP, muestra `Charging` y conserva Mutter r5 tras
+reiniciar. No se tocó `vendor_boot` porque el DTB no cambió. El brillo
+automático queda aparcado; el siguiente reto es terminar USB y eliminar la
+enumeración intermitente `VID_0000&PID_0002` / Code 43.

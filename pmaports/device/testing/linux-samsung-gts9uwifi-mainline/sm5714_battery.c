@@ -11,14 +11,16 @@
  * The chip answers on three I2C addresses on the same bus: 0x49 for the
  * charger block (8-bit registers), 0x71 for the fuel gauge (16-bit registers,
  * with the interesting values behind an SRAM read window) and 0x25 for the
- * MUIC.  This driver binds the charger address and creates a dummy client for
- * the fuel gauge.
+ * MUIC.  This driver binds the charger address and creates dummy clients for
+ * the fuel gauge and MUIC.
  *
- * It is deliberately read-only: charging is already set up by the boot chain
- * and by the charger's own autonomous logic, and mis-programming a charger is
- * not a mistake worth risking on real hardware.  Register layout and the
- * fixed-point conversions come from Samsung's downstream sm5714_fuelgauge.c
- * and sm5714_charger.c.
+ * Samsung's shutdown path deliberately leaves ENQ4FET off and resets the
+ * current limits.  Restore only the cable-dependent limits documented by its
+ * downstream driver: SDP remains at 500 mA, CDP uses 1.5 A and DCP uses the
+ * 1.8 A / 2.1 A values measured on this tablet.  No voltage, PD/PPS or
+ * thermal setting is changed.  Register layout and the fixed-point
+ * conversions come from Samsung's downstream sm5714_fuelgauge.c,
+ * sm5714_charger.c and sm5714-muic.c.
  */
 
 #include <linux/bitops.h>
@@ -27,9 +29,11 @@
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/pm.h>
 #include <linux/power_supply.h>
 #include <linux/workqueue.h>
 
+#define SM5714_MUIC_I2C_ADDR		0x25
 #define SM5714_FG_I2C_ADDR		0x71
 
 /* Charger block (8-bit registers, at the address this driver binds). */
@@ -38,7 +42,23 @@
 #define SM5714_CHG_REG_STATUS2		0x0e
 #define  SM5714_CHG_STATUS2_CHG_ON	BIT(3)
 #define  SM5714_CHG_STATUS2_TOPOFF	BIT(5)
+#define SM5714_CHG_REG_CNTL1		0x13
+#define  SM5714_CHG_CNTL1_ENQ4FET	BIT(3)
+#define SM5714_CHG_REG_VBUSCNTL		0x15
+#define SM5714_CHG_REG_CHGCNTL2		0x18
 #define SM5714_CHG_REG_DEVICEID		0x50
+
+/* MUIC block (8-bit registers, at SM5714_MUIC_I2C_ADDR). */
+#define SM5714_MUIC_REG_DEVICE_ID	0x00
+#define SM5714_MUIC_REG_DEVICE_TYPE1	0x07
+#define  SM5714_MUIC_TYPE_DCD_OUT_SDP	BIT(0)
+#define  SM5714_MUIC_TYPE_SDP		BIT(1)
+#define  SM5714_MUIC_TYPE_DCP		BIT(2)
+#define  SM5714_MUIC_TYPE_CDP		BIT(3)
+#define  SM5714_MUIC_TYPE_U200		BIT(4)
+#define  SM5714_MUIC_TYPE_AFC		BIT(5)
+#define  SM5714_MUIC_TYPE_QC20		BIT(6)
+#define  SM5714_MUIC_TYPE_LO_TA		BIT(7)
 
 /* Fuel gauge block (16-bit registers, at SM5714_FG_I2C_ADDR). */
 #define SM5714_FG_REG_DEVICE_ID		0x00
@@ -54,12 +74,14 @@
 #define SM5714_FG_SRAM_VBAT_AVG		0x08
 #define SM5714_FG_SRAM_CURRENT_AVG	0x09
 
-#define SM5714_POLL_INTERVAL_MS		10000
+#define SM5714_POLL_INTERVAL_MS		1000
+#define SM5714_CAPACITY_POLL_DIVIDER	10
 
 struct sm5714_battery {
 	struct device *dev;
 	struct i2c_client *chg;
 	struct i2c_client *fg;
+	struct i2c_client *muic;
 	/* Serialises the two-step SRAM read window on the fuel gauge. */
 	struct mutex sram_lock;
 	struct power_supply *psy_bat;
@@ -69,7 +91,133 @@ struct sm5714_battery {
 	int last_status;
 	int last_capacity;
 	bool last_online;
+	int last_usb_type;
+	unsigned int poll_count;
 };
+
+static int sm5714_get_online(struct sm5714_battery *sm);
+
+static int sm5714_chg_update_bits(struct sm5714_battery *sm, u8 reg,
+				  u8 mask, u8 val)
+{
+	int old;
+	u8 new;
+
+	old = i2c_smbus_read_byte_data(sm->chg, reg);
+	if (old < 0)
+		return old;
+
+	new = (old & ~mask) | (val & mask);
+	if (new == old)
+		return 0;
+
+	return i2c_smbus_write_byte_data(sm->chg, reg, new);
+}
+
+static int sm5714_get_usb_type(struct sm5714_battery *sm)
+{
+	int online = sm5714_get_online(sm);
+	int type;
+
+	if (online <= 0)
+		return online < 0 ? online : POWER_SUPPLY_USB_TYPE_UNKNOWN;
+
+	type = i2c_smbus_read_byte_data(sm->muic,
+					SM5714_MUIC_REG_DEVICE_TYPE1);
+	if (type < 0)
+		return type;
+
+	if (type & SM5714_MUIC_TYPE_CDP)
+		return POWER_SUPPLY_USB_TYPE_CDP;
+	if (type & (SM5714_MUIC_TYPE_SDP |
+		    SM5714_MUIC_TYPE_DCD_OUT_SDP))
+		return POWER_SUPPLY_USB_TYPE_SDP;
+	if (type & (SM5714_MUIC_TYPE_DCP |
+		    SM5714_MUIC_TYPE_U200 |
+		    SM5714_MUIC_TYPE_AFC |
+		    SM5714_MUIC_TYPE_QC20 |
+		    SM5714_MUIC_TYPE_LO_TA))
+		return POWER_SUPPLY_USB_TYPE_DCP;
+
+	return POWER_SUPPLY_USB_TYPE_UNKNOWN;
+}
+
+static u8 sm5714_input_current_reg(unsigned int ma)
+{
+	return clamp_val((ma - 100) / 25, 0, 0x7f);
+}
+
+static u8 sm5714_fast_current_reg(unsigned int ma)
+{
+	unsigned int ua = ma * 1000;
+
+	if (ua <= 109375)
+		return 0x07;
+
+	return clamp_val(7 + (ua - 109375) / 15625, 0x07, 0xe0);
+}
+
+static int sm5714_configure_charging(struct sm5714_battery *sm)
+{
+	unsigned int input_ma, fast_ma;
+	int usb_type;
+	int ret;
+
+	usb_type = sm5714_get_usb_type(sm);
+	if (usb_type < 0)
+		return usb_type;
+
+	switch (usb_type) {
+	case POWER_SUPPLY_USB_TYPE_DCP:
+		input_ma = 1800;
+		/* 2100 mA maps to the stock bootloader's CHGCNTL2=0x86. */
+		fast_ma = 2100;
+		break;
+	case POWER_SUPPLY_USB_TYPE_CDP:
+		input_ma = 1500;
+		fast_ma = 1500;
+		break;
+	case POWER_SUPPLY_USB_TYPE_SDP:
+	default:
+		/* Unknown sources must never be treated as high-current ports. */
+		input_ma = 500;
+		fast_ma = 500;
+		break;
+	}
+
+	/*
+	 * Match chg_set_enq4fet(): lower the input limit before closing Q4,
+	 * then restore the limit advertised by the MUIC classification.
+	 */
+	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_VBUSCNTL,
+					sm5714_input_current_reg(500));
+	if (ret)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_CHGCNTL2,
+					sm5714_fast_current_reg(fast_ma));
+	if (ret)
+		return ret;
+
+	if (input_ma > 500)
+		usleep_range(DIV_ROUND_UP(input_ma - 500, 250) * 1000,
+			     DIV_ROUND_UP(input_ma - 500, 250) * 1000 + 1000);
+
+	ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+				     SM5714_CHG_CNTL1_ENQ4FET,
+				     SM5714_CHG_CNTL1_ENQ4FET);
+	if (ret)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_VBUSCNTL,
+					sm5714_input_current_reg(input_ma));
+	if (!ret)
+		dev_info(sm->dev,
+			 "enabled charging for USB type %d (%u mA input, %u mA fast)\n",
+			 usb_type, input_ma, fast_ma);
+
+	return ret;
+}
 
 /*
  * The fuel gauge exposes its measurements through an SRAM read window: point
@@ -289,6 +437,12 @@ static int sm5714_usb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ONLINE:
 		ret = sm5714_get_online(sm);
 		break;
+	case POWER_SUPPLY_PROP_USB_TYPE:
+		ret = sm5714_get_usb_type(sm);
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
+		return 0;
 	default:
 		return -EINVAL;
 	}
@@ -318,6 +472,7 @@ static enum power_supply_property sm5714_bat_props[] = {
 
 static enum power_supply_property sm5714_usb_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_USB_TYPE,
 };
 
 static const struct power_supply_desc sm5714_bat_desc = {
@@ -334,11 +489,17 @@ static const struct power_supply_desc sm5714_usb_desc = {
 	.properties	= sm5714_usb_props,
 	.num_properties	= ARRAY_SIZE(sm5714_usb_props),
 	.get_property	= sm5714_usb_get_property,
+	.usb_types	= BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) |
+			  BIT(POWER_SUPPLY_USB_TYPE_SDP) |
+			  BIT(POWER_SUPPLY_USB_TYPE_CDP) |
+			  BIT(POWER_SUPPLY_USB_TYPE_DCP),
 };
 
 /*
- * The charger's interrupt line is not wired up here, so poll the few values a
- * desktop actually reacts to and only wake userspace when one of them moves.
+ * The charger interrupt is shared with the MUIC and fuel-gauge blocks.  Until
+ * that MFD interrupt domain is implemented, poll VBUS and charging state once
+ * per second so desktop indication follows a cable event promptly.  Capacity
+ * still changes slowly and is sampled only every ten passes.
  */
 static void sm5714_poll_work(struct work_struct *work)
 {
@@ -347,10 +508,25 @@ static void sm5714_poll_work(struct work_struct *work)
 						 poll_work);
 	int status = sm5714_get_status(sm);
 	int online = sm5714_get_online(sm);
-	int capacity;
+	int usb_type = sm5714_get_usb_type(sm);
+	int capacity = sm->last_capacity;
+	int cntl1;
 
-	if (sm5714_get_capacity(sm, &capacity))
+	if (sm->poll_count++ % SM5714_CAPACITY_POLL_DIVIDER == 0 &&
+	    sm5714_get_capacity(sm, &capacity))
 		capacity = sm->last_capacity;
+
+	/*
+	 * Samsung's shutdown leaves Q4 open.  Recover it at boot or after a
+	 * cable insertion, but do not override thermal/full-charge decisions
+	 * when the charging path is already enabled.
+	 */
+	if (online > 0 && status == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+		cntl1 = i2c_smbus_read_byte_data(sm->chg, SM5714_CHG_REG_CNTL1);
+		if (cntl1 >= 0 && !(cntl1 & SM5714_CHG_CNTL1_ENQ4FET) &&
+		    !sm5714_configure_charging(sm))
+			status = sm5714_get_status(sm);
+	}
 
 	if (status >= 0 &&
 	    (status != sm->last_status || capacity != sm->last_capacity)) {
@@ -361,6 +537,20 @@ static void sm5714_poll_work(struct work_struct *work)
 
 	if (online >= 0 && !!online != sm->last_online) {
 		sm->last_online = online;
+		if (!online)
+			sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+					       SM5714_CHG_CNTL1_ENQ4FET, 0);
+		power_supply_changed(sm->psy_usb);
+		/*
+		 * UPower keeps a separate battery object.  Wake it as well when
+		 * external power changes, even if STATUS2 has not yet moved from
+		 * NOT_CHARGING to CHARGING.
+		 */
+		power_supply_changed(sm->psy_bat);
+	}
+
+	if (usb_type >= 0 && usb_type != sm->last_usb_type) {
+		sm->last_usb_type = usb_type;
 		power_supply_changed(sm->psy_usb);
 	}
 
@@ -374,6 +564,24 @@ static void sm5714_cancel_poll(void *data)
 
 	cancel_delayed_work_sync(&sm->poll_work);
 }
+
+static int sm5714_suspend(struct device *dev)
+{
+	struct sm5714_battery *sm = dev_get_drvdata(dev);
+
+	cancel_delayed_work_sync(&sm->poll_work);
+	return 0;
+}
+
+static int sm5714_resume(struct device *dev)
+{
+	struct sm5714_battery *sm = dev_get_drvdata(dev);
+
+	schedule_delayed_work(&sm->poll_work, 0);
+	return 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(sm5714_pm_ops, sm5714_suspend, sm5714_resume);
 
 static int sm5714_probe(struct i2c_client *client)
 {
@@ -418,6 +626,19 @@ static int sm5714_probe(struct i2c_client *client)
 				     SM5714_FG_I2C_ADDR);
 	dev_info(dev, "SM5714 fuel gauge device id 0x%04x\n", ret);
 
+	sm->muic = devm_i2c_new_dummy_device(dev, client->adapter,
+					     SM5714_MUIC_I2C_ADDR);
+	if (IS_ERR(sm->muic))
+		return dev_err_probe(dev, PTR_ERR(sm->muic),
+				     "cannot claim MUIC at 0x%02x\n",
+				     SM5714_MUIC_I2C_ADDR);
+
+	ret = i2c_smbus_read_byte_data(sm->muic, SM5714_MUIC_REG_DEVICE_ID);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "no MUIC at 0x%02x\n",
+				     SM5714_MUIC_I2C_ADDR);
+	dev_info(dev, "SM5714 MUIC device id 0x%02x\n", ret);
+
 	psy_cfg.drv_data = sm;
 	psy_cfg.fwnode = dev_fwnode(dev);
 
@@ -441,6 +662,16 @@ static int sm5714_probe(struct i2c_client *client)
 	if (sm5714_get_capacity(sm, &sm->last_capacity))
 		sm->last_capacity = -1;
 	sm->last_online = sm5714_get_online(sm) > 0;
+	sm->last_usb_type = sm5714_get_usb_type(sm);
+
+	if (sm->last_online &&
+	    sm->last_status == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+		ret = sm5714_configure_charging(sm);
+		if (ret)
+			dev_warn(dev, "cannot restore charging state: %d\n", ret);
+		else
+			sm->last_status = sm5714_get_status(sm);
+	}
 
 	INIT_DELAYED_WORK(&sm->poll_work, sm5714_poll_work);
 	ret = devm_add_action_or_reset(dev, sm5714_cancel_poll, sm);
@@ -468,6 +699,7 @@ static struct i2c_driver sm5714_driver = {
 	.driver = {
 		.name = "sm5714-battery",
 		.of_match_table = sm5714_of_match,
+		.pm = pm_sleep_ptr(&sm5714_pm_ops),
 	},
 	.probe = sm5714_probe,
 	.id_table = sm5714_i2c_id,

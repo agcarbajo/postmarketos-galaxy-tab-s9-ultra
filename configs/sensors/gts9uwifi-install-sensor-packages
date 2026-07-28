@@ -10,10 +10,10 @@ apk add --allow-untrusted \
 	"$packages/iio-sensor-proxy-3.9-r3.apk" \
 	"$packages/iio-sensor-proxy-systemd-3.9-r3.apk" \
 	"$packages/iio-sensor-proxy-udev-3.9-r3.apk" \
-	"$packages/mutter-999950.2-r4.apk" \
-	"$packages/mutter-lang-999950.2-r4.apk" \
-	"$packages/mutter-schemas-999950.2-r4.apk" \
-	"$packages/mutter-udev-999950.2-r4.apk"
+	"$packages/mutter-999950.2-r5.apk" \
+	"$packages/mutter-lang-999950.2-r5.apk" \
+	"$packages/mutter-schemas-999950.2-r5.apk" \
+	"$packages/mutter-udev-999950.2-r5.apk"
 
 sensor_root=/usr/share/qcom/sm8550/Samsung/gts9uwifi/sensors
 chgrp -R fastrpc "$sensor_root"

@@ -23,10 +23,30 @@ immediately after applying one orientation.  Keep that compatibility path when
 the panel is still unmanaged, but do not synthesize its inhibitor after the
 panel has already become managed.
 
+Finally, the persisted user orientation lock must not share the anonymous
+inhibit counter.  If the session starts with orientation-lock=true before the
+late accelerometer makes the panel managed, the panel transition's unmatched
+uninhibit consumes the user's lock.  The UI still says locked, but Mutter
+tracks the sensor until the setting is toggled twice.  The manager already
+stores orientation_locked separately, so make it an independent claim
+condition and let setting changes resynchronise the claim directly.
+
 diff --git a/src/backends/meta-orientation-manager.c b/src/backends/meta-orientation-manager.c
 index 0991fdb..f933fe4 100644
 --- a/src/backends/meta-orientation-manager.c
 +++ b/src/backends/meta-orientation-manager.c
+@@ -291 +291,2 @@ sync_accelerometer_claimed (MetaOrientationManager *self)
+-  should_claim = self->iio_proxy && self->inhibited_count == 0;
++  should_claim = (self->iio_proxy && self->inhibited_count == 0 &&
++                  !self->orientation_locked);
+@@ -341,6 +342,2 @@ orientation_lock_changed (MetaOrientationManager *self)
+   self->orientation_locked = orientation_locked;
+-
+-  if (self->orientation_locked)
+-    meta_orientation_manager_inhibit_tracking (self);
+-  else
+-    meta_orientation_manager_uninhibit_tracking (self);
++  sync_accelerometer_claimed (self);
 @@ -361,6 +361,10 @@ iio_proxy_ready (GObject      *source,
        return;
      }

@@ -61,7 +61,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.73 validada en vivo: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; los nodos aparecen y sus bloqueos actuales son proveedores kernel identificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🟡 Kernel r42/v0.74 validado en vivo: QRTR-SMD, LPASS-LPI y GPIO shared proxy ya son built-in. Falta resolver PDR/q6prmcc y el reset/OTP de CS35L45; device r22, firmware r7 y Xorg r10 reproducibles |
+| Paquetes pmaports | ✅ v1.14: kernel r57, device r38, firmware r9, Mutter r5, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; el resto crítico permanece built-in |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v0.90 construida limpia** (worktree pristino, `BUILD_EXIT=0`, sin restos de instrumentación): `postmarketos-edge-xfce-mainline-v0.90-internal-audio-buttons-sm-x910-twrp.zip`, 48.411.346 bytes, SHA-256 `5fa93ad3f205cf26a28a20a6ec969f1f591c49c77549fb8d15a05d18a4bdc96f`; boot `1e450724…`, vendor_boot `5b14de5b…`. La tablet corre los incrementales v0.88, funcionalmente equivalentes |
+| Imagen/paquete de prueba | ✅ **v1.14 construida y validada**: `postmarketos-edge-gnome-mainline-v1.14-rotation-charge-sm-x910-twrp.zip`, SHA-256 `fe9857f0831f41dd2d7324cacd2ab162aad853512e1400abc28fdf8741ec7f3d`; boot `f268b293…`, vendor_boot `6f40db18…`. La tablet corre el kernel v1.14 y Mutter r5 persistente |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -81,16 +81,13 @@ demostrarlo en este dispositivo.
 
 ## Reto en curso
 
-**Actualización sesión 108:** el reto activo es el brillo automático. SSC
-descubre los dos STK31610 y acepta todas las peticiones, pero no entrega lux.
-Los factory events 709/712 llegan con sus 64 bytes de datos a cero. Registro
-nativo, DRI/polling, prueba física Samsung, estado/brillo del panel, raíles,
-pinctrl y clocks QUP ya están medidos; las variantes de recursos v1.10–v1.13
-se revirtieron. El límite no observado está dentro de la transferencia del
-driver STK en el DSP. No hay un driver IIO mainline compatible con STK31610 ni
-una implementación transferible en A52/A72 o Xiaomi Pad 6. El sistema vivo
-permanece en el stack estable `hexagonrpcd` r4 + `libssc` r0, con rotación,
-funda, display y red intactos.
+**Actualización sesión 109:** el brillo automático queda aparcado tras acotar
+el fallo al driver STK31610 dentro del DSP. El reto activo pasa a ser terminar
+USB: Windows todavía puede enumerar la X910 como `VID_0000&PID_0002` con fallo
+de descriptor / Code 43 en vez del gadget compuesto estable. Antes de abrir
+ese frente, v1.14 cierra dos fallos de pulido: Mutter r5 conserva correctamente
+un bloqueo de giro persistente y el driver SM5714 r57 restaura carga real y
+notifica UPower con baja latencia.
 
 ✅ Los hitos de arranque, microSD, Wi-Fi/SSH, táctil, escritorio, DRM/DSI,
 Turnip y ahora el controlador Bluetooth están cumplidos sobre Linux mainline
@@ -167,20 +164,36 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    estabilizar el audio se pedirá a la usuaria la prueba física.
    Después: sensores, USB Code 43 y cámaras. UFS permite iterar por SSH sobre
    `boot`/`vendor_boot`; TWRP/Download Mode quedan como recuperación.
-5. **Batería y carga (Tarea 5) — RESUELTO en v0.91 (sesión 92).** El camino
+5. **Batería y carga (Tarea 5) — RESUELTO en v1.14 (sesión 109).** El camino
    Qualcomm (`pmic_glink`/`qcom_battmgr`) está descartado: exige el dominio
    `msm/adsp/charger_pd` por PDR y el firmware Samsung no lo publica. El
    hardware real es un **Silicon Mitus SM5714** en `i2c_hub_8` (0x9a0000):
    cargador 0x49, fuel gauge 0x71, MUIC 0x25; el bloque USB-PD está aparte en
    `i2c_hub_9` 0x33. Mainline no tiene driver, así que se añade
-   `sm5714_battery.c` (solo lectura, no reprograma la carga) con el mapa de
-   registros del fuente downstream de Samsung. Validado en la tablet:
-   `capacity`, `status`, `voltage_now`, `current_now` y `temp` correctos, y
-   UPower expone batería y línea de alimentación.
+   `sm5714_battery.c` con el mapa de registros del fuente downstream de
+   Samsung. La primera versión era solo lectura, pero se demostró que el
+   shutdown de Samsung puede dejar `ENQ4FET=0`, límite de entrada 500 mA y
+   corriente rápida mínima: VBUS seguía presente mientras la batería se
+   descargaba. v1.14 clasifica SDP/CDP/DCP por el MUIC, reproduce la rampa
+   segura de Samsung y restaura para DCP `VBUSCNTL=0x44` (1800 mA) y
+   `CHGCNTL2=0x86` (2100 mA). El sondeo de un segundo actualiza UPower y se
+   cancela durante suspend para no transferir por I2C con el bus apagado.
+   Validado inyectando el estado averiado: en dos segundos volvió
+   `CNTL1=0x6c`, `Charging` y corriente positiva.
    **Los 45 W no son alcanzables aún:** los registros en vivo dan un límite de
    entrada de 1800 mA (~9 W a 5 V), el DT stock topa esta vía en 27 W
    (9 V × 3 A) y los 45 W reales exigen `sec-direct-charger` con negociación
    **PD PPS**, que necesita el bloque USB-PD del SM5714 — sin driver mainline.
+6. **Bloqueo de rotación persistente — RESUELTO en Mutter r5.** Mutter usaba
+   un solo `inhibited_count` tanto para el ajuste del usuario como para las
+   transiciones temporales de panel administrado. Si
+   `orientation-lock=true` se cargaba antes de que apareciese el acelerómetro,
+   el `uninhibit` tardío del panel consumía el bloqueo; la UI seguía bloqueada
+   pero había que activar y desactivar de nuevo el control. El booleano
+   `orientation_locked` ya existía: r5 lo convierte en condición independiente
+   de `sync_accelerometer_claimed()` y deja el contador solo para inhibidores
+   anónimos. El instalador persistente y los cuatro APK del overlay también
+   deben ser r5; de lo contrario el servicio de arranque vuelve a instalar r4.
 
 Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
 
