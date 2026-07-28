@@ -761,28 +761,6 @@
 	status = "okay";
 };
 
-/*
- * Samsung leaves the AP devices for sensor-hub SE3/SE4 registered even
- * though SSC performs the actual STK31610 transfers.  Register the two GENI
- * engines so their protocol/resource setup matches stock, but do not let the
- * AP devices claim or change the pins: remoteproc_adsp remains the sole
- * pinctrl consumer and Linux has no child devices on either adapter.
- *
- * This deliberately differs from the discarded bring-up experiment which
- * gave both buses to the AP and actively scanned them.
- */
-&i2c_hub_3 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
-	status = "okay";
-};
-
-&i2c_hub_4 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
-	status = "okay";
-};
-
 &i2c_hub_6 {
 	/*
 	 * 400 kHz, not the 1 MHz the downstream stack uses.  Under mainline the

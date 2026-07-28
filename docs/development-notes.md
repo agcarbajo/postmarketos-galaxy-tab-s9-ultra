@@ -81,6 +81,17 @@ demostrarlo en este dispositivo.
 
 ## Reto en curso
 
+**Actualización sesión 108:** el reto activo es el brillo automático. SSC
+descubre los dos STK31610 y acepta todas las peticiones, pero no entrega lux.
+Los factory events 709/712 llegan con sus 64 bytes de datos a cero. Registro
+nativo, DRI/polling, prueba física Samsung, estado/brillo del panel, raíles,
+pinctrl y clocks QUP ya están medidos; las variantes de recursos v1.10–v1.13
+se revirtieron. El límite no observado está dentro de la transferencia del
+driver STK en el DSP. No hay un driver IIO mainline compatible con STK31610 ni
+una implementación transferible en A52/A72 o Xiaomi Pad 6. El sistema vivo
+permanece en el stack estable `hexagonrpcd` r4 + `libssc` r0, con rotación,
+funda, display y red intactos.
+
 ✅ Los hitos de arranque, microSD, Wi-Fi/SSH, táctil, escritorio, DRM/DSI,
 Turnip y ahora el controlador Bluetooth están cumplidos sobre Linux mainline
 7.2-rc3. La tablet está arrancada con v0.72; el login es visible a
@@ -1816,6 +1827,23 @@ lado del workspace.
   `prepare` permite que el panel vea el flujo DSC antes de que el bridge esté
   habilitado y puede dejar ruido de colores en GRAM. v1.08 mantiene `0x29` en
   `.enable`, `0x28` en `.disable` y reserva sleep-in/rails para `.unprepare`.
+- No mantener votos fijos de los clocks QUP del hub de sensores. Se probaron
+  SE3/SE4 y después AHB/core/SE3/SE4 sin obtener lux ni cambiar los 64 bytes a
+  cero de DHR; el pinctrl ya acredita que SSC posee ambas líneas.
+- No usar el logger FARF de `hexagonrpcd` como si fuese una traza disponible:
+  la variante síncrona bloquea el daemon y la asíncrona necesita
+  `libadspmsgd_adsp_skel.so`, ausente del firmware X910. Se conserva r4.
+- No añadir al panel mainline avisos COPR o de brillo para intentar despertar
+  el ALS. La configuración extraída del `boot.img` oficial X910 5.15.153 no
+  compiló esas opciones y enviarlas por el mismo cliente SSC tampoco generó
+  muestras.
+- No copiar la configuración ALS de Xiaomi Pad 6. Comparte transporte
+  HexagonFS/libssc, no sensor: TCS3701/TSL2522/BU27030 usan parámetros que
+  contradicen el registro nativo del STK31610. La nota A52/A72 sobre brillo
+  automático describe artefactos de panel y no aporta un ALS SSC funcional.
+- No instanciar STK31610 como `sensortek,stk3310`. El driver IIO mainline no
+  declara STK31610/STK3A6 ni existe documentación pública fiable de su mapa de
+  registros; además el bus pertenece al DSP.
 
 ## Referencias locales
 

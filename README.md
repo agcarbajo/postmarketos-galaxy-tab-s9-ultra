@@ -75,22 +75,30 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Cameras** | ❌ | Not started |
 | **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix |
 | **Proximity sensor** | — | The stock X910 SSC configuration does not instantiate a proximity child; `ssccli` reports it unavailable |
-| **Automatic brightness** | ❌ | The SSC discovers the main and secondary Sensortek STK31610 instances, but neither emits a measurement. On-change, continuous/polling, Samsung's physical communication test and the native registry were tested without a light sample. The next diagnostic is Samsung's exact factory DHR/register-dump protocol |
+| **Automatic brightness** | ❌ | SSC discovers both Sensortek STK31610 instances, but neither emits a lux sample. Standard streaming modes, native registry data, Samsung's physical/DHR/register tests, sensor rails, QUP hub clocks and Samsung panel-state notifications have all been measured without success. The remaining boundary is inside the DSP's STK bus transaction, for which mainline currently exposes no diagnostic trace |
 | **Speaker protection** | ❌ | Cirrus DSP firmware is not loaded, which is why hardware volume is kept conservative |
 | **Modem** | — | Not applicable: Wi-Fi-only model |
 
 ## Current focus
 
-The next sensor milestone is to make the STK31610 ambient-light device produce
-real lux samples. Its SSC service, SUID and attributes are present, but the DSP
-accepts both on-change and continuous requests without sending a measurement.
-The native and generated Samsung registry data were already compared and are
-equivalent for this sensor, so copying private calibration data from `persist`
-is not a valid next step. The stock Android 16 factory sources identify the
-next non-destructive probes precisely: `GET_DHR_INFO` is factory type 12 (SSC
-message 612) and `GET_DUMP_REGISTER` is type 9 (message 609). A temporary,
-non-production libssc diagnostic package has been built to capture those raw
-replies before changing any more kernel resources.
+The next sensor milestone is still to make either STK31610 ambient-light
+instance produce real lux samples. The diagnostic boundary is now narrow: SSC
+publishes both SUIDs and their correct Samsung attributes, accepts the client
+request and returns the exact factory DHR/register events, but their 64-byte
+data blocks are all zero and no measurement event follows. Pinctrl ownership,
+1.8/3.0 V rails and registry contents have been verified. Giving the buses to
+the AP, forcing QUP clocks, changing DRI/polling modes and sending Samsung's
+panel-state/brightness preamble did not change that result and were rolled
+back.
+
+The Galaxy A52/A72 note about disabling automatic brightness is about panel
+artefacts while changing brightness; its port contains no working SSC ALS
+implementation to transplant. Xiaomi Pad 6 does use the same Qualcomm
+HexagonFS/libssc architecture, but its TCS3701/TSL2522/BU27030 registry values
+are sensor-specific and conflict with the native STK31610 registry from this
+X910. The stock X910 kernel configuration also proves that Samsung's optional
+DDI COPR and panel-brightness notification features were not compiled, so
+adding either to the mainline panel driver would be unjustified.
 
 v1.09 closes a separate suspend regression found while validating the cover:
 the old sensor hook created one anonymous delayed unit per resume. Rapid lid

@@ -5238,3 +5238,93 @@ El header oficial Android 16 `adsp_ft_common.h` fija
 para emitir ambos mensajes sobre cada SUID y volcar cualquier respuesta en
 hexadecimal. No se incorpora al paquete del dispositivo: es un instrumento
 temporal y restaura libssc r0 al terminar.
+
+## Sesión 108 — frontera final del ALS y descarte de referencias externas
+
+### Respuesta DHR real: transporte correcto, datos nulos
+
+El instrumento r7 recibió las respuestas previstas para los dos STK31610:
+evento 709 para `GET_DUMP_REGISTER` y 712 para `GET_DHR_INFO`. En ambos casos
+el protobuf contiene un bloque de 64 bytes completamente a cero, tanto para
+`ambient_light` como para `ambient_light_sub`. Esto corrige la observación
+preliminar de la sesión anterior: el DSP sí responde al protocolo de fábrica,
+pero no devuelve registros ni diagnóstico físico útil.
+
+Se probaron además tres variantes de recursos, siempre con rollback:
+
+- v1.11 mantuvo votados los clocks QUP SE3/SE4;
+- v1.12 registró los controladores AP de `i2c_hub_3`/`i2c_hub_4` sin que
+  reclamasen los pines;
+- v1.13 mantuvo votados los clocks AHB, core, SE3 y SE4.
+
+Ninguna produjo una indicación de lux ni datos DHR distintos de cero. En vivo
+se confirmó que PM8550B L1/L16 permanecen habilitados a 1,8/3,0 V y que el
+pinctrl es coherente con el FDT Samsung: GPIO4/5 pertenecen a
+`6800000.remoteproc` con función `i2chub0_se4`, y GPIO22/23 con
+`i2chub0_se3`. Por tanto no hay evidencia para que el AP tome esos buses ni
+para mantener votos de reloj artificiales. Los nodos de v1.12/v1.13 se
+retiraron de las fuentes; kernel r56 representa ese rollback reproducible.
+
+### Registro DSP descartado como instrumento
+
+Se construyó `hexagonrpcd` r5 para activar FARF. La primera implementación
+sincronizaba la apertura del logger y bloqueó el daemon; la variante asíncrona
+ya no bloqueó, pero el DSP rechazó la sesión porque no existe
+`libadspmsgd_adsp_skel.so` en el firmware distribuido. Se restauraron
+`hexagonrpcd` r4 y `libssc` r0. No se conserva el parche r5 ni se añade una
+biblioteca propietaria inexistente al producto.
+
+### Avisos de panel Samsung: prueba negativa y configuración oficial
+
+El fuente oficial `light_factory.c` permite que algunos productos Samsung
+envíen al ALS mensajes propietarios de estado del panel, LCD y brillo. Un
+cliente diagnóstico r9 envió en la misma conexión SSC, justo antes de la
+activación estándar, los payloads de `OPTION_TYPE_SET_PANEL_STATE`,
+`OPTION_TYPE_LCD_ONOFF` y la notificación de brillo. Los dos sensores siguieron
+sin producir configuración ni medida.
+
+Para no depender solo de ese resultado se extrajo la configuración embebida
+del `boot.img` oficial del X910 (Linux Samsung 5.15.153). No contiene
+`CONFIG_SUPPORT_DDI_COPR_FOR_LIGHT_SENSOR`,
+`CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR` ni
+`CONFIG_TABLET_MODEL_CONCEPT`: esas ramas condicionales no formaban parte del
+kernel distribuido para esta tablet. No se añadirá COPR al driver mainline del
+ANA38407.
+
+### A52/A72 y Xiaomi Pad 6 no son implementaciones transferibles
+
+Se revisaron las páginas, paquetes y cambios de pmaports indicados como
+referencia:
+
+- la recomendación de la familia Galaxy A52/A72 de desactivar el brillo
+  automático documenta artefactos del panel al cambiar el backlight; sus
+  cambios no incluyen `libssc`, SensorProxy ni un ALS Qualcomm funcional;
+- Xiaomi Pad 6 sí usa HexagonFS/libssc, que es la misma arquitectura ya
+  instalada en el X910, pero sus sensores son TCS3701/TSL2522/BU27030. Sus
+  valores `is_dri=0,res_idx=1` contradicen el registro Samsung nativo del
+  STK31610 (`is_dri=1,res_idx=0`) y la variante polling equivalente ya se
+  había probado sin resultado.
+
+No se copió configuración de ninguno de los dos dispositivos. La coincidencia
+de fabricante o de transporte no acredita compatibilidad eléctrica ni de
+firmware.
+
+### Ruta IIO directa y estado final
+
+El driver mainline `drivers/iio/light/stk3310.c` solo declara compatibilidad
+con STK3013/STK3310/STK3311/STK3335 y no conoce el identificador ni el mapa de
+registros STK31610/STK3A6. No existe un datasheet público fiable con el que
+añadirlo, y además los buses pertenecen al SSC. Instanciarlo como STK3310
+inventaría compatibilidad y arriesgaría la rotación ya estable, así que se
+descarta.
+
+Tras todas las pruebas se validó el estado vivo de producción:
+`hexagonrpcd-0.4.0-r4`, `libssc-0.4.4-r0`, SensorProxy activo,
+`HasAccelerometer=true`, `HasAmbientLight=true` y `LightLevel=0`. GNOME,
+NetworkManager y el display manager siguen activos; no se flasheó ninguna
+partición y no se generó build porque ningún cambio funcional sobrevivió.
+
+El bloqueo queda dentro de la transacción I²C ejecutada por el driver STK del
+DSP. Para avanzar hace falta una traza DSP válida o documentación/registros del
+STK31610; seguir alterando recursos AP sin una observación nueva solo repetiría
+experimentos ya medidos.
