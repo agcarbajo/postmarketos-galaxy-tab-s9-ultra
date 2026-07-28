@@ -75,7 +75,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Cameras** | ❌ | Not started |
 | **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix |
 | **Proximity sensor** | — | The stock X910 SSC configuration does not instantiate a proximity child; `ssccli` reports it unavailable |
-| **Automatic brightness** | ❌ | The SSC discovers one Sensortek STK31610 ALS, but it emits no measurements. On-change, continuous/polling requests and the native Samsung registry were tested without a light sample |
+| **Automatic brightness** | ❌ | The SSC discovers the main and secondary Sensortek STK31610 instances, but neither emits a measurement. On-change, continuous/polling, Samsung's physical communication test and the native registry were tested without a light sample. The next diagnostic is Samsung's exact factory DHR/register-dump protocol |
 | **Speaker protection** | ❌ | Cirrus DSP firmware is not loaded, which is why hardware volume is kept conservative |
 | **Modem** | — | Not applicable: Wi-Fi-only model |
 
@@ -86,7 +86,11 @@ real lux samples. Its SSC service, SUID and attributes are present, but the DSP
 accepts both on-change and continuous requests without sending a measurement.
 The native and generated Samsung registry data were already compared and are
 equivalent for this sensor, so copying private calibration data from `persist`
-is not a valid next step.
+is not a valid next step. The stock Android 16 factory sources identify the
+next non-destructive probes precisely: `GET_DHR_INFO` is factory type 12 (SSC
+message 612) and `GET_DUMP_REGISTER` is type 9 (message 609). A temporary,
+non-production libssc diagnostic package has been built to capture those raw
+replies before changing any more kernel resources.
 
 v1.09 closes a separate suspend regression found while validating the cover:
 the old sensor hook created one anonymous delayed unit per resume. Rapid lid

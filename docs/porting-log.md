@@ -5168,3 +5168,73 @@ limpias y para reproducir el estado completo.
 **Confirmación física final:** tras el reinicio volvió a aparecer el control
 de bloqueo de rotación y GNOME autorrota correctamente en todas las posiciones.
 La regresión queda cerrada.
+
+## Sesión 107 — diagnóstico físico del STK31610
+
+### Peticiones estándar y registro descartados
+
+SSC descubre dos instancias Sensortek `stk_stk31610`, `ambient_light` y
+`ambient_light_sub`, con buses de registro 3/4 y dirección `0x48`. Ninguna
+entrega una muestra con on-change, continuo a 5 Hz, polling forzado o DRI. Los
+ficheros STK31610 extraídos de `persist` en solo lectura y los generados desde
+la configuración Samsung son semánticamente iguales; las únicas ausencias de
+la caché generada son calibraciones de giroscopio ajenas al ALS.
+
+Se reprodujo además la prueba física exacta de Samsung, deducida del binario
+`factory.ssc`: mensaje SSC 10 y protobuf `08 04` (tipo de prueba 4). Tanto el
+sensor principal como el secundario aceptan la petición QMI, pero no publican
+el evento de resultado. El `adsp_dtb` autenticado solo contiene datos de
+batería/USB-PD de la plataforma Qualcomm y no describe la topología de
+sensores.
+
+### Experimento negativo v1.10 y rollback
+
+El downstream Samsung asocia `sensor_vdd`/`sensor_vddio` del ADSP a PM8550B L1
+y L16. Se preparó una prueba reproducible que quitaba `regulator-always-on` y
+dejaba que PAS votase esos raíles durante la vida del remoteproc. La primera
+compilación falló por un encabezado de diff manual mal contado y se corrigió
+antes de generar imágenes.
+
+La v1.10 válida produjo kernel `#83`, boot
+`1c3f7c1f…`, vendor_boot `d0530d6d…` y ZIP SHA-256 `a0db69dc…`. Tras escribir
+solo boot/vendor_boot con backup y verificación, los raíles aparecieron
+habilitados a 1,8/3,0 V con un consumidor, pero el servicio QMI SSC completo
+dejó de publicarse aunque el ADSP figuraba `running`. No había por tanto
+acelerómetro, rotación ni ALS. Se restauraron y verificaron inmediatamente las
+imágenes estables:
+
+- boot `8b12cde37b0610d09017d41a866e69f2fa4b3e0e5c24a307826166dc2199279a`;
+- vendor_boot `ce3bd326c2de4444177141b4e5a742f55840ae0f8904856469a9002f431de380`.
+
+El parche v1.10 se retiró por completo de las fuentes. Los raíles de sensores
+deben seguir `always-on`; no repetir esta hipótesis sin una medida nueva.
+
+### SMP2P no era el fallo del bus
+
+Con SensorProxy parado, el contador de handover permanece quieto. Al suscribir
+el ALS, `q6 ready` y `handover` suben juntos unas 5,2 veces por segundo y el
+kernel imprime `Handover signaled, but it already happened`. Ftrace muestra
+`smp2p_notify_in status=0x6 val=0x6`: los dos bits quedan afirmados y el IRQ
+anidado vuelve a entregarlos al circular tráfico. No hay watchdog, SSR ni
+pérdida del QMI. Es ruido del manejo mainline de una línea de nivel, no prueba
+de que el STK haya bloqueado el bus.
+
+Las cadenas de los segmentos ADSP confirman que el firmware contiene el driver
+STK completo y sus rutas de error: `STK3A6X HW absent`,
+`sns_scp_register_com_port fail`, `i2c_open failure`,
+`i2c_power_on failure` e `i2c_transfer failed`. El bloqueo actual es obtener
+cuál de ellas ocurre en el DSP, porque mainline no expone `/dev/diag` ni una
+traza remoteproc.
+
+### Protocolo de fábrica recuperado
+
+El header oficial Android 16 `adsp_ft_common.h` fija
+`GET_DUMP_REGISTER=9` y `GET_DHR_INFO=12`. La descompilación de
+`factory.ssc` demuestra que para el ALS se convierten en mensajes SSC 609 y
+612 con payload de test físico tipo 4; las respuestas esperadas son eventos
+709/712, y el DHR de luz lleva 16 enteros. Se construyó fuera del producto
+`libssc-0.4.4-r7` (SHA-256
+`4a92ebc2f3c73109e26f92a617ea40555c86ee56c9edec17b2d0361794542267`)
+para emitir ambos mensajes sobre cada SUID y volcar cualquier respuesta en
+hexadecimal. No se incorpora al paquete del dispositivo: es un instrumento
+temporal y restaura libssc r0 al terminar.

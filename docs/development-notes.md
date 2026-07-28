@@ -1528,11 +1528,29 @@ lado del workspace.
 - El ALS Sensortek STK31610 se descubre, pero no produce lux. Se descartaron
   on-change, polling/DRI, petición continua a 5 Hz y divergencias del registro
   nativo. El registro `persist` y el generado son semánticamente iguales para
-  todos los ficheros STK31610. No mantener un fork diagnóstico de libssc.
+  todos los ficheros STK31610. La petición física Samsung exacta (mensaje 10,
+  protobuf `08 04`) tampoco devuelve un evento, tanto en `ambient_light` como
+  en `ambient_light_sub`.
+- El ABI de fábrica ya no es una incógnita: el `adsp_ft_common.h` oficial
+  enumera `GET_DUMP_REGISTER=9` y `GET_DHR_INFO=12`; `factory.ssc` los traduce
+  respectivamente a mensajes SSC 609 y 612 con el test físico de tipo 4. El
+  evento esperado es 709/712 y el DHR de luz contiene 16 enteros. Usar esta
+  vía para obtener el fallo del STK antes de modificar más recursos.
+- Los mensajes repetidos `Handover signaled, but it already happened` no
+  prueban un reinicio del bus: con ftrace se observa que los bits SMP2P
+  `ready` y `handover` permanecen afirmados y el IRQ anidado vuelve a
+  entregarlos al circular tráfico; ADSP, sensorspd y QMI continúan vivos.
 - El X910 no expone un sensor proximity: el SSC devuelve UNKNOWN y sus JSON
   stock solo configuran el hijo `ambient_light`.
 
 ## Lo que no ha funcionado / no repetir
+
+- No gestionar `vreg_l1b_1p8`/`vreg_l16b_3p0` desde PAS como primer arreglo
+  del ALS. La prueba v1.10 reprodujo el ciclo downstream y dejó ambos raíles
+  votados a 1,8/3,0 V, pero el servicio QMI SSC dejó de publicarse aunque el
+  remoteproc figurase `running`. Se revirtió a los raíles `always-on` y al
+  boot/vendor_boot estables; rotación y sensores volvieron. Tampoco interpretar
+  el spam de handover SMP2P como evidencia de un crash.
 
 - No dejar `dev_info` por evento dentro de `dwc3_process_event_entry()`,
   `dwc3_ep0_interrupt()` ni el parser SETUP: la traza ya cumplió su propósito y
