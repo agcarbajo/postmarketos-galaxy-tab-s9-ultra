@@ -80,7 +80,9 @@ CONFIG_DEVTMPFS_MOUNT=y
 
 # Mainline Goodix Berlin I2C support for the GT9916 touchscreen.
 CONFIG_I2C=y
+CONFIG_I2C_CHARDEV=y
 CONFIG_I2C_QCOM_GENI=y
+CONFIG_QCOM_SPMI_ADC5_GEN3=y
 CONFIG_QCOM_GPI_DMA=y
 CONFIG_INPUT=y
 CONFIG_INPUT_EVDEV=y
@@ -197,6 +199,15 @@ CONFIG_POWER_RESET_QCOM_PON=y
 # Silicon Mitus SM5714 on the I2C master hub instead.  Built-in for the same
 # reason as everything else here: this port does not autoload modules.
 CONFIG_BATTERY_SM5714=y
+CONFIG_CHARGER_SM5440_DIRECT=y
+
+# USB Type-C and USB-PD policy/transport.  The SM5714 PDIC lives at 0x33 on
+# i2c_hub_9; Linux TCPM owns policy while the board driver only transports CC
+# and PD messages.  The SM5440 remains a separate power-supply driver and asks
+# TCPM for PPS; both are built-in because this port does not autoload modules.
+CONFIG_TYPEC=y
+CONFIG_TYPEC_TCPM=y
+CONFIG_TYPEC_SM5714=y
 
 # Rust is not needed for the bring-up kernel and would couple the build to a
 # newer toolchain than Ubuntu 24.04 currently ships.

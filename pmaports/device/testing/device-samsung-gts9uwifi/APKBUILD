@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=38
+pkgrel=40
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -14,6 +14,7 @@ depends="
 	e2fsprogs-extra
 	findmnt
 	firmware-samsung-gts9uwifi
+	gnome-control-center=999950.3-r2
 	hexagonrpcd=0.4.0-r4
 	hexagonrpcd-systemd=0.4.0-r4
 	hexagonrpcd-udev=0.4.0-r4
@@ -33,6 +34,7 @@ depends="
 makedepends="devicepkg-dev"
 source="
 	99_gts9uwifi-sensors.gschema.override
+	fastfetch-config.jsonc
 	20-gts9uwifi-fbdev.conf
 	20-gts9uwifi-address.conf
 	20-gts9uwifi-display.conf
@@ -77,6 +79,8 @@ package() {
 
 	install -Dm644 "$srcdir/99_gts9uwifi-sensors.gschema.override" \
 		"$pkgdir/usr/share/glib-2.0/schemas/99_gts9uwifi-sensors.gschema.override"
+	install -Dm644 "$srcdir/fastfetch-config.jsonc" \
+		"$pkgdir/etc/xdg/fastfetch/config.jsonc"
 	install -Dm644 "$srcdir/20-gts9uwifi-fbdev.conf" \
 		"$pkgdir/usr/share/X11/xorg.conf.d/20-gts9uwifi-fbdev.conf"
 	install -Dm755 "$srcdir/gts9uwifi-display-handoff" \
@@ -172,6 +176,7 @@ package() {
 
 sha512sums="
 9eaec2d07a3fef93f32f3a8b2c0d75f6bc33fb9939fe7c87afe2c9f3146839ac9c296dc8ab4213ffda09ff63cd9a26e3dce6f5f8293357a3a4ce8cabe404f764  99_gts9uwifi-sensors.gschema.override
+a713e25af09f16cb4aa440ec644bf4d3decfebb73e9d097597d3b6906768a577e2d2b43e7c96161b05f08d2b2b5d57c4e057bd6557e39ec3203329ba63c895f0  fastfetch-config.jsonc
 c2fffc648f136ba6f7611f918f0914ce90377cbfbb49d5b9be456091ce43a793d5b59c5828a7f1e9095692f0019eb0f30c67eb9b24cf010636b53f59f5da4e34  20-gts9uwifi-fbdev.conf
 6ec4f2e7c65cc6569f53ce2c3d60e3f71bd1e98567ce807cb6fc60a64e70dab9dc76aeb13050822db92cd3318e0e58dcd08e49fe94bbb6bc7663292e4b45b2f5  20-gts9uwifi-address.conf
 89d013c3b56a331527a1e21e3e90449a4506fc4247cff54eceb0120e35bb402f91866887b4eef94f932fdf296512f33c8cc26cd4620a9853efa23d58b3c00ac8  20-gts9uwifi-display.conf

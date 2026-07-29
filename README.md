@@ -29,8 +29,11 @@ desktop automatically, and the book-cover Hall switch reports `SW_LID`. v1.09
 also serializes SSC recovery so rapid lid cycles cannot leave competing
 FastRPC restarts behind.
 What is left is mostly accessories and the unfinished parts of the sensor
-stack: ambient light, S Pen, cameras, the keyboard cover, external displays
-and fast charging. v1.14 also fixes two desktop-polish issues: a persisted
+stack: ambient light, S Pen, cameras, the keyboard cover and external displays.
+v1.32 adds native USB-PD/PPS fast charging through the SM5714 and SM5440, with
+the real battery thermistor used for safety. It also exposes the commercial
+Snapdragon 8 Gen 2 and Adreno 740 names in Fastfetch and GNOME About. v1.14
+also fixes two desktop-polish issues: a persisted
 rotation lock no longer needs to be toggled after login, and the SM5714 driver
 now restores the charging path that Samsung's shutdown sequence can leave
 disabled.
@@ -66,14 +69,15 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
 | **Charging status** | ✅ | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and stock 1.8 A / 2.1 A limits when needed, and notifies UPower within about one second. Recovery from an injected disabled state was measured on hardware |
+| **Fast charging (45 W charger)** | ✅ | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 enters PPS, the pump remains stable with a 2 s keepalive, and real hardware measured about 2.8 A net into the battery at 78–82% state of charge before normal CV tapering. Pack temperature remained about 35 °C. Peak 45 W at low state of charge has not yet been quantified |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
 | **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
-| **Fast charging (45 W)** | ❌ | Capped at ~9 W. Needs the SM5714 USB-PD block (I²C `0x33`) and PD PPS negotiation |
-| **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`); what is missing is Type-C orientation and DP altmode — the same USB-PD gap as fast charging |
+| **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`) and v1.32 now supplies a real TCPM port; Type-C orientation switching and DP altmode integration are still missing |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
 | **Keyboard cover (pogo pins)** | ❌ | Bridged by an STM32 microcontroller (`stm,stm32_pogo`) at I²C `0x2a`, exposing keypad and touchpad. No mainline driver |
 | **Fingerprint reader** | ❌ | EgisTec EL7xx (`etspi,el7xx`) over SPI. No mainline driver |
+| **Vibration motor / haptics** | ❌ | Hardware exists but has not been identified or brought up yet |
 | **Camera flash / torch** | ❌ | `qcom,pm8350c-flash-led` on the PMIC. Mainline has `leds-qcom-flash` (`qcom,spmi-flash-led`) for this family |
 | **Cameras** | ❌ | Not started |
 | **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix; Mutter r5 keeps a persisted orientation lock independent from late panel/sensor inhibitors |
@@ -99,7 +103,12 @@ registry, polling/DRI, QUP-clock and panel-notification experiments were all
 measured and rolled back. Neither the Galaxy A52/A72 note nor Xiaomi Pad 6
 contains a compatible STK31610 implementation to transplant.
 
-v1.14 closes the current polish work. Mutter keeps the persisted user rotation
+Fast charging is now functional and reproducible in v1.32. The next USB work
+can build on a real TCPM/Type-C port instead of treating the connector as a
+fixed peripheral-only path; orientation switching, a stable gadget and DP
+altmode are still pending.
+
+v1.14 closes the earlier polish work. Mutter keeps the persisted user rotation
 lock separate from the anonymous panel-management inhibitor count, so a late
 accelerometer can no longer consume the lock while the UI still says it is
 enabled. The SM5714 driver now reads cable type from its MUIC, restores Q4 and

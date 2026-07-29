@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=57
+pkgrel=75
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -55,7 +55,9 @@ source="
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 	panel-samsung-ana38407.c
+	sm5440_direct.c
 	sm5714_battery.c
+	sm5714_usbpd.c
 "
 builddir="$srcdir/linux-$_kernelver"
 
@@ -87,11 +89,41 @@ config DRM_PANEL_SAMSUNG_ANA38407\
 config BATTERY_SM5714\
 \ttristate "Silicon Mitus SM5714 charger and fuel gauge"\
 \tdepends on I2C\
+\tdepends on IIO\
 ' drivers/power/supply/Kconfig
 	fi
 	grep -q 'sm5714_battery.o' drivers/power/supply/Makefile || \
 		echo 'obj-$(CONFIG_BATTERY_SM5714)	+= sm5714_battery.o' \
 			>> drivers/power/supply/Makefile
+
+	# SM5440 2:1 direct charger; USB-PD/PPS policy stays in Linux TCPM.
+	cp "$srcdir/sm5440_direct.c" drivers/power/supply/
+	if ! grep -q 'CHARGER_SM5440_DIRECT' drivers/power/supply/Kconfig; then
+		sed -i '/^endif # POWER_SUPPLY$/i \
+config CHARGER_SM5440_DIRECT\
+\ttristate "Silicon Mitus SM5440 direct charger for Samsung SM-X910"\
+\tdepends on I2C\
+\tdepends on BATTERY_SM5714\
+' drivers/power/supply/Kconfig
+	fi
+	grep -q 'sm5440_direct.o' drivers/power/supply/Makefile || \
+		echo 'obj-$(CONFIG_CHARGER_SM5440_DIRECT)	+= sm5440_direct.o' \
+			>> drivers/power/supply/Makefile
+
+	# SM5714 Type-C/PD transport; policy stays in the upstream TCPM core.
+	cp "$srcdir/sm5714_usbpd.c" drivers/usb/typec/tcpm/
+	if ! grep -q 'TYPEC_SM5714' drivers/usb/typec/tcpm/Kconfig; then
+		sed -i '/^endif # TYPEC_TCPM$/i \
+config TYPEC_SM5714\
+\ttristate "Silicon Mitus SM5714 USB Type-C and PD controller"\
+\tdepends on I2C\
+\tdepends on TYPEC_TCPM\
+\tdepends on BATTERY_SM5714\
+' drivers/usb/typec/tcpm/Kconfig
+	fi
+	grep -q 'sm5714_usbpd.o' drivers/usb/typec/tcpm/Makefile || \
+		echo 'obj-$(CONFIG_TYPEC_SM5714)	+= sm5714_usbpd.o' \
+			>> drivers/usb/typec/tcpm/Makefile
 
 	cp "$srcdir/config-mainline.aarch64" .config
 
@@ -137,8 +169,10 @@ d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beac
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
 2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
 2474760485db3cb72faa8b42106f1633a92ec2fc03a3d3309f7b936f7e53e93fd2c2a6227d245bbcca0795e03224b73916dba572ae81e27a01093af904ec45bf  ignore-console-null.patch
-e8e34219a8377db637fdbbce6407ab61e59d4bee75be1f43e741f5f0593b4718ecac183abc441a86c5206cff87a6ffe0e19b0dcf96a7a995ce2f1aefe13a0793  config-gts9uwifi.fragment
-96f1c41ebab23da81c35c00aaf536a01e4a34315774496568b3770db0e43a0f1487e6bf7d0bff73e6b83365163e93157c5775ffacd82697091a4e8270055e990  sm8550-samsung-gts9uwifi.dts
+d52b20e45330785b109bd93e1236a4ef98e42cd2f13049468318f9a4b82772ccfeb32e42bcb9f78745490e9144bedca5af50658e0bd28256735cd9666b988cce  config-gts9uwifi.fragment
+74be5785c98d0d6861425fedbe64106e813b1827d30a3295f50994429acc4647cc2383ed7b6f1a14a8a19040a9722f116148884b9bc2935059fc2912f38a74ad  sm8550-samsung-gts9uwifi.dts
 c31a52464807d7e66beea30bb247461626acc9cd0da1c9de969c8c73519e4d5bc0ac98f0842bda4ab9d427a7fa5c39c587baf2d5e85df63b18ec8fc273b4847e  panel-samsung-ana38407.c
-e7fc364c13023d6f946baab424f07384f3ba9a5e33aa3366958bd55fd9cbd8673b92942418b623d30baaf8fd2a2c26a531622f24320c38f3d408c2601f07f48e  sm5714_battery.c
+5ddb7fd4773eb556865baa45e3a2fbb93644638cc00bc16c0e6ca73aa55d5fa6e103efc75dc21d2265812c5513275dbaf165c870eba830d7d780bdcaa236cf68  sm5440_direct.c
+ce3e92e1dde6f11d8d0957e045030174b9db2baf4d42d2d0a40cbfb6c1ea65be3a9425a8c597e8d04ccd0e509edc37ebe1d0dfdb0c9648902c7b64f0f99ef081  sm5714_battery.c
+2471f12a706cd93e0cf0b3ae63bd886cec6db0cdf967b37df233d7fbee7020d7738b29d3016a368a30fd9571c557d0a5c84dad8753d28047d2e9eebc2a43b7fd  sm5714_usbpd.c
 "

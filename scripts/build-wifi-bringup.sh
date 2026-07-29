@@ -19,6 +19,8 @@ mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2
 mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r5.apk"
 mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r5.apk"
 mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r5.apk"
+gnome_control_center_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/gnome-control-center-999950.3-r2.apk"
+gnome_control_center_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/gnome-control-center-lang-999950.3-r2.apk"
 
 if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	# Packaging-only recovery after a late overlay/bundle failure.  Never use
@@ -34,6 +36,8 @@ if [ "${REUSE_BUILD_OUTPUTS:-0}" = 1 ]; then
 	test -f "$mutter_lang_apk"
 	test -f "$mutter_schemas_apk"
 	test -f "$mutter_udev_apk"
+	test -f "$gnome_control_center_apk"
+	test -f "$gnome_control_center_lang_apk"
 else
 	bash "$project/scripts/stage-gpu-firmware.sh"
 	bash "$project/scripts/stage-stock-audio-firmware.sh"
@@ -50,6 +54,7 @@ else
 	fi
 	bash "$project/scripts/build-custom-iio-sensor-proxy.sh"
 	bash "$project/scripts/build-custom-mutter.sh"
+	bash "$project/scripts/build-custom-gnome-control-center.sh"
 
 	KERNEL_OUT_DIR="$kernel" BUILD_WIFI_MODULES=1 \
 		bash "$project/scripts/build-mainline-kernel.sh"
@@ -76,6 +81,7 @@ mkdir -p \
 	"$overlay/etc/systemd/system/hexagonrpcd-adsp-sensorspd.service.d" \
 	"$overlay/etc/systemd/logind.conf.d" \
 	"$overlay/etc/systemd/journald.conf.d" \
+	"$overlay/etc/xdg/fastfetch" \
 	"$overlay/usr/lib/udev/rules.d" \
 	"$overlay/usr/share/alsa/ucm2/conf.d/sm8550" \
 	"$overlay/usr/share/alsa/ucm2/Qualcomm/sm8550/GTS9U" \
@@ -155,6 +161,10 @@ install -m 0644 "$mutter_schemas_apk" \
 	"$overlay/usr/share/gts9uwifi/packages/${mutter_schemas_apk##*/}"
 install -m 0644 "$mutter_udev_apk" \
 	"$overlay/usr/share/gts9uwifi/packages/${mutter_udev_apk##*/}"
+install -m 0644 "$gnome_control_center_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${gnome_control_center_apk##*/}"
+install -m 0644 "$gnome_control_center_lang_apk" \
+	"$overlay/usr/share/gts9uwifi/packages/${gnome_control_center_lang_apk##*/}"
 install -m 0755 "$project/configs/sensors/gts9uwifi-install-sensor-packages" \
 	"$overlay/usr/libexec/gts9uwifi-install-sensor-packages"
 install -m 0644 "$project/configs/sensors/gts9uwifi-install-sensor-packages.service" \
@@ -234,6 +244,8 @@ install -m 0644 "$project/configs/display-native/10-msm-dpu.conf" \
 # crash loop once the filesystem hit 100%.  Cap it from the start.
 install -m 0644 "$project/configs/development-ssh/10-gts9uwifi-journal-cap.conf" \
 	"$overlay/etc/systemd/journald.conf.d/10-gts9uwifi-journal-cap.conf"
+install -m 0644 "$project/configs/system-info/fastfetch-config.jsonc" \
+	"$overlay/etc/xdg/fastfetch/config.jsonc"
 
 install -m 0755 "$project/configs/display-native/gts9uwifi-install-xorg-package" \
 	"$overlay/usr/libexec/gts9uwifi-install-xorg-package"

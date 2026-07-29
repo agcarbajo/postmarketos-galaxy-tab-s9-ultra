@@ -26,6 +26,7 @@
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
+#include <linux/iio/consumer.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -77,13 +78,22 @@
 #define SM5714_POLL_INTERVAL_MS		1000
 #define SM5714_CAPACITY_POLL_DIVIDER	10
 
+enum sm5714_charge_thermal_state {
+	SM5714_THERMAL_NORMAL,
+	SM5714_THERMAL_REDUCED,
+	SM5714_THERMAL_STOP,
+};
+
 struct sm5714_battery {
 	struct device *dev;
 	struct i2c_client *chg;
 	struct i2c_client *fg;
 	struct i2c_client *muic;
+	struct iio_channel *battery_temp;
 	/* Serialises the two-step SRAM read window on the fuel gauge. */
 	struct mutex sram_lock;
+	/* Serialises charger programming from polling and the TCPM callback. */
+	struct mutex chg_lock;
 	struct power_supply *psy_bat;
 	struct power_supply *psy_usb;
 	struct power_supply_battery_info *info;
@@ -93,9 +103,19 @@ struct sm5714_battery {
 	bool last_online;
 	int last_usb_type;
 	unsigned int poll_count;
+	unsigned int typec_mv;
+	unsigned int typec_ma;
+	enum sm5714_charge_thermal_state thermal_state;
+	bool direct_charging;
 };
 
+static DEFINE_MUTEX(sm5714_global_lock);
+static struct sm5714_battery *sm5714_primary;
+
 static int sm5714_get_online(struct sm5714_battery *sm);
+static int sm5714_get_temp(struct sm5714_battery *sm, int *val);
+int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma);
+int sm5714_battery_set_direct_charge(bool active);
 
 static int sm5714_chg_update_bits(struct sm5714_battery *sm, u8 reg,
 				  u8 mask, u8 val)
@@ -121,6 +141,9 @@ static int sm5714_get_usb_type(struct sm5714_battery *sm)
 
 	if (online <= 0)
 		return online < 0 ? online : POWER_SUPPLY_USB_TYPE_UNKNOWN;
+
+	if (READ_ONCE(sm->typec_mv) > 5000)
+		return POWER_SUPPLY_USB_TYPE_PD;
 
 	type = i2c_smbus_read_byte_data(sm->muic,
 					SM5714_MUIC_REG_DEVICE_TYPE1);
@@ -157,17 +180,79 @@ static u8 sm5714_fast_current_reg(unsigned int ma)
 	return clamp_val(7 + (ua - 109375) / 15625, 0x07, 0xe0);
 }
 
+static enum sm5714_charge_thermal_state
+sm5714_charge_thermal_state(struct sm5714_battery *sm, int temp)
+{
+	/*
+	 * The stock X910 battery data uses 50.0 C as the wired
+	 * warm/overheat boundary.  Add a conservative reduced-current band from
+	 * 46.0 C, matching the stock mixed-temperature threshold.  A hard stop
+	 * recovers into that reduced band below 46.0 C; full current returns
+	 * only below the stock warm/normal boundary of 42.0 C.
+	 */
+	if (sm->thermal_state == SM5714_THERMAL_STOP) {
+		if (temp >= 460)
+			return SM5714_THERMAL_STOP;
+		if (temp > 420)
+			return SM5714_THERMAL_REDUCED;
+	}
+	if (sm->thermal_state == SM5714_THERMAL_REDUCED && temp > 420) {
+		if (temp >= 500)
+			return SM5714_THERMAL_STOP;
+		return SM5714_THERMAL_REDUCED;
+	}
+
+	if (temp >= 500)
+		return SM5714_THERMAL_STOP;
+	if (temp >= 460)
+		return SM5714_THERMAL_REDUCED;
+	return SM5714_THERMAL_NORMAL;
+}
+
 static int sm5714_configure_charging(struct sm5714_battery *sm)
 {
 	unsigned int input_ma, fast_ma;
+	unsigned int typec_mv, typec_ma;
+	enum sm5714_charge_thermal_state thermal_state;
 	int usb_type;
+	int temp;
 	int ret;
 
+	mutex_lock(&sm->chg_lock);
+	typec_mv = sm->typec_mv;
+	typec_ma = sm->typec_ma;
 	usb_type = sm5714_get_usb_type(sm);
-	if (usb_type < 0)
-		return usb_type;
+	if (usb_type < 0) {
+		ret = usb_type;
+		goto out_unlock;
+	}
 
-	switch (usb_type) {
+	thermal_state = sm->thermal_state;
+	if (!sm5714_get_temp(sm, &temp)) {
+		thermal_state = sm5714_charge_thermal_state(sm, temp);
+		sm->thermal_state = thermal_state;
+	}
+
+	if (thermal_state == SM5714_THERMAL_STOP) {
+		ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+					     SM5714_CHG_CNTL1_ENQ4FET, 0);
+		if (!ret)
+			dev_warn(sm->dev,
+				 "charging suspended at battery temperature %d.%d C\n",
+				 temp / 10, abs(temp % 10));
+		goto out_unlock;
+	}
+
+	if (typec_mv >= 5000 && typec_ma >= 500) {
+		/*
+		 * Stock board data allows 3 A input, 3150 mA battery current and
+		 * 9 V on the switching charger.  The 15 W fixed-PD path uses
+		 * 9 V / 1.66 A; a Type-C Rp=3 A fallback may use 5 V / 3 A.
+		 */
+		input_ma = min(typec_ma, typec_mv > 5000 ? 1660U : 3000U);
+		fast_ma = 2800;
+
+	} else switch (usb_type) {
 	case POWER_SUPPLY_USB_TYPE_DCP:
 		input_ma = 1800;
 		/* 2100 mA maps to the stock bootloader's CHGCNTL2=0x86. */
@@ -185,6 +270,17 @@ static int sm5714_configure_charging(struct sm5714_battery *sm)
 		break;
 	}
 
+	if (thermal_state == SM5714_THERMAL_REDUCED) {
+		/*
+		 * Keep the fixed-PD input budget available: the panel/GPU can
+		 * consume most of a 9 W cap by themselves.  The stock switching
+		 * charger uses 2.1 A battery current on this board, so use that
+		 * well-tested value in the warm band and reserve the hard cutoff
+		 * for 50 C.
+		 */
+		fast_ma = min(fast_ma, 2100U);
+	}
+
 	/*
 	 * Match chg_set_enq4fet(): lower the input limit before closing Q4,
 	 * then restore the limit advertised by the MUIC classification.
@@ -192,12 +288,12 @@ static int sm5714_configure_charging(struct sm5714_battery *sm)
 	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_VBUSCNTL,
 					sm5714_input_current_reg(500));
 	if (ret)
-		return ret;
+		goto out_unlock;
 
 	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_CHGCNTL2,
 					sm5714_fast_current_reg(fast_ma));
 	if (ret)
-		return ret;
+		goto out_unlock;
 
 	if (input_ma > 500)
 		usleep_range(DIV_ROUND_UP(input_ma - 500, 250) * 1000,
@@ -207,17 +303,102 @@ static int sm5714_configure_charging(struct sm5714_battery *sm)
 				     SM5714_CHG_CNTL1_ENQ4FET,
 				     SM5714_CHG_CNTL1_ENQ4FET);
 	if (ret)
-		return ret;
+		goto out_unlock;
 
 	ret = i2c_smbus_write_byte_data(sm->chg, SM5714_CHG_REG_VBUSCNTL,
 					sm5714_input_current_reg(input_ma));
 	if (!ret)
 		dev_info(sm->dev,
-			 "enabled charging for USB type %d (%u mA input, %u mA fast)\n",
-			 usb_type, input_ma, fast_ma);
+			 "enabled charging for USB type %d at %u mV "
+			 "(%u mA input, %u mA fast)\n",
+			 usb_type, typec_mv ?: 5000, input_ma, fast_ma);
 
+out_unlock:
+	mutex_unlock(&sm->chg_lock);
 	return ret;
 }
+
+/*
+ * TCPM calls this only after it has selected a Type-C current limit or a PD
+ * contract.  Keep the board-specific charger coupling here rather than in the
+ * transport driver: the SM5714 USB-PD block is on a different I2C adapter.
+ */
+int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma)
+{
+	struct sm5714_battery *sm;
+	int ret = 0;
+
+	if ((mv && (mv < 5000 || mv > 9000)) || ma > 3000)
+		return -ERANGE;
+
+	mutex_lock(&sm5714_global_lock);
+	sm = sm5714_primary;
+	if (!sm) {
+		ret = -EPROBE_DEFER;
+		goto out;
+	}
+
+	WRITE_ONCE(sm->typec_mv, mv);
+	WRITE_ONCE(sm->typec_ma, ma);
+	if (mv && ma && sm5714_get_online(sm) > 0 &&
+	    !READ_ONCE(sm->direct_charging))
+		ret = sm5714_configure_charging(sm);
+
+	power_supply_changed(sm->psy_usb);
+	power_supply_changed(sm->psy_bat);
+out:
+	mutex_unlock(&sm5714_global_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(sm5714_battery_set_pd_contract);
+
+/*
+ * Hand the battery path to the board's SM5440 2:1 charge pump.  Keeping this
+ * arbitration in the SM5714 driver prevents its one-second recovery poll (or
+ * a later TCPM PPS update) from closing Q4 behind the direct charger.
+ */
+int sm5714_battery_set_direct_charge(bool active)
+{
+	struct sm5714_battery *sm;
+	int temp;
+	int ret = 0;
+
+	mutex_lock(&sm5714_global_lock);
+	sm = sm5714_primary;
+	if (!sm) {
+		ret = -EPROBE_DEFER;
+		goto out;
+	}
+
+	if (active) {
+		ret = sm5714_get_temp(sm, &temp);
+		if (ret)
+			goto out;
+		if (temp < 100 || temp >= 420) {
+			ret = -ERANGE;
+			goto out;
+		}
+
+		WRITE_ONCE(sm->direct_charging, true);
+		mutex_lock(&sm->chg_lock);
+		ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+					     SM5714_CHG_CNTL1_ENQ4FET, 0);
+		mutex_unlock(&sm->chg_lock);
+		if (ret)
+			WRITE_ONCE(sm->direct_charging, false);
+	} else {
+		WRITE_ONCE(sm->direct_charging, false);
+		if (sm5714_get_online(sm) > 0)
+			ret = sm5714_configure_charging(sm);
+	}
+
+	power_supply_changed(sm->psy_usb);
+	power_supply_changed(sm->psy_bat);
+out:
+	mutex_unlock(&sm5714_global_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(sm5714_battery_set_direct_charge);
 
 /*
  * The fuel gauge exposes its measurements through an SRAM read window: point
@@ -312,9 +493,30 @@ static int sm5714_get_current(struct sm5714_battery *sm, u8 sram_addr, int *val)
 
 static int sm5714_get_temp(struct sm5714_battery *sm, int *val)
 {
-	int raw = sm5714_fg_read_sram(sm, SM5714_FG_SRAM_TEMPERATURE);
+	int temp_mc;
+	int raw;
 	int temp;
 
+	/*
+	 * The stock X910 policy uses the external pack thermistor.  The SM5714
+	 * SRAM value is the fuel-gauge die temperature and rises/falls by several
+	 * degrees as Q4 switches, so it is not a valid battery safety signal.
+	 */
+	if (sm->battery_temp) {
+		temp = iio_read_channel_processed(sm->battery_temp, &temp_mc);
+		if (!temp) {
+			temp = DIV_ROUND_CLOSEST(temp_mc, 100);
+			if (temp >= -200 && temp <= 900) {
+				*val = temp;
+				return 0;
+			}
+			dev_warn_ratelimited(sm->dev,
+					     "pack thermistor returned implausible %d mC\n",
+					     temp_mc);
+		}
+	}
+
+	raw = sm5714_fg_read_sram(sm, SM5714_FG_SRAM_TEMPERATURE);
 	if (raw < 0)
 		return raw;
 
@@ -349,6 +551,9 @@ static int sm5714_get_status(struct sm5714_battery *sm)
 
 	if (st2 & SM5714_CHG_STATUS2_TOPOFF)
 		return POWER_SUPPLY_STATUS_FULL;
+	if (READ_ONCE(sm->direct_charging) &&
+	    (st1 & SM5714_CHG_STATUS1_VBUS_POK))
+		return POWER_SUPPLY_STATUS_CHARGING;
 	if (st2 & SM5714_CHG_STATUS2_CHG_ON)
 		return POWER_SUPPLY_STATUS_CHARGING;
 	if (st1 & SM5714_CHG_STATUS1_VBUS_POK)
@@ -443,6 +648,12 @@ static int sm5714_usb_get_property(struct power_supply *psy,
 			return ret;
 		val->intval = ret;
 		return 0;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		val->intval = (READ_ONCE(sm->typec_mv) ?: 5000) * 1000;
+		return 0;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		val->intval = READ_ONCE(sm->typec_ma) * 1000;
+		return 0;
 	default:
 		return -EINVAL;
 	}
@@ -473,6 +684,8 @@ static enum power_supply_property sm5714_bat_props[] = {
 static enum power_supply_property sm5714_usb_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_USB_TYPE,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
 };
 
 static const struct power_supply_desc sm5714_bat_desc = {
@@ -492,7 +705,8 @@ static const struct power_supply_desc sm5714_usb_desc = {
 	.usb_types	= BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) |
 			  BIT(POWER_SUPPLY_USB_TYPE_SDP) |
 			  BIT(POWER_SUPPLY_USB_TYPE_CDP) |
-			  BIT(POWER_SUPPLY_USB_TYPE_DCP),
+			  BIT(POWER_SUPPLY_USB_TYPE_DCP) |
+			  BIT(POWER_SUPPLY_USB_TYPE_PD),
 };
 
 /*
@@ -510,18 +724,33 @@ static void sm5714_poll_work(struct work_struct *work)
 	int online = sm5714_get_online(sm);
 	int usb_type = sm5714_get_usb_type(sm);
 	int capacity = sm->last_capacity;
+	enum sm5714_charge_thermal_state old_thermal_state;
+	int temp;
 	int cntl1;
 
 	if (sm->poll_count++ % SM5714_CAPACITY_POLL_DIVIDER == 0 &&
 	    sm5714_get_capacity(sm, &capacity))
 		capacity = sm->last_capacity;
 
+	old_thermal_state = sm->thermal_state;
+	if (online > 0 && !sm5714_get_temp(sm, &temp))
+		sm->thermal_state = sm5714_charge_thermal_state(sm, temp);
+	if (online > 0 && sm->thermal_state != old_thermal_state) {
+		dev_info(sm->dev, "charging thermal state %d -> %d at %d.%d C\n",
+			 old_thermal_state, sm->thermal_state,
+			 temp / 10, abs(temp % 10));
+		sm5714_configure_charging(sm);
+		status = sm5714_get_status(sm);
+	}
+
 	/*
 	 * Samsung's shutdown leaves Q4 open.  Recover it at boot or after a
 	 * cable insertion, but do not override thermal/full-charge decisions
 	 * when the charging path is already enabled.
 	 */
-	if (online > 0 && status == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+	if (online > 0 && !READ_ONCE(sm->direct_charging) &&
+	    status == POWER_SUPPLY_STATUS_NOT_CHARGING &&
+	    sm->thermal_state != SM5714_THERMAL_STOP) {
 		cntl1 = i2c_smbus_read_byte_data(sm->chg, SM5714_CHG_REG_CNTL1);
 		if (cntl1 >= 0 && !(cntl1 & SM5714_CHG_CNTL1_ENQ4FET) &&
 		    !sm5714_configure_charging(sm))
@@ -565,6 +794,16 @@ static void sm5714_cancel_poll(void *data)
 	cancel_delayed_work_sync(&sm->poll_work);
 }
 
+static void sm5714_clear_primary(void *data)
+{
+	struct sm5714_battery *sm = data;
+
+	mutex_lock(&sm5714_global_lock);
+	if (sm5714_primary == sm)
+		sm5714_primary = NULL;
+	mutex_unlock(&sm5714_global_lock);
+}
+
 static int sm5714_suspend(struct device *dev)
 {
 	struct sm5714_battery *sm = dev_get_drvdata(dev);
@@ -603,7 +842,15 @@ static int sm5714_probe(struct i2c_client *client)
 	sm->chg = client;
 	i2c_set_clientdata(client, sm);
 
+	sm->battery_temp = devm_iio_channel_get(dev, "battery-temp");
+	if (IS_ERR(sm->battery_temp))
+		return dev_err_probe(dev, PTR_ERR(sm->battery_temp),
+				     "cannot get battery thermistor\n");
+
 	ret = devm_mutex_init(dev, &sm->sram_lock);
+	if (ret)
+		return ret;
+	ret = devm_mutex_init(dev, &sm->chg_lock);
 	if (ret)
 		return ret;
 
@@ -653,6 +900,19 @@ static int sm5714_probe(struct i2c_client *client)
 	if (IS_ERR(sm->psy_usb))
 		return dev_err_probe(dev, PTR_ERR(sm->psy_usb),
 				     "cannot register charger\n");
+
+	ret = 0;
+	mutex_lock(&sm5714_global_lock);
+	if (sm5714_primary)
+		ret = -EBUSY;
+	else
+		sm5714_primary = sm;
+	mutex_unlock(&sm5714_global_lock);
+	if (ret)
+		return dev_err_probe(dev, ret, "only one SM5714 is supported\n");
+	ret = devm_add_action_or_reset(dev, sm5714_clear_primary, sm);
+	if (ret)
+		return ret;
 
 	/* Design capacity is board data; absent monitored-battery, skip it. */
 	if (power_supply_get_battery_info(sm->psy_bat, &sm->info))

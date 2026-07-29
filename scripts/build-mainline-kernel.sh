@@ -155,6 +155,7 @@ if ! grep -q 'BATTERY_SM5714' "$supply_dir/Kconfig"; then
 config BATTERY_SM5714\
 \ttristate "Silicon Mitus SM5714 charger and fuel gauge"\
 \tdepends on I2C\
+\tdepends on IIO\
 \thelp\
 \t  Battery state of charge and charging status on boards that drive the\
 \t  SM5714 combo PMIC from the AP, such as the Galaxy Tab S9 Ultra Wi-Fi.\
@@ -163,6 +164,45 @@ fi
 if ! grep -q 'sm5714_battery.o' "$supply_dir/Makefile"; then
 	printf 'obj-$(CONFIG_BATTERY_SM5714)\t+= sm5714_battery.o\n' \
 		>> "$supply_dir/Makefile"
+fi
+
+# Silicon Mitus SM5440 2:1 charge pump.  TCPM remains responsible for PPS;
+# this board driver coordinates the pump with the SM5714 switching path.
+install -m 0644 "$package/sm5440_direct.c" "$supply_dir/sm5440_direct.c"
+if ! grep -q 'CHARGER_SM5440_DIRECT' "$supply_dir/Kconfig"; then
+	sed -i '/^endif # POWER_SUPPLY$/i \
+config CHARGER_SM5440_DIRECT\
+\ttristate "Silicon Mitus SM5440 direct charger for Samsung SM-X910"\
+\tdepends on I2C\
+\tdepends on BATTERY_SM5714\
+\thelp\
+\t  Conservative PPS-controlled 2:1 direct charging on the Galaxy Tab S9\
+\t  Ultra Wi-Fi, with automatic fallback to the SM5714 switching charger.\
+' "$supply_dir/Kconfig"
+fi
+if ! grep -q 'sm5440_direct.o' "$supply_dir/Makefile"; then
+	printf 'obj-$(CONFIG_CHARGER_SM5440_DIRECT)\t+= sm5440_direct.o\n' \
+		>> "$supply_dir/Makefile"
+fi
+
+# SM5714 Type-C/PD transport.  The generic Linux TCPM core remains the policy
+# engine; this driver only maps the Samsung-documented CC/PD register protocol.
+tcpm_dir="$kernel_tree/drivers/usb/typec/tcpm"
+install -m 0644 "$package/sm5714_usbpd.c" "$tcpm_dir/sm5714_usbpd.c"
+if ! grep -q 'TYPEC_SM5714' "$tcpm_dir/Kconfig"; then
+	sed -i '/^endif # TYPEC_TCPM$/i \
+config TYPEC_SM5714\
+\ttristate "Silicon Mitus SM5714 USB Type-C and PD controller"\
+\tdepends on I2C\
+\tdepends on TYPEC_TCPM\
+\tdepends on BATTERY_SM5714\
+\thelp\
+\t  USB Type-C CC and USB-PD message transport for the SM5714 PDIC.\
+' "$tcpm_dir/Kconfig"
+fi
+if ! grep -q 'sm5714_usbpd.o' "$tcpm_dir/Makefile"; then
+	printf 'obj-$(CONFIG_TYPEC_SM5714)\t+= sm5714_usbpd.o\n' \
+		>> "$tcpm_dir/Makefile"
 fi
 
 cp "$base/pmaports/device/main/linux-postmarketos-mainline/config-mainline.aarch64" \

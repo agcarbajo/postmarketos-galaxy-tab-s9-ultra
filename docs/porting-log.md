@@ -5431,3 +5431,111 @@ MUIC, clasifica el cable como DCP, muestra `Charging` y conserva Mutter r5 tras
 reiniciar. No se tocó `vendor_boot` porque el DTB no cambió. El brillo
 automático queda aparcado; el siguiente reto es terminar USB y eliminar la
 enumeración intermitente `VID_0000&PID_0002` / Code 43.
+
+## Sesión 110 — v1.32: USB-PD/PPS y carga directa SM5440 estables
+
+La indicación de carga de v1.14 era correcta, pero la medida física con el
+cargador Samsung de 45 W demostró que la vía conmutada seguía siendo demasiado
+lenta. Se implementó la cadena que faltaba sin reutilizar el framework
+downstream `sec-battery`:
+
+- `sm5714_usbpd.c` registra el bloque SM5714 de `i2c_hub_9` como TCPC de Linux;
+- TCPM descubre los PDO fijos y el APDO PPS del EP-T4510, hasta 11 V/5 A;
+- `sm5440_direct.c` controla la bomba 2:1 de `i2c_hub_3`, mantiene Linux TCPM
+  como dueño de la política PD y vuelve siempre a la carga conmutada ante fallo;
+- el SM5714 abre Q4 durante carga directa y su sondeo no puede cerrarlo por una
+  notificación concurrente.
+
+### Dos conflictos de hardware resueltos
+
+El SM5440 solo respondió con el SE3 del hub QUP en modo GSI. El intento previo
+con el controlador PIO hacía visible el chip, pero robaba a remoteproc los
+pines `hub_i2c3_data_clk`: el ADSP no arrancaba y desaparecían sensores y audio.
+La solución reproducible mantiene GSI y elimina únicamente ese grupo SE3 del
+`pinctrl-0` del ADSP; tras reiniciar coexistieron SM5440, ADSP, sensores y ALSA.
+
+La temperatura publicada inicialmente procedía del dado del fuel gauge
+SM5714. Subía 44→52 °C en segundos al conmutar Q4 y provocaba ciclos térmicos
+falsos. El DT Samsung confirmó el termistor real de batería en PMK8550
+ADC5 Gen3, canal virtual `0x144` (PM8550 SID1, `ADC7_AMUX_THM1_100K_PU`).
+Se añadió el ADC built-in y el driver usa ahora su lectura IIO; el pack se
+mantuvo entre 34 y 35,2 °C durante todas las pruebas de carga directa.
+
+### Fallos medidos y por qué no deben repetirse
+
+Las v1.23–v1.30 fueron útiles como escalones, pero no son builds finales:
+
+1. Con 8,46 V/1,8 A la bomba arrancó y cayó casi inmediatamente con
+   `IBUSLIM`, `VOUTOVP_ALM`, `VBUSUVLO` y `REVBLK`.
+2. Con 8,78–10,4 V y 1,8 A el VBUS bajo carga caía a 8,4–8,7 V. Subir voltaje
+   sin regular el punto 2:1 elevó el dado a 60–64 °C y no solucionó el apagado.
+3. Se descubrió una carrera real: escribir `VOLTAGE_NOW` en la power_supply
+   PPS termina antes de que el adaptador alcance físicamente la tensión. El
+   driver ahora habilita primero el ADC y espera hasta tres segundos a que
+   VBUS esté dentro de 500 mV del objetivo antes de `CHG_ON`.
+4. Incluso a 1 A, con VBUS, IBUS y temperatura estables, la bomba se apagaba
+   siempre a los cinco segundos. El código Samsung dio la causa exacta:
+   `support_pd_remain` reenvía el Request PPS cada 2,5 s. Nuestra única petición
+   caducaba, el adaptador volvía hacia 9 V y el SM5440 disparaba `REVBLK`.
+   v1.31/v1.32 refrescan corriente y tensión cada dos segundos.
+
+Una prueba separada con la bomba apagada confirmó que el PPS no era inestable:
+10,4 V solicitados se mantuvieron físicamente entre 10,19 y 10,28 V durante
+10 s. La caída era consecuencia del punto de operación y, finalmente, de la
+caducidad del Request.
+
+### Resultado físico
+
+Con el punto de entrada inspirado en el downstream
+`2×VBAT + 700 mV`, límite SM5440 de 1,8 A y keepalive:
+
+- PPS permaneció activo durante más de cuatro minutos por prueba;
+- a 78–82 % se midieron aproximadamente 2,8 A netos hacia la batería;
+- al 86–87 %, ya en transición CV, se mantuvieron 1,84–2,05 A;
+- VBUS físico quedó alrededor de 9,15–9,22 V, IBUS 1,84–1,96 A;
+- dado SM5440 alrededor de 47 °C y pack estable en 34,4–35,2 °C;
+- no aparecieron nuevos `REVBLK`, thermal shutdown ni fallback;
+- la batería avanzó de 76 a 87 % durante las iteraciones.
+
+La prueba se dejó continuar: al alcanzar el umbral del 90 % el driver apagó
+la bomba, puso TCPM de `online=2` (PPS) a `online=1` y restauró el contrato fijo
+9 V/1,66 A y Q4. A 93 % la batería seguía publicando `Charging` a unos 0,46 A,
+sin quedarse en un estado falso ni descargarse. Queda validado también el
+final de sesión y no solo la entrada a carga directa.
+
+El pico real con batería baja queda por cuantificar; no se afirma haber medido
+45 W. Sí quedan demostrados en hardware el contrato PPS, la bomba 2:1, la
+corriente neta mejorada, las protecciones y el fallback seguro.
+
+### Nombres comerciales y build final
+
+Fastfetch usa una configuración específica del dispositivo y muestra
+`Qualcomm Snapdragon 8 Gen 2` y `Qualcomm Adreno 740`. GNOME Control Center
+lleva un parche limitado al compatible `samsung,gts9uwifi`, por lo que no
+falsea la identidad de otros equipos. El APK personalizado compiló y se incluye
+en el overlay reproducible.
+
+La primera instalación real del APK r1 falló en `pre-upgrade` con
+`Exec format error`: en el fuente Alpine ese fichero era un enlace a
+`pre-install`, pero el checkout de Windows lo había materializado como una
+línea de texto sin shebang. No se aceptó el mero éxito de compilación. Se
+sustituyó por un script POSIX real, se incrementó a r2, se recompiló y la
+actualización viva terminó sin errores. Esta es otra razón para probar la
+instalación del APK, no solo su presencia dentro del ZIP.
+
+Paquetes finales: kernel r75, device r40, GNOME Control Center r2 y firmware
+r10. La tablet corre
+kernel `#107`; solo se escribió `boot` (`sda21`) con backup y SHA idéntico.
+El DTS ya validado no cambió, por lo que no fue necesario escribir
+`vendor_boot`.
+
+- `Image.gz`: `2ea4b867b7b74346250fb57c673b6f440d653d1a70fbbd8ecd8c6179001829c3`;
+- `boot.img`: `2a8e9c8bf39acd66ad3815399037870ca27d6573db97bf5999a5ccf6695f5f66`;
+- `vendor_boot.img`: `2f5322ad06520d9c8b9a6a4f319c5303c55462f7179e7bd4d84a8663c57db844`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.32-sm5440-direct-charge-sm-x910-twrp.zip`:
+  `cc506b82c82c7a687c9edcb2d31ed40a80d888e538528db29d27e8f917843ca3`.
+
+El siguiente reto vuelve a ser USB. Ahora hay una base TCPM/Type-C real, así
+que gadget, orientación y DP altmode deben integrarse sobre el SM5714 ya
+funcional. También se añadió el motor de vibración a la tabla pública como
+hardware pendiente.

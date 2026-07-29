@@ -21,6 +21,9 @@ done
 mkdir -p "$target/extra-repos/systemd/mutter"
 cp -a "$project/pmaports/extra-repos/systemd/mutter/." \
 	"$target/extra-repos/systemd/mutter/"
+mkdir -p "$target/extra-repos/systemd/gnome-control-center"
+cp -a "$project/pmaports/extra-repos/systemd/gnome-control-center/." \
+	"$target/extra-repos/systemd/gnome-control-center/"
 mkdir -p "$target/extra-repos/systemd/iio-sensor-proxy"
 cp -a "$project/pmaports/extra-repos/systemd/iio-sensor-proxy/." \
 	"$target/extra-repos/systemd/iio-sensor-proxy/"
@@ -31,4 +34,5 @@ git -C "$target" status --short -- \
 	device/testing/hexagonrpcd \
 	device/testing/linux-samsung-gts9uwifi-mainline \
 	extra-repos/systemd/iio-sensor-proxy \
+	extra-repos/systemd/gnome-control-center \
 	extra-repos/systemd/mutter
