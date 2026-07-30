@@ -47,7 +47,11 @@ enumerated it on the first attempt. The device
 package also recreates xHCI after the platform suspend/resume used for cold-boot
 panel recovery; it does so only if the tablet was already the host, so PC/RNDIS
 device mode is left untouched. Mutter r6 keeps autorotation and its control
-available when an external pointer is connected.
+available when an external pointer is connected. The final clean v1.55 image
+was tested again after restoring its matching signed ath12k modules: Wi-Fi
+remained connected, the powered dock enumerated the receiver on its first
+attempt in about 1.5 seconds, and GNOME simultaneously reported
+`HasAccelerometer=true` and `PanelOrientationManaged=true`.
 
 The tested charge-through dock does not expose USB data when its PD input is
 unpowered: the tablet correctly becomes Source/Host and supplies 5.1 V / 900 mA,
@@ -95,7 +99,7 @@ also updating its matching modules on the microSD.
 | **Charging status** | 🟡 | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and notifies UPower. v1.49 also negotiates a measured 9 V / 1.66 A PD contract through a powered hub. However, the user still observes intermittent charging indication and roughly five-hour estimates at low state of charge, both directly and through the hub; charging is therefore no longer considered fully polished |
 | **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
-| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. v1.55 consolidates the powered-hub path physically validated on its v1.53 base: TCPM keeps DFP while changing power role, negotiates 9 V / 1.66 A, and xHCI enumerated the Logitech `046d:c54d` Lightspeed receiver on the first attempt across three reconnect cycles. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse and its cursor works in GNOME. A host-only resume hook recovers xHCI after the board's automatic platform suspend. The tested dock deliberately disables USB data without PD input (`USB_COMM=false`); a passive OTG adapter or another bus-powered hub is required to validate generic unpowered host mode. USB storage still needs testing |
+| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. The final clean v1.55 image is physically validated with the powered hub: TCPM keeps DFP while changing power role, negotiates 9 V / 1.66 A, and xHCI enumerates the Logitech `046d:c54d` Lightspeed receiver on the first attempt (about 1.5 s in the final check, after three earlier successful reconnect cycles). Built-in DJ/HID++ exposes the paired `046d:40b8` mouse and its cursor works in GNOME. A host-only resume hook recovers xHCI after the board's automatic platform suspend. The tested dock deliberately disables USB data without PD input (`USB_COMM=false`); a passive OTG adapter or another bus-powered hub is required to validate generic unpowered host mode. USB storage still needs testing |
 | **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
@@ -141,7 +145,10 @@ Device/RNDIS mode is not changed.
 Powered hotplug is now repeatable: three full detach/attach cycles all restored
 the 9 V / 1.66 A contract and receiver on the first try. Removing and adding
 the charger also preserves the tablet's DFP data role; adding power brings the
-receiver back in about one second. The same dock cannot be used to prove
+receiver back in about one second. The final clean v1.55 kernel and its matching
+signed ath12k modules repeated that result: Wi-Fi stayed available, the receiver
+was ready about 1.5 seconds after attach, and GNOME kept panel orientation
+managed. The same dock cannot be used to prove
 unpowered USB data, however: when bus-powered it explicitly advertises
 `USB_COMM=false` and PTN3222 remains at `DEVICE_STATUS=0x0e`,
 `LINK_STATUS=0x01` (host/Connect Detect, no downstream pull-up), even though

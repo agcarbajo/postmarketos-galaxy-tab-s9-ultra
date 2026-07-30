@@ -6062,3 +6062,22 @@ lleva ambos en su overlay.
 La validación final de la tablet arrancada confirma kernel `#1`, Wi-Fi/SSH,
 display manager, SensorProxy y Mutter r6. Quedan para hardware distinto:
 host pasivo, almacenamiento/UAS y DisplayPort altmode.
+
+### Validación física final del build limpio v1.55
+
+Con la tablet ya arrancada sobre el kernel limpio y los dos módulos ath12k
+firmados por esa misma build, se conectó de nuevo el hub con su entrada PD de
+45 W y el receptor Lightspeed. No hizo falta repetir la conexión:
+
+- TCPM quedó en `power_role=sink`, `data_role=host`;
+- el contrato convergió a 9 V / 1,66 A;
+- xHCI registró el receptor `046d:c54d` y el hijo de input Logitech en unos
+  1,5 segundos desde el attach;
+- `wlan0` siguió `UP/LOWER_UP` y SSH permaneció accesible;
+- con el ratón presente, SensorProxy/Mutter publicaron simultáneamente
+  `HasAccelerometer=true` y `PanelOrientationManaged=true`.
+
+Esto valida el artefacto v1.55 final, no solo el binario intermedio v1.53. La
+única frontera USB observada sigue siendo el modo sin alimentación de este dock
+concreto, cuyo RDO anuncia `USB_COMM=false`; no se generaliza esa conducta a
+otros adaptadores pasivos todavía no probados.
