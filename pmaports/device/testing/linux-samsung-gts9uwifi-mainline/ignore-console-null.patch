@@ -11,14 +11,14 @@ normal behaviour is unchanged unless ignore_console_null is present.
 
 Signed-off-by: SM-X910 postmarketOS port <gts9uwifi@example.com>
 ---
- kernel/printk/printk.c | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
+ kernel/printk/printk.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
 diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
 index 95fcb42f2132..81db2a0d684d 100644
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -2620,6 +2620,16 @@ static int __init console_msg_format_setup(char *str)
+@@ -2620,6 +2620,15 @@ static int __init console_msg_format_setup(char *str)
  }
  __setup("console_msg_format=", console_msg_format_setup);
  
@@ -34,7 +34,7 @@ index 95fcb42f2132..81db2a0d684d 100644
  /*
   * Set up a console.  Called via do_early_param() in init/main.c
   * for each "console=" parameter in the boot command line.
-@@ -2636,6 +2646,9 @@ static int __init console_setup(char *str)
+@@ -2636,6 +2645,9 @@ static int __init console_setup(char *str)
  	 * disable console output. Use ttynull that has been created
  	 * for exactly this purpose.
  	 */

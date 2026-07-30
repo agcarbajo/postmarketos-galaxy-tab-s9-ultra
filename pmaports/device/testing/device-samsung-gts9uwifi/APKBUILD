@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=42
+pkgrel=44
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -23,6 +23,7 @@ depends="
 	iio-sensor-proxy-udev=3.9-r3
 	kbd
 	linux-samsung-gts9uwifi-mainline
+	linux-firmware-rtl_nic
 	lsblk
 	mkbootimg
 	mutter=999950.2-r6
@@ -109,6 +110,7 @@ package() {
 		"$pkgdir/etc/systemd/system/bluetooth.service.d/20-gts9uwifi-address.conf"
 	install -Dm644 "$srcdir/gts9uwifi-compile-sensor-schemas.service" \
 		"$pkgdir/usr/lib/systemd/system/gts9uwifi-compile-sensor-schemas.service"
+	install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
 	ln -s ../gts9uwifi-compile-sensor-schemas.service \
 		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/gts9uwifi-compile-sensor-schemas.service"
 	# GDM >= 47 runs its greeter as "gdm-greeter-<N>" and asks systemd-userdbd

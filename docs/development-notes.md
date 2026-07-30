@@ -61,7 +61,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.73 validada en vivo: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; los nodos aparecen y sus bloqueos actuales son proveedores kernel identificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v1.55 validada: kernel r97, device r42, firmware r10, GNOME Control Center r2, Mutter r6, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
+| Paquetes pmaports | ✅ v1.60 validada físicamente con kernel r102/device r42. Las fuentes actuales kernel r103/device r44 también completan una build limpia: r103 repara solo la cabecera mal contada de `ignore-console-null.patch`, y r44 añade `linux-firmware-rtl_nic` más la creación explícita de `multi-user.target.wants`. Firmware r10, GNOME Control Center r2, Mutter r6, iio-sensor-proxy r3 y Xorg r10 siguen reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados en el release directo; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v1.55 validada**: consolida PR_SWAP SM5714 estable, hotplug alimentado al primer intento, ratón Lightspeed físicamente funcional y Mutter r6, que conserva autorrotación con el puntero conectado. La comprobación final del build limpio enumeró el receptor en ~1,5 s, mantuvo 9 V/1,66 A y conservó Wi-Fi/SSH. El hub probado no expone datos cuando se alimenta desde la tablet aunque ésta entrega 5,1 V/900 mA; hace falta otro adaptador para validar host pasivo. Falta probar almacenamiento y DP |
+| Imagen/paquete de prueba | ✅ **v1.60 validada**: conserva el hub alimentado de v1.55 y añade host pasivo real. La tablet alimenta un hub Genesys a 5,1 V/900 mA y enumera RTL8153 + Logitech desde arranque y tras la recuperación xHCI, sin perder Wi-Fi ni autorrotación. Device r44 incluye el firmware RTL8153; faltan enlace Ethernet, almacenamiento y DP |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -83,25 +83,21 @@ demostrarlo en este dispositivo.
 
 ## Reto en curso
 
-**Actualización sesión 115:** USB host queda reproducible y físicamente estable
-con el hub alimentado. El cursor Lightspeed funciona, tres desconexiones y
-reconexiones completas recuperaron receptor y 9 V/1,66 A al primer intento, y
-el camino Source→Sink conserva DFP mediante la secuencia stock de congelar,
-conmutar y liberar CC. Mutter r6 elimina además la dependencia del heurístico
-`touch-mode` para esta tablet fija: conectar el ratón ya no oculta el control ni
-detiene la autorrotación. La validación final del build limpio v1.55 repitió la
-enumeración al primer intento en unos 1,5 s; mantuvo Wi-Fi/SSH y registró a la
-vez `HasAccelerometer=true` y `PanelOrientationManaged=true`.
+**Actualización sesión 117:** v1.60 cierra el host USB sin alimentación externa.
+El SM5714 abre la ruta D-/D+ del MUIC antes del boost y TCPM reconoce el VBUS
+generado por el propio cargador; el hub Genesys, RTL8153 y Logitech enumeran
+desde arranque y tras recrear xHCI. GNOME mantiene
+`PanelOrientationManaged=true`. Device r44 añade
+`linux-firmware-rtl_nic`; tras instalarlo en vivo y reenlazar r8152,
+`ethtool -i` confirma `rtl8153a-3 v2 02/07/20`. Falta medir enlace/tráfico con
+cable.
 
-La prueba sin alimentación del mismo dock acota una frontera de hardware:
-la X910 sí queda Source/Host y entrega 5,1 V/900 mA, pero el partner declara
-`USB_COMM=false` y PTN3222 permanece en `0e/01` (host, Connect Detect, sin
-pull-up downstream). Incluso completar localmente el PR_SWAP inverso en 20 ms
-al llegar a VSAFE0V no hizo aparecer datos; ese experimento no estándar se
-retiró de v1.55. Por tanto el reto inmediato requiere otro adaptador pasivo o un
-hub que se sepa que transmite datos alimentado por bus. Después: almacenamiento
-UAS y una pantalla DP-altmode. A continuación se reabrirá la carga a batería
-baja, que el contrato PD del hub no valida.
+La build limpia también queda reparada: kernel r103 corrige los contadores
+malformados de `ignore-console-null.patch`, y device r44 crea
+`multi-user.target.wants/` antes de su primer enlace. Ambos paquetes se
+construyen de principio a fin. El reto inmediato es validar almacenamiento/UAS
+y una pantalla DP-altmode; después se reabre la carga a batería baja, que el
+contrato PD del hub no valida.
 
 **Actualización sesiones 111–113:** USB gadget/RNDIS funciona a High Speed cuando
 Windows usa el driver RNDIS y no el ADB. v1.33 añade DRP/host, boost OTG
@@ -2014,9 +2010,17 @@ lado del workspace.
   helper host-only existente lo recrea y, con el MUIC ya bien encaminado, los
   tres dispositivos se reenumeran. PTN3222 mide `0a/05` después, frente a
   `0e/01` cuando solo había Connect Detect.
-- El RTL8153 del hub enumera, pero solicita `rtl_nic/rtl8153a-3.fw`, ausente en
-  la imagen actual. No declarar Ethernet funcional hasta incluir ese firmware
-  y medir tráfico real.
+- El RTL8153 del hub solicita `rtl_nic/rtl8153a-3.fw`. El paquete correcto no
+  es `linux-firmware-realtek`, sino `linux-firmware-rtl_nic`; device r44 lo
+  incluye como dependencia. Tras instalarlo en vivo y reenlazar r8152,
+  `ethtool -i` informa `rtl8153a-3 v2 02/07/20`. No declarar Ethernet
+  funcional hasta medir enlace y tráfico con un cable conectado.
+- Una build limpia de kernel r102 descubrió que
+  `ignore-console-null.patch` tenía una cabecera de hunk mal contada
+  (`+16` frente a 15 líneas reales). El pipeline directo había tolerado el
+  contenido, pero `abuild` lo rechazó como parche malformado. Kernel r103
+  corrige únicamente los contadores/metadatos del parche; el código resultante
+  no cambia.
 
 ## Referencias locales
 

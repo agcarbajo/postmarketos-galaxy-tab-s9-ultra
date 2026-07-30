@@ -6210,3 +6210,59 @@ Solo se escribió `boot=/dev/sda21`, con backup v1.59
 `a656c1755c8e875a239e4e9c39922e6add184b263b4b89b8dacf5b6964de1363`
 y lectura posterior idéntica al origen. Los módulos ath12k de v1.60 mantienen
 los hashes de la pareja firmada instalada, así que Wi-Fi/SSH siguieron activos.
+
+## Sesión 117 — firmware RTL8153 y builds limpias reparadas
+
+El RTL8153 integrado en el hub pasivo había enumerado en v1.60, pero r8152
+registraba:
+
+```text
+Direct firmware load for rtl_nic/rtl8153a-3.fw failed with error -2
+unable to load firmware patch rtl_nic/rtl8153a-3.fw (-2)
+```
+
+La primera hipótesis de paquete fue incorrecta:
+`linux-firmware-realtek` no contiene `rtl_nic/`. El paquete Alpine correcto es
+`linux-firmware-rtl_nic`. Se instaló temporalmente en el sistema vivo y se
+reenlazó únicamente `1-1.2:1.0` con r8152. La medida posterior fue:
+
+```text
+driver: r8152
+firmware-version: rtl8153a-3 v2 02/07/20
+bus-info: usb-xhci-hcd.1.auto-1.2
+Link detected: no
+```
+
+Por tanto, el firmware sí está cargado. `Link detected: no` es el resultado
+esperado sin cable Ethernet; enlace y tráfico siguen pendientes y Ethernet no
+se marca todavía como funcional. Para instalaciones reproducibles, device r44
+añade `linux-firmware-rtl_nic` como dependencia.
+
+### Dos fallos de build limpia descubiertos y corregidos
+
+La construcción forzada del paquete de dispositivo obligó a reconstruir el
+kernel desde el tarball limpio y encontró que `ignore-console-null.patch`
+declaraba 16 líneas nuevas en un hunk que contiene 15. El pipeline directo lo
+había tolerado, pero `abuild` lo rechazaba como parche malformado. Kernel r103
+corrige los contadores del hunk y sus metadatos sin cambiar el código
+resultante. El parche pasa ahora `patch --dry-run` contra Linux 7.2-rc3 limpio.
+
+Después de completar kernel r103, el primer intento de device r43 falló porque
+su `package()` creaba el enlace de
+`gts9uwifi-compile-sensor-schemas.service` antes de crear
+`multi-user.target.wants/`. La instalación viva ocultaba el fallo porque el
+directorio ya existía. Device r44 crea el directorio explícitamente antes del
+primer enlace.
+
+La validación final terminó con `BUILD_EXIT=0`:
+
+- kernel r103 APK:
+  `3ca6181335d056b9a72e722b349beee70c27247d967e5e9d9a3d618aff2a27f7`;
+- device r44 APK:
+  `ea44c5a1238fb7daa1a3065105bdcdb933e709ae79f947d72d8d73c8ae96baea`;
+- `.PKGINFO` de device r44 confirma
+  `depend = linux-firmware-rtl_nic`.
+
+No se escribió ninguna partición en esta sesión. La tablet siguió ejecutando
+v1.60, con hub pasivo, RTL8153 y receptor Logitech presentes, rol USB host,
+acelerómetro disponible y orientación administrada.
