@@ -37,7 +37,8 @@ also fixes two desktop-polish issues: a persisted
 rotation lock no longer needs to be toggled after login, and the SM5714 driver
 now restores the charging path that Samsung's shutdown sequence can leave
 disabled.
-v1.55 completes the first physically validated USB host path. A powered
+v1.60 completes the physically validated USB host path with both powered and
+bus-powered hubs. A powered
 charge-through hub can keep supplying the tablet while the tablet acts as the
 USB data host: TCPM negotiates 9 V / 1.66 A, xHCI enumerates a real Logitech
 Lightspeed receiver, and the built-in Logitech DJ/HID++ drivers discover the
@@ -53,14 +54,19 @@ remained connected, the powered dock enumerated the receiver on its first
 attempt in about 1.5 seconds, and GNOME simultaneously reported
 `HasAccelerometer=true` and `PanelOrientationManaged=true`.
 
-The tested charge-through dock does not expose USB data when its PD input is
-unpowered: the tablet correctly becomes Source/Host and supplies 5.1 V / 900 mA,
-but the dock itself reports `USB_COMM=false` and its USB2 repeater never sees a
-downstream pull-up. This is a measured limitation of that dock, not a failure
-of the tablet's Type-C role or VBUS path. A simple passive OTG adapter or another
-hub known to support bus-powered data is still needed to validate generic
-unpowered peripherals. Mass storage and external DisplayPort also remain to be
-tested.
+v1.60 validates generic unpowered host mode with a second, bus-powered hub.
+The missing piece was the SM5714 MUIC's physical D-/D+ switch: Samsung's OTG
+attach explicitly disables BC1.2 and selects its manual USB path. The mainline
+driver now coordinates that route before exposing the host and also reports
+its own OTG boost as valid VBUS to TCPM. The hub enumerates from a cold boot at
+5.1 V / 900 mA together
+with its Genesys USB2 controller, RTL8153 Ethernet and Logitech receiver; all
+three reappear after the board-specific display recovery recreates xHCI.
+PTN3222 changes from host/Connect Detect (`0e/01`) to an active USB link
+(`0a/05`). The original charge-through dock still deliberately disables data
+without its PD input (`USB_COMM=false`), which remains a limitation of that
+dock rather than of the tablet. Mass storage, the RTL8153 firmware patch and
+external DisplayPort remain to be tested.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -99,7 +105,7 @@ also updating its matching modules on the microSD.
 | **Charging status** | 🟡 | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and notifies UPower. v1.49 also negotiates a measured 9 V / 1.66 A PD contract through a powered hub. However, the user still observes intermittent charging indication and roughly five-hour estimates at low state of charge, both directly and through the hub; charging is therefore no longer considered fully polished |
 | **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
-| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. The final clean v1.55 image is physically validated with the powered hub: TCPM keeps DFP while changing power role, negotiates 9 V / 1.66 A, and xHCI enumerates the Logitech `046d:c54d` Lightspeed receiver on the first attempt (about 1.5 s in the final check, after three earlier successful reconnect cycles). Built-in DJ/HID++ exposes the paired `046d:40b8` mouse and its cursor works in GNOME. A host-only resume hook recovers xHCI after the board's automatic platform suspend. The tested dock deliberately disables USB data without PD input (`USB_COMM=false`); a passive OTG adapter or another bus-powered hub is required to validate generic unpowered host mode. USB storage still needs testing |
+| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. Powered host mode is validated at 9 V / 1.66 A with a Logitech Lightspeed receiver. v1.60 also validates a genuinely bus-powered hub at 5.1 V / 900 mA: the SM5714 MUIC routes D-/D+ before OTG VBUS, TCPM retains Source/Host, and Genesys `05e3:0610`, RTL8153 `0bda:8153` and Logitech `046d:c54d` enumerate from cold boot and after xHCI recovery. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse; GNOME keeps autorotation managed. The original charge-through dock still disables data when its own PD input is absent (`USB_COMM=false`). USB storage and the RTL8153 firmware patch still need testing |
 | **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
@@ -116,8 +122,9 @@ also updating its matching modules on the microSD.
 
 ## Current focus
 
-The current milestone is broad physical validation of USB host classes and
-DisplayPort altmode. USB gadget/RNDIS works at High Speed when Windows uses the
+The current milestone is mass-storage/UAS and DisplayPort-altmode validation,
+followed by the remaining low-battery charging instability. USB gadget/RNDIS
+works at High Speed when Windows uses the
 RNDIS driver rather than an ADB driver. v1.33–v1.45 implemented the SM5714
 DRP/OTG boost, stock CC/VCONN handling, QMP USB3/DP PHY, PS5169 retimer and
 GPIO89 OTG-detect pulse. The powered-hub test exposed three final issues:
@@ -156,8 +163,25 @@ the X910 is correctly Source/Host at 5.1 V / 900 mA. An experimental TCPM
 shortcut that completed Sink-to-Source PR_SWAP at VSAFE0V without the dock's
 missing `PS_RDY` reduced the transition to 20 ms but did not change that
 electrical result, so it was removed from the stable v1.55. The next checks
-need different hardware: a passive OTG adapter or known bus-powered hub,
-mass-storage/UAS and then a DP-altmode display.
+needed different hardware. v1.60 has now validated that second path with a
+bus-powered Genesys/RTL8153 hub. The root cause was not TCPM role selection:
+the SM5714 MUIC had left the connector D-/D+ pair physically disconnected.
+Samsung's source-attach order is now reproduced:
+
+1. begin the stock 130 ms GPIO89 OTG-detect pulse;
+2. disable the MUIC BC1.2 engine and select the manual USB path;
+3. enable the SM5714 5.1 V / 900 mA OTG boost and create xHCI.
+
+The SM5714's `STATUS1.VBUS_POK` only reports incoming VBUS, so v1.59 also made
+the TCPM transport treat the companion charger's active OTG boost as VBUS
+present. Without that, TCPM dismantled an otherwise valid source attachment
+after exactly 480 ms. v1.60 combines both fixes and enumerates the Genesys hub,
+RTL8153 and Logitech receiver during cold boot and again after the expected
+panel-recovery HSE. PTN3222 measures `DEVICE_STATUS=0x0a`,
+`LINK_STATUS=0x05`, `HasAccelerometer=true` and
+`PanelOrientationManaged=true` while the mouse is attached. The next USB
+checks are mass-storage/UAS, providing the missing RTL8153 firmware patch, and
+then a DP-altmode display.
 
 GNOME's former rotation regression was independent from USB. Its fallback
 touch-mode heuristic stopped managing panel orientation whenever any pointer

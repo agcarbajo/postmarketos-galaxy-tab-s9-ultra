@@ -57,6 +57,12 @@
 #define SM5714_CHG_REG_DEVICEID		0x50
 
 /* MUIC block (8-bit registers, at SM5714_MUIC_I2C_ADDR). */
+#define SM5714_MUIC_REG_CNTL		0x05
+#define  SM5714_MUIC_CNTL_BC12OFF	BIT(1)
+#define SM5714_MUIC_REG_MANUAL_SW	0x06
+#define  SM5714_MUIC_MANUAL_SW_MANUAL	BIT(7)
+#define  SM5714_MUIC_MANUAL_SW_PATH_MASK	GENMASK(5, 0)
+#define  SM5714_MUIC_MANUAL_SW_USB	0x09
 #define SM5714_MUIC_REG_DEVICE_ID	0x00
 #define SM5714_MUIC_REG_DEVICE_TYPE1	0x07
 #define  SM5714_MUIC_TYPE_DCD_OUT_SDP	BIT(0)
@@ -126,6 +132,7 @@ static int sm5714_get_temp(struct sm5714_battery *sm, int *val);
 int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma);
 int sm5714_battery_set_direct_charge(bool active);
 int sm5714_battery_set_otg(bool active);
+bool sm5714_battery_is_otg_active(void);
 
 static int sm5714_chg_update_bits(struct sm5714_battery *sm, u8 reg,
 				  u8 mask, u8 val)
@@ -142,6 +149,76 @@ static int sm5714_chg_update_bits(struct sm5714_battery *sm, u8 reg,
 		return 0;
 
 	return i2c_smbus_write_byte_data(sm->chg, reg, new);
+}
+
+/*
+ * The SM5714 MUIC contains the physical D-/D+ switch between the connector
+ * and the SoC.  Incoming VBUS lets its automatic BC1.2 state machine select
+ * USB, which hid this dependency with a powered dock.  A bus-powered OTG
+ * accessory has no incoming VBUS, so Samsung explicitly disables BC1.2 and
+ * selects the USB path when it reports ATTACHED_DEV_OTG_MUIC.
+ *
+ * Restore automatic switching when the tablet stops sourcing VBUS so ordinary
+ * sink/device charging and RNDIS continue to use the hardware detector.
+ */
+static int sm5714_muic_set_otg_path(struct sm5714_battery *sm, bool active)
+{
+	int old_cntl;
+	int old;
+	u8 new;
+	int ret;
+
+	if (active) {
+		old_cntl = i2c_smbus_read_byte_data(sm->muic,
+						    SM5714_MUIC_REG_CNTL);
+		if (old_cntl < 0)
+			return old_cntl;
+
+		new = old_cntl | SM5714_MUIC_CNTL_BC12OFF;
+		ret = i2c_smbus_write_byte_data(sm->muic,
+						SM5714_MUIC_REG_CNTL, new);
+		if (ret)
+			return ret;
+
+		old = i2c_smbus_read_byte_data(sm->muic,
+					       SM5714_MUIC_REG_MANUAL_SW);
+		if (old < 0)
+			goto restore_bc12;
+
+		new = (old & ~(SM5714_MUIC_MANUAL_SW_MANUAL |
+			       SM5714_MUIC_MANUAL_SW_PATH_MASK)) |
+		      SM5714_MUIC_MANUAL_SW_MANUAL |
+		      SM5714_MUIC_MANUAL_SW_USB;
+		ret = i2c_smbus_write_byte_data(sm->muic,
+						SM5714_MUIC_REG_MANUAL_SW,
+						new);
+		if (!ret)
+			return 0;
+
+restore_bc12:
+		i2c_smbus_write_byte_data(sm->muic, SM5714_MUIC_REG_CNTL,
+					  old_cntl);
+		return old < 0 ? old : ret;
+	}
+
+	old = i2c_smbus_read_byte_data(sm->muic,
+				       SM5714_MUIC_REG_MANUAL_SW);
+	if (old < 0)
+		return old;
+
+	new = old & ~(SM5714_MUIC_MANUAL_SW_MANUAL |
+		      SM5714_MUIC_MANUAL_SW_PATH_MASK);
+	ret = i2c_smbus_write_byte_data(sm->muic,
+					SM5714_MUIC_REG_MANUAL_SW, new);
+	if (ret)
+		return ret;
+
+	old = i2c_smbus_read_byte_data(sm->muic, SM5714_MUIC_REG_CNTL);
+	if (old < 0)
+		return old;
+
+	return i2c_smbus_write_byte_data(sm->muic, SM5714_MUIC_REG_CNTL,
+					 old & ~SM5714_MUIC_CNTL_BC12OFF);
 }
 
 static int sm5714_get_usb_type(struct sm5714_battery *sm)
@@ -459,8 +536,17 @@ int sm5714_battery_set_otg(bool active)
 		}
 
 		mutex_lock(&sm->chg_lock);
-		ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
-					     SM5714_CHG_CNTL1_ENQ4FET, 0);
+		/*
+		 * Route D-/D+ before enabling VBUS.  Samsung handles the MUIC
+		 * explicitly for every OTG attachment; coordinating it with
+		 * the boost here ensures that TCPM exposes the USB host only
+		 * after the physical USB2 path is connected.
+		 */
+		ret = sm5714_muic_set_otg_path(sm, true);
+		if (!ret)
+			ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+						     SM5714_CHG_CNTL1_ENQ4FET,
+						     0);
 		if (!ret)
 			ret = sm5714_chg_update_bits(
 				sm, SM5714_CHG_REG_BSTCNTL1,
@@ -473,6 +559,8 @@ int sm5714_battery_set_otg(bool active)
 				SM5714_CHG_CNTL2_USB_OTG);
 		if (!ret)
 			WRITE_ONCE(sm->otg_active, true);
+		else
+			sm5714_muic_set_otg_path(sm, false);
 		mutex_unlock(&sm->chg_lock);
 
 		if (!ret)
@@ -484,8 +572,10 @@ int sm5714_battery_set_otg(bool active)
 			sm, SM5714_CHG_REG_CNTL2,
 			SM5714_CHG_CNTL2_MODE_MASK,
 			SM5714_CHG_CNTL2_CHARGING);
-		if (!ret)
+		if (!ret) {
 			WRITE_ONCE(sm->otg_active, false);
+			ret = sm5714_muic_set_otg_path(sm, false);
+		}
 		mutex_unlock(&sm->chg_lock);
 
 		if (!ret) {
@@ -510,6 +600,21 @@ out_global:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(sm5714_battery_set_otg);
+
+bool sm5714_battery_is_otg_active(void)
+{
+	struct sm5714_battery *sm;
+	bool active = false;
+
+	mutex_lock(&sm5714_global_lock);
+	sm = sm5714_primary;
+	if (sm)
+		active = READ_ONCE(sm->otg_active);
+	mutex_unlock(&sm5714_global_lock);
+
+	return active;
+}
+EXPORT_SYMBOL_GPL(sm5714_battery_is_otg_active);
 
 /*
  * The fuel gauge exposes its measurements through an SRAM read window: point

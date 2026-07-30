@@ -66,6 +66,7 @@
 /* Implemented by the companion charger/fuel-gauge driver on this board. */
 int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma);
 int sm5714_battery_set_otg(bool active);
+bool sm5714_battery_is_otg_active(void);
 
 struct sm5714_usbpd {
 	struct device *dev;
@@ -182,7 +183,14 @@ static int sm5714_usbpd_get_vbus(struct tcpc_dev *tcpc)
 	if (ret)
 		return ret;
 
-	return !!(status & SM5714_INT1_VBUS_POK);
+	/*
+	 * STATUS1.VBUS_POK reports an external source but stays low while the
+	 * companion charger supplies VBUS from its OTG boost.  Returning false
+	 * in that state makes TCPM tear a valid source attachment down after
+	 * tSrcTurnOn (480 ms), before a bus-powered hub can enumerate.
+	 */
+	return !!(status & SM5714_INT1_VBUS_POK) ||
+	       sm5714_battery_is_otg_active();
 }
 
 static enum typec_cc_status sm5714_usbpd_rp_status(unsigned int cc)

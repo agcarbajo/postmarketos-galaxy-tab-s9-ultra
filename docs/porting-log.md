@@ -6081,3 +6081,132 @@ Esto valida el artefacto v1.55 final, no solo el binario intermedio v1.53. La
 única frontera USB observada sigue siendo el modo sin alimentación de este dock
 concreto, cuyo RDO anuncia `USB_COMM=false`; no se generaliza esa conducta a
 otros adaptadores pasivos todavía no probados.
+
+## Sesión 116 — v1.56–v1.60: hub USB alimentado por la tablet
+
+### El dato faltante estaba en el MUIC, no en TCPM ni en el repetidor
+
+Se conectó un segundo hub que no dispone de entrada de alimentación. En v1.55
+la X910 alcanzaba Source/Host, activaba el boost SM5714 a 5,1 V/900 mA y
+mantenía ambos root hubs xHCI, pero no aparecía ningún hijo USB. El PTN3222
+seguía en `DEVICE_STATUS=0x0e`, `LINK_STATUS=0x01`: host en Connect Detect sin
+pull-up downstream.
+
+La comparación con el GPL Samsung encontró una pieza que no estaba modelada:
+el SM5714 MUIC de `i2c2@0x25` contiene el conmutador físico D-/D+. En
+`ATTACHED_DEV_OTG_MUIC`, Samsung:
+
+- desactiva BC1.2 poniendo el bit 1 de `CNTL` (`0x05`);
+- selecciona manualmente la ruta USB escribiendo `MANUAL_SW=0x89` (`0x06`).
+
+Una prueba reversible en vivo cambió `0x24/0x00 → 0x26/0x89`. Sin reiniciar ni
+recrear xHCI aparecieron inmediatamente:
+
+```text
+05e3:0610  GenesysLogic USB2.0 Hub
+0bda:8153  Realtek USB 10/100/1000 LAN
+046d:c54d  Logitech USB Receiver
+```
+
+Esto demuestra que VBUS, CC, DWC3, xHCI y PTN3222 ya estaban bien; faltaba
+cerrar el camino eléctrico USB2.
+
+### v1.56–v1.58: el falso culpable de los 500 ms
+
+v1.56 integró la ruta MUIC antes del boost. v1.57 la movió al callback de roles
+y v1.58 la aplazó un segundo mediante `delayed_work`. Las tres parecían
+regresionar: Source/Host desaparecía unos 500 ms después del attach. Una prueba
+que restauró MUIC a automático inmediatamente tampoco evitó la caída, por lo
+que la escritura temprana no podía ser la causa.
+
+El log interno de TCPM dio la evidencia exacta:
+
+```text
+vbus:=1 charge=0
+pending state change SRC_ATTACHED -> SRC_UNATTACHED @ 480 ms
+VBUS off
+VBUS VSAFE0V
+state change SRC_ATTACHED -> SRC_UNATTACHED [delayed 480 ms]
+```
+
+`sm5714_usbpd_get_vbus()` solo leía `STATUS1.VBUS_POK`. Ese bit detecta una
+fuente externa, pero permanece a cero cuando el propio bloque cargador genera
+VBUS mediante el boost OTG. TCPM aplicaba correctamente `tSrcTurnOn=480 ms` y
+desmontaba una fuente que físicamente sí estaba activa.
+
+### v1.59: VBUS correcto, pero orden de datos todavía incorrecto
+
+v1.59 añadió `sm5714_battery_is_otg_active()` y hace que `get_vbus()` devuelva
+verdadero si existe VBUS entrante **o** si el cargador confirma OTG activo.
+En la tablet:
+
+```text
+pending state change SRC_ATTACHED -> SRC_UNATTACHED @ 480 ms
+VBUS on
+state change SRC_ATTACHED -> SRC_STARTUP
+```
+
+El host permaneció vivo y el trabajo MUIC llegó a ejecutarse al segundo. Sin
+embargo, el hub no enumeró: D-/D+ se abrían después del pulso OTG-detect y de
+crear xHCI. Repetir la escritura MUIC y recrear xHCI en vivo tampoco produjo un
+nuevo pull-up en ese estado. Además, una prueba propia `port_type=sink → dual`
+dejó TCPM atascado en `SRC_ATTACH_WAIT`; se recuperó reinicializando solo el
+driver SM5714 USB-PD. Esa manipulación no forma parte del arreglo.
+
+### v1.60: ruta MUIC síncrona y validación completa
+
+v1.60 elimina el `delayed_work`. `sm5714_battery_set_otg(true)` abre primero la
+ruta MUIC (`0x26/0x89`), después programa boost y marca OTG activo. El callback
+USB-PD ya había iniciado el pulso stock GPIO89 y TCPM crea el host una vez que
+la ruta física está conectada.
+
+El hub permaneció conectado durante el arranque. La secuencia medida fue:
+
+- boost OTG a los 12,88 s;
+- Genesys enumerado a los 13,45 s;
+- RTL8153 a los 17,35 s;
+- receptor Logitech a los 18,37 s y su hijo HID++ `046d:40b8` a los 19,22 s;
+- HSE esperado durante `pm_test=platform`;
+- helper host-only recreó xHCI;
+- Genesys, RTL8153 y Logitech volvieron a enumerar entre 36,26 y 38,07 s.
+
+A los 79 s seguían presentes los tres dispositivos, `usb_role=host`, MUIC
+`0x26/0x89` y PTN3222 `DEVICE_STATUS=0x0a`, `LINK_STATUS=0x05`. El receptor
+creó el input `Logitech PRO X 2 DEX`; `loginctl seat-status` lo atribuye a
+`seat0`. Con el puntero presente se midieron a la vez:
+
+```text
+HasAccelerometer = true
+PanelOrientationManaged = true
+```
+
+Por tanto, el hub sin alimentación externa y la política de rotación quedan
+validados por el sistema real. El movimiento físico del cursor ya estaba
+confirmado con el mismo receptor en el hub alimentado; esta sesión valida su
+misma cadena HID y asignación a GNOME en modo bus-powered.
+
+El RTL8153 enumera pero registra:
+
+```text
+unable to load firmware patch rtl_nic/rtl8153a-3.fw (-2)
+```
+
+La interfaz Ethernet no se declara funcional hasta incluir firmware y medir
+tráfico. También siguen pendientes almacenamiento/UAS y DisplayPort altmode.
+
+Build final:
+
+- kernel r102;
+- `Image.gz`:
+  `f7750b820bc41e2c4a153dbb3ddf83e35fd8609e68d92abb2354b0c21eff01f2`;
+- `boot.img`:
+  `2096237ac05acda8fdd61f5c9f6470a36469819c6015ab7093dbf53d645db854`;
+- ZIP:
+  `postmarketos-edge-gnome-mainline-v1.60-usb-passive-host-sm-x910-twrp.zip`;
+- ZIP SHA-256:
+  `0498a8ffdc73315ad91ea7cdd6987cca111fba733811ad4e157cad43da4d7c66`.
+
+Solo se escribió `boot=/dev/sda21`, con backup v1.59
+`a656c1755c8e875a239e4e9c39922e6add184b263b4b89b8dacf5b6964de1363`
+y lectura posterior idéntica al origen. Los módulos ath12k de v1.60 mantienen
+los hashes de la pareja firmada instalada, así que Wi-Fi/SSH siguieron activos.

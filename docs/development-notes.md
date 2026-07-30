@@ -1997,6 +1997,26 @@ lado del workspace.
 - No instanciar STK31610 como `sensortek,stk3310`. El driver IIO mainline no
   declara STK31610/STK3A6 ni existe documentación pública fiable de su mapa de
   registros; además el bus pertenece al DSP.
+- El SM5714 MUIC contiene el conmutador físico D-/D+ del USB-C. Para OTG sin
+  VBUS entrante hay que desactivar BC1.2 (`CNTL[1]=1`) y seleccionar USB manual
+  (`MANUAL_SW=0x89`). Source/Host, boost y xHCI pueden existir sin que ningún
+  periférico sea visible si se omite esta ruta.
+- `SM5714_REG_STATUS1.VBUS_POK` solo refleja una fuente externa. Mientras el
+  propio SM5714 genera VBUS con su boost OTG sigue a cero; `tcpc.get_vbus()`
+  debe combinarlo con el estado OTG del cargador. De lo contrario TCPM imprime
+  `VBUS off` y desmonta `SRC_ATTACHED` exactamente tras `tSrcTurnOn=480 ms`.
+- No retrasar la ruta MUIC hasta después de crear xHCI. v1.58 conservó el
+  attach gracias al arreglo de VBUS, pero dejó el hub sin pull-up. v1.60 abre
+  D-/D+ de forma síncrona dentro de `set_otg(true)`, antes del boost y de que
+  TCPM exponga host. En hardware enumera Genesys `05e3:0610`, RTL8153
+  `0bda:8153` y Logitech `046d:c54d` alimentados solo por la tablet.
+- El ciclo `pm_test=platform` del panel todavía provoca un HSE de xHCI; el
+  helper host-only existente lo recrea y, con el MUIC ya bien encaminado, los
+  tres dispositivos se reenumeran. PTN3222 mide `0a/05` después, frente a
+  `0e/01` cuando solo había Connect Detect.
+- El RTL8153 del hub enumera, pero solicita `rtl_nic/rtl8153a-3.fw`, ausente en
+  la imagen actual. No declarar Ethernet funcional hasta incluir ese firmware
+  y medir tráfico real.
 
 ## Referencias locales
 
