@@ -270,6 +270,25 @@
 		voltage-min-design-microvolt = <3400000>;
 	};
 
+	/*
+	 * The stock DP driver drives these two discrete AUX-path controls:
+	 * GPIO183 is active-low enable and GPIO180 follows cable orientation.
+	 * The generic mainline SBU mux maps those exact semantics onto Type-C.
+	 */
+	usb_c_sbu_mux: usb-c-sbu-mux {
+		compatible = "gpio-sbu-mux";
+		enable-gpios = <&tlmm 183 GPIO_ACTIVE_LOW>;
+		select-gpios = <&tlmm 180 GPIO_ACTIVE_HIGH>;
+		mode-switch;
+		orientation-switch;
+
+		port {
+			usb_c_sbu_mux_in: endpoint {
+				remote-endpoint = <&sm5714_sbu_out>;
+			};
+		};
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 		pinctrl-names = "default";
@@ -538,6 +557,22 @@
 		};
 	};
 
+	/* PM8550VE-F: 0.88 V PLL rail for the USB3/DisplayPort combo PHY. */
+	regulators-4 {
+		compatible = "qcom,pm8550ve-rpmh-regulators";
+		qcom,pmic-id = "f";
+		vdd-l1-supply = <&vreg_s4e_0p952>;
+		vdd-l2-supply = <&vreg_s4e_0p952>;
+		vdd-l3-supply = <&vreg_s4e_0p952>;
+
+		vreg_l3f_0p88: ldo3 {
+			regulator-name = "vreg_l3f_0p88";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <912000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
 	/* PM8550VS-G supplies the discrete WCN7850/Kiwi v2 radio PMU. */
 	regulators-5 {
 		compatible = "qcom,pm8550vs-rpmh-regulators";
@@ -720,6 +755,14 @@
 		function = "gpio";
 		drive-strength = <8>;
 		input-enable;
+		bias-disable;
+	};
+
+	sm5714_otg_det_default: sm5714-otg-det-default-state {
+		pins = "gpio89";
+		function = "gpio";
+		drive-strength = <2>;
+		output-low;
 		bias-disable;
 	};
 
@@ -970,13 +1013,15 @@
 		reg = <0x33>;
 		interrupts-extended = <&tlmm 133 IRQ_TYPE_LEVEL_LOW>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&sm5714_usbpd_int>;
+		pinctrl-0 = <&sm5714_usbpd_int &sm5714_otg_det_default>;
+		otg-det-gpios = <&tlmm 89 GPIO_ACTIVE_HIGH>;
 		wakeup-source;
 
-		connector {
+		sm5714_connector: connector {
 			compatible = "usb-c-connector";
-			power-role = "sink";
-			data-role = "device";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
 
 			/*
 			 * Samsung limits the switching-charger PD path to
@@ -985,15 +1030,58 @@
 			 */
 			op-sink-microwatt = <15000000>;
 			sink-pdos = <PDO_FIXED(5000, 3000,
+					       PDO_FIXED_DUAL_ROLE |
+					       PDO_FIXED_DATA_SWAP |
 					       PDO_FIXED_USB_COMM)
 				     PDO_FIXED(9000, 1660,
 					       PDO_FIXED_USB_COMM)>;
+			source-pdos = <PDO_FIXED(5000, 900,
+						 PDO_FIXED_DUAL_ROLE |
+						 PDO_FIXED_DATA_SWAP |
+						 PDO_FIXED_USB_COMM)>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					sm5714_hs_in: endpoint {
+						remote-endpoint =
+							<&usb_1_dwc3_hs>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					sm5714_ss_in: endpoint {
+						remote-endpoint =
+							<&ps5169_ss_out>;
+					};
+				};
+
+				port@2 {
+					reg = <2>;
+
+					sm5714_sbu_out: endpoint {
+						remote-endpoint =
+							<&usb_c_sbu_mux_in>;
+					};
+				};
+			};
 		};
 	};
 };
 
 /* I2C4 (touch) and I2C6 (PTN3222) are GPI-only on SM8550. */
 &gpi_dma1 {
+	status = "okay";
+};
+
+/* QUP wrapper 2 / SE12 carries the board's PS5169 combo redriver. */
+&gpi_dma2 {
 	status = "okay";
 };
 
@@ -1032,6 +1120,45 @@
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&eusb2_reset_default>;
+	};
+};
+
+&i2c12 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	ps5169: redriver@28 {
+		compatible = "parade,ps5169";
+		reg = <0x28>;
+		parade,reg50 = <0x10>;
+		parade,reg51 = <0x70>;
+		parade,reg54 = <0x02>;
+		parade,reg5d = <0x40>;
+		usb-role-switch = <&usb_1>;
+		retimer-switch;
+		orientation-switch;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				ps5169_ss_out: endpoint {
+					remote-endpoint = <&sm5714_ss_in>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				ps5169_ss_in: endpoint {
+					remote-endpoint =
+						<&usb_dp_qmpphy_out>;
+				};
+			};
+		};
 	};
 };
 
@@ -1136,14 +1263,24 @@
 };
 
 &usb_1 {
-	/delete-property/ usb-role-switch;
-	/delete-property/ phys;
-	/delete-property/ phy-names;
-	dr_mode = "peripheral";
-	maximum-speed = "high-speed";
-	qcom,select-utmi-as-pipe-clk;
-	phys = <&usb_1_hsphy>;
-	phy-names = "usb2-phy";
+	status = "okay";
+};
+
+&usb_1_dwc3_hs {
+	remote-endpoint = <&sm5714_hs_in>;
+};
+
+&usb_dp_qmpphy {
+	vdda-phy-supply = <&vreg_l3e_1p2>;
+	vdda-pll-supply = <&vreg_l3f_0p88>;
+	status = "okay";
+};
+
+&usb_dp_qmpphy_out {
+	remote-endpoint = <&ps5169_ss_in>;
+};
+
+&mdss_dp0 {
 	status = "okay";
 };
 

@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=40
+pkgrel=41
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -60,6 +60,8 @@ source="
 	gts9uwifi-panel-coldboot-recover.service
 	gts9uwifi-sensors-resume
 	gts9uwifi-sensors-resume-system-sleep
+	gts9uwifi-usb-host-resume
+	gts9uwifi-usb-host-resume-system-sleep
 	gts9uwifi-wait-sensor-proxy
 	gts9uwifi-wait-sensor-proxy.service
 	gts9uwifi-xfce-hidpi
@@ -162,6 +164,10 @@ package() {
 		"$pkgdir/usr/libexec/gts9uwifi-sensors-resume"
 	install -Dm755 "$srcdir/gts9uwifi-sensors-resume-system-sleep" \
 		"$pkgdir/usr/lib/systemd/system-sleep/gts9uwifi-sensors-resume"
+	install -Dm755 "$srcdir/gts9uwifi-usb-host-resume" \
+		"$pkgdir/usr/libexec/gts9uwifi-usb-host-resume"
+	install -Dm755 "$srcdir/gts9uwifi-usb-host-resume-system-sleep" \
+		"$pkgdir/usr/lib/systemd/system-sleep/gts9uwifi-usb-host-resume"
 
 	# The sensor PD publishes QRTR immediately but needs about a minute to
 	# finish registry/hardware discovery. Starting iio-sensor-proxy earlier
@@ -198,10 +204,12 @@ da000da7bca1ed93742e8f0859d6ec61ada8f4ec56aa2a0221c1a6081fbe87a321c9781943499191
 53d745b90b8e7db7858ad1812350548668569461c435353e70c3c3abd8def386da83ca97bfe9eb181f97ccdcf1891ecb6d957a511002b7ab51e3d3b9acfc9759  gts9uwifi-grow-rootfs.service
 8e1df7ebb571e5f256cc1d24405354f631bef8988c02f461f58f99e7c9b5b92235ce2f4681e947cb55b82390f2caa60be4b6bdd7564b1b78980b62343b78658a  gts9uwifi-lightdm-hidpi
 6a783ea53920063350527fd8e84521b1cc3820f7ff087e4a2540ebdb2b41657b53aea19609bc9c6f599fe52ed2c16f61ac0690a8825f9f4b8c41493d9050e19a  gts9uwifi-panel-reinit
-93ad7c7358d7c68bfb57096f65ff94d6a87a0decccbc5ded14c72d04f5b8d3eb558a3160cadd5675767190d24e3cf4a4bb1753e92e553dc5baa0e92a0638357b  gts9uwifi-panel-coldboot-recover
+edd747eef1504778e349245963e12d601ac9328caf4edbff5c185c9168f7e51d92b4f03c219f46521cc9436b230d1b81e1a035b6108a947a71d70f2864d0731b  gts9uwifi-panel-coldboot-recover
 c3b0c428118db1b168a748a0c8f476e1f1480609782fe13922fa5f8dd106fe9b39b45130426b17f6b467087cee42f61d99b84c9631e1057de977cc7817851bd5  gts9uwifi-panel-coldboot-recover.service
 6130934baf282e661cdda67365666abe21394edf33d921ed6aa1f45b4045cb5536329561111349677a6697c48556e4494320a4dde48f20f23539dc32423f8d1c  gts9uwifi-sensors-resume
 6fef746d0992f8b338162c0cf147083bd989102c73d002bf228fad0da001889076b897b7ad851776b031202fbc287c8f0043f8d16c8f7d2aef56edee368960a2  gts9uwifi-sensors-resume-system-sleep
+f2a6acaabf3f71f71760e18adc9fa3a1d9e5903c7aff01dd20bcdc24fa5e7315dfab5a2b7070ab85750ac87dfe07a35f0384231e716ef21ae548bb68da4de91d  gts9uwifi-usb-host-resume
+b09b55e0f65f16c203ec57a7005ddd5d35fe6a6bbd45161ce45bce7484b9e087177898e36447b71e8f85431b0c27c598a848d52e8986c9356a94cf0ffbac8541  gts9uwifi-usb-host-resume-system-sleep
 05d20cf1a73b6e0e0b2c3dfcf1c772efba3c5faf3db1c382ec824073ca0a16f5aa11f9cc096c0cda1cbcff5fe3bf81125b8fbfdd230c461ef4fea3018f02c8f7  gts9uwifi-wait-sensor-proxy
 e460ed2fe80d1c0be8723859e4a0a19e68714458a0733b9a181a3350fe974b0d1d6a92ec7d3e25ba969d8307f68a74448f91ac51a593ef8cc09b747f877bd296  gts9uwifi-wait-sensor-proxy.service
 5de3d212b958ff947e87119a3b82a9d21a64b7d23b3e47cd088d706fb084fb4352834d8469e719211ba71592223a5ea3587a572df5f9e7d7a8777a5a9f3c1c51  gts9uwifi-xfce-hidpi

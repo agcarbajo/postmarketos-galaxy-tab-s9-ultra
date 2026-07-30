@@ -9,6 +9,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -17,6 +18,7 @@
 #include <linux/regmap.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpm.h>
+#include <linux/workqueue.h>
 
 #define SM5714_REG_INT1			0x01
 #define SM5714_REG_MASK1		0x06
@@ -43,6 +45,7 @@
 #define  SM5714_CC_ATTACH_AUDIO	3
 #define  SM5714_CC_RP_MASK		GENMASK(4, 3)
 #define  SM5714_CC_FLIPPED		BIT(5)
+#define  SM5714_CC_POWERED_CABLE	BIT(6)
 #define SM5714_REG_CC_CNTL1		0x29
 #define SM5714_REG_CC_CNTL3		0x2b
 #define SM5714_REG_CC_CNTL5		0x2d
@@ -61,6 +64,7 @@
 
 /* Implemented by the companion charger/fuel-gauge driver on this board. */
 int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma);
+int sm5714_battery_set_otg(bool active);
 
 struct sm5714_usbpd {
 	struct device *dev;
@@ -69,6 +73,9 @@ struct sm5714_usbpd {
 	struct tcpc_dev tcpc;
 	struct tcpm_port *port;
 	struct fwnode_handle *connector;
+	struct delayed_work cc_resync_work;
+	struct delayed_work otg_det_work;
+	struct gpio_desc *otg_det_gpio;
 	enum typec_cc_polarity polarity;
 	unsigned int negotiated_mv;
 	unsigned int negotiated_ma;
@@ -84,6 +91,32 @@ static const struct regmap_config sm5714_usbpd_regmap_config = {
 static inline struct sm5714_usbpd *tcpc_to_sm5714(struct tcpc_dev *tcpc)
 {
 	return container_of(tcpc, struct sm5714_usbpd, tcpc);
+}
+
+static void sm5714_usbpd_cc_resync_work(struct work_struct *work)
+{
+	struct sm5714_usbpd *sm =
+		container_of(to_delayed_work(work), struct sm5714_usbpd,
+			     cc_resync_work);
+	unsigned int cc;
+
+	if (IS_ERR_OR_NULL(sm->port))
+		return;
+
+	if (!regmap_read(sm->regmap, SM5714_REG_CC_STATUS, &cc))
+		dev_info(sm->dev, "resynchronizing TCPM, CC status 0x%02x\n",
+			 cc);
+	tcpm_cc_change(sm->port);
+	tcpm_vbus_change(sm->port);
+}
+
+static void sm5714_usbpd_otg_det_work(struct work_struct *work)
+{
+	struct sm5714_usbpd *sm =
+		container_of(to_delayed_work(work), struct sm5714_usbpd,
+			     otg_det_work);
+
+	gpiod_set_value_cansleep(sm->otg_det_gpio, 0);
 }
 
 static int sm5714_usbpd_init(struct tcpc_dev *tcpc)
@@ -182,6 +215,7 @@ static int sm5714_usbpd_get_cc(struct tcpc_dev *tcpc,
 {
 	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
 	enum typec_cc_status active = TYPEC_CC_OPEN;
+	enum typec_cc_status inactive = TYPEC_CC_OPEN;
 	unsigned int cc;
 	bool flipped;
 	int ret;
@@ -196,6 +230,14 @@ static int sm5714_usbpd_get_cc(struct tcpc_dev *tcpc,
 		break;
 	case SM5714_CC_ATTACH_SINK:
 		active = TYPEC_CC_RD;
+		/*
+		 * Samsung calls bit 6 CABLE_TYPE.  In source/host mode it
+		 * denotes Ra on the unused CC pin and the downstream driver
+		 * immediately enables VCONN.  Report Ra to TCPM so its normal
+		 * policy requests VCONN through sm5714_usbpd_set_vconn().
+		 */
+		if (cc & SM5714_CC_POWERED_CABLE)
+			inactive = TYPEC_CC_RA;
 		break;
 	case SM5714_CC_ATTACH_AUDIO:
 		*cc1 = TYPEC_CC_RA;
@@ -206,8 +248,8 @@ static int sm5714_usbpd_get_cc(struct tcpc_dev *tcpc,
 	}
 
 	flipped = cc & SM5714_CC_FLIPPED;
-	*cc1 = flipped ? TYPEC_CC_OPEN : active;
-	*cc2 = flipped ? active : TYPEC_CC_OPEN;
+	*cc1 = flipped ? inactive : active;
+	*cc2 = flipped ? active : inactive;
 	return 0;
 }
 
@@ -215,28 +257,113 @@ static int sm5714_usbpd_set_cc(struct tcpc_dev *tcpc,
 			       enum typec_cc_status cc)
 {
 	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
-	unsigned int val;
+	unsigned int status;
 	int ret;
 
 	mutex_lock(&sm->lock);
 	switch (cc) {
 	case TYPEC_CC_OPEN:
-		ret = regmap_read(sm->regmap, SM5714_REG_CC_CNTL3, &val);
-		if (!ret)
-			ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3,
-					   val | BIT(3));
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3, 0x88);
 		break;
 	case TYPEC_CC_RD:
-		/* Force the tablet into the attached sink/UFP state. */
+		ret = regmap_read(sm->regmap, SM5714_REG_CC_STATUS,
+				  &status);
+		if (ret)
+			break;
+		if ((status & SM5714_CC_ATTACH_MASK) ==
+		    SM5714_CC_ATTACH_SOURCE)
+			break;
+
+		/* No natural DRP attachment exists: force sink/UFP. */
 		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, 0x45);
 		if (!ret)
 			ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3,
 					   0x82);
 		break;
+	case TYPEC_CC_RP_DEF:
+	case TYPEC_CC_RP_1_5:
+	case TYPEC_CC_RP_3_0:
+		/*
+		 * Force source/DFP mode with the board's stock Rp advertisement.
+		 *
+		 * TCPM derives its initial Rp from the source PDO and asks for
+		 * RP_1_5 for the 900 mA OTG supply.  On this SM5714, however,
+		 * CC_CNTL1=0x59 repeatedly drops an attached passive OTG dongle.
+		 * Samsung's X910 driver explicitly changes PLUG_CTRL_RP180 back
+		 * to PLUG_CTRL_RP80 (CC_CNTL1=0x49) on source attachment, before
+		 * enabling VBUS.  Keep that hardware-specific behaviour here.
+		 * PD-capable partners still learn the real 900 mA limit from the
+		 * source PDO; non-PD accessories see the safe default USB current.
+		 */
+		ret = regmap_read(sm->regmap, SM5714_REG_CC_STATUS,
+				  &status);
+		if (ret)
+			break;
+		if ((status & SM5714_CC_ATTACH_MASK) ==
+		    SM5714_CC_ATTACH_SINK) {
+			/*
+			 * The autonomous DRP engine already owns this natural
+			 * attachment.  Samsung leaves mode 0x40/0x80 intact
+			 * and only changes the Rp selection in bits 5:4.
+			 * Forcing 0x49/0x81 here generates an immediate DETACH.
+			 */
+			ret = regmap_update_bits(sm->regmap,
+						 SM5714_REG_CC_CNTL1,
+						 GENMASK(5, 4), 0);
+			break;
+		}
+
+		/* No natural DRP attachment exists: force source/DFP. */
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, 0x49);
+		if (!ret)
+			ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3,
+					   0x81);
+		break;
 	default:
 		ret = -EOPNOTSUPP;
 		break;
 	}
+	mutex_unlock(&sm->lock);
+
+	return ret;
+}
+
+static int sm5714_usbpd_start_toggling(struct tcpc_dev *tcpc,
+				       enum typec_port_type port_type,
+				       enum typec_cc_status cc)
+{
+	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
+	unsigned int val = 0x40;
+	int ret;
+
+	/*
+	 * The SM5714 has an autonomous DRP state machine.  Samsung's NORMAL_DRP
+	 * configuration selects it with CC_CNTL1=0x40; bits 5:4 retain the Rp
+	 * advertisement requested by TCPM.  Using the hardware state machine is
+	 * not merely an optimisation: software toggling would keep issuing I2C
+	 * transfers after the QUP controller has suspended.
+	 */
+	if (port_type == TYPEC_PORT_SRC)
+		return sm5714_usbpd_set_cc(tcpc, cc);
+	if (port_type == TYPEC_PORT_SNK)
+		return sm5714_usbpd_set_cc(tcpc, TYPEC_CC_RD);
+
+	/*
+	 * Use the same default Rp while the autonomous DRP engine toggles.
+	 * See sm5714_usbpd_set_cc(): the stock X910 policy does not retain
+	 * Rp 1.5 A after detecting a source/host attachment.
+	 */
+
+	mutex_lock(&sm->lock);
+	ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, val);
+	/*
+	 * set_cc(OPEN) disables both CC comparators with CC_CNTL3=0x88.
+	 * Merely selecting NORMAL_DRP in CC_CNTL1 does not clear that latch,
+	 * leaving TCPM permanently unattached.  Samsung's downstream
+	 * sm5714_check_cc_state() restores CC operation with 0x80.
+	 */
+	if (!ret)
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3, 0x80);
 	mutex_unlock(&sm->lock);
 
 	return ret;
@@ -266,8 +393,29 @@ static int sm5714_usbpd_set_vconn(struct tcpc_dev *tcpc, bool on)
 
 static int sm5714_usbpd_set_vbus(struct tcpc_dev *tcpc, bool on, bool charge)
 {
-	/* This first mainline implementation is deliberately sink-only. */
-	return on ? -EOPNOTSUPP : 0;
+	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
+	int ret;
+
+	/*
+	 * The X910 stock driver pulses usbpd,otg_det high for 130 ms on every
+	 * source attachment.  This board signal is distinct from the SM5714
+	 * boost controls: without it the PTN3222 reaches host Connect Detect,
+	 * but never observes the downstream USB2 pull-up.
+	 */
+	if (on && sm->otg_det_gpio) {
+		gpiod_set_value_cansleep(sm->otg_det_gpio, 1);
+		mod_delayed_work(system_wq, &sm->otg_det_work,
+				 msecs_to_jiffies(130));
+	}
+
+	ret = sm5714_battery_set_otg(on);
+	if (ret || !on) {
+		cancel_delayed_work(&sm->otg_det_work);
+		if (sm->otg_det_gpio)
+			gpiod_set_value_cansleep(sm->otg_det_gpio, 0);
+	}
+
+	return ret;
 }
 
 static int sm5714_usbpd_set_current_limit(struct tcpc_dev *tcpc,
@@ -468,7 +616,15 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 	if (IS_ERR(sm->regmap))
 		return PTR_ERR(sm->regmap);
 	mutex_init(&sm->lock);
+	INIT_DELAYED_WORK(&sm->cc_resync_work, sm5714_usbpd_cc_resync_work);
+	INIT_DELAYED_WORK(&sm->otg_det_work, sm5714_usbpd_otg_det_work);
 	i2c_set_clientdata(client, sm);
+
+	sm->otg_det_gpio = devm_gpiod_get_optional(dev, "otg-det",
+						   GPIOD_OUT_LOW);
+	if (IS_ERR(sm->otg_det_gpio))
+		return dev_err_probe(dev, PTR_ERR(sm->otg_det_gpio),
+				     "failed to acquire OTG-detect GPIO\n");
 
 	sm->connector = device_get_named_child_node(dev, "connector");
 	if (!sm->connector)
@@ -476,6 +632,12 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 				     "missing usb-c-connector child\n");
 
 	sm->tcpc.fwnode = sm->connector;
+	/*
+	 * A powered USB-C dock stays Source/UFP across an X910 reboot.  It is
+	 * the power source but the USB data peripheral, so recover as
+	 * Sink/DFP when its retained role appears in the first PD reply.
+	 */
+	sm->tcpc.adopt_retained_source_ufp = true;
 	sm->tcpc.init = sm5714_usbpd_init;
 	sm->tcpc.get_vbus = sm5714_usbpd_get_vbus;
 	sm->tcpc.get_current_limit = sm5714_usbpd_get_current_limit;
@@ -487,6 +649,7 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 	sm->tcpc.set_current_limit = sm5714_usbpd_set_current_limit;
 	sm->tcpc.set_pd_rx = sm5714_usbpd_set_pd_rx;
 	sm->tcpc.set_roles = sm5714_usbpd_set_roles;
+	sm->tcpc.start_toggling = sm5714_usbpd_start_toggling;
 	sm->tcpc.pd_transmit = sm5714_usbpd_transmit;
 
 	sm->port = tcpm_register_port(dev, &sm->tcpc);
@@ -504,8 +667,20 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 
 	device_init_wakeup(dev, true);
 	enable_irq_wake(client->irq);
-	tcpm_cc_change(sm->port);
-	tcpm_vbus_change(sm->port);
+	/*
+	 * CC comparators settle after the autonomous DRP machine is enabled.
+	 * tcpm_register_port() can see Rp before the charger has raised VBUS:
+	 * TCPM then spends about 1.02 seconds in PORT_RESET/PORT_RESET_WAIT_OFF.
+	 * An earlier 250 ms resync was consumed inside that reset and left TCPM
+	 * in TOGGLING forever when the physical attach edge predated the IRQ
+	 * registration.  Wait until both that reset and VBUS ramp have finished.
+	 *
+	 * This remains deliberately scheduled only once: re-arming it from
+	 * start_toggling() feeds back through tcpm_cc_change() and oscillates
+	 * between host and unattached.
+	 */
+	mod_delayed_work(system_wq, &sm->cc_resync_work,
+			 msecs_to_jiffies(1500));
 	dev_info(dev, "SM5714 USB Type-C/PD controller registered\n");
 	return 0;
 
@@ -520,6 +695,10 @@ static void sm5714_usbpd_remove(struct i2c_client *client)
 {
 	struct sm5714_usbpd *sm = i2c_get_clientdata(client);
 
+	cancel_delayed_work_sync(&sm->cc_resync_work);
+	cancel_delayed_work_sync(&sm->otg_det_work);
+	if (sm->otg_det_gpio)
+		gpiod_set_value_cansleep(sm->otg_det_gpio, 0);
 	disable_irq_wake(client->irq);
 	tcpm_unregister_port(sm->port);
 	fwnode_handle_put(sm->connector);

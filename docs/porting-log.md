@@ -4626,7 +4626,7 @@ el riesgo que más me preocupaba y resultó ser lo más sencillo.
 `proc-sys-fs-binfmt_misc` (módulo no compilado) y `nftables.service` (sin
 reglas). No afectan a nada; pendientes de limpiar si molestan.
 
-Tablet en `192.168.1.145`, conectada sola por el perfil Wi-Fi escrito en la
+Tablet en `<TABLET_IP>`, conectada sola por el perfil Wi-Fi escrito en la
 tarjeta. Disco: 28,3 G al 12 %.
 
 ## Sesión 98 — brillo arreglado; el panel negro en frío sigue abierto
@@ -5539,3 +5539,402 @@ El siguiente reto vuelve a ser USB. Ahora hay una base TCPM/Type-C real, así
 que gadget, orientación y DP altmode deben integrarse sobre el SM5714 ya
 funcional. También se añadió el motor de vibración a la tabla pública como
 hardware pendiente.
+
+## Sesión 111 — v1.33–v1.37: dual-role USB, PS5169 y aislamiento de la regresión DRM
+
+La auditoría en vivo de v1.32 confirmó que el gadget RNDIS ya funciona a High
+Speed. El bloqueo observado en Windows no era siempre un fallo eléctrico:
+Windows conservaba el controlador Google ADB para el dispositivo compuesto y
+había que asignar manualmente **Remote NDIS Compatible Device**. El kernel, sin
+embargo, seguía forzado a `dr_mode = "peripheral"`, sin `usb_role_switch`, PHY
+SuperSpeed ni host drivers.
+
+### v1.33: base host/OTG reproducible
+
+Se implementó el camino dual-role sobre el SM5714 usando los valores exactos
+del fuente GPL Samsung:
+
+- `set_cc` y `start_toggling` por hardware DRP (`CC_CNTL1=0x40`), evitando el
+  bucle TCPM por software que llegó a provocar I²C durante suspend;
+- boost OTG del SM5714 en modo `0x7`, `BSTCNTL1=0x46` (5,1 V/900 mA) y Q4
+  abierto, excluyente con carga normal y PPS directa;
+- `usb-role-switch`, PDO source de 5 V/900 mA y roles dual/dual;
+- almacenamiento, UAS, RTL8152, ASIX, CDC Ethernet/NCM y audio USB built-in.
+
+v1.33 arrancó y conservó el panel interno, pero la validación física de un
+dongle host quedó pendiente porque el cable seguía conectado al PC.
+
+### v1.34/v1.35: USB3/DP enlaza, pero el grafo DRM bloquea DSI
+
+El FDT y fuente oficial identificaron el PS5169 en QUP SE12/I²C12, con tuning
+stock `50=10`, `51=70`, `54=02`, `5d=40`, SBU mediante GPIO183 active-low y
+GPIO180 de orientación. Se añadieron QMP USB3/DP, `mdss_dp0`, rail L3F de
+0,88 V, el mux SBU y un driver mainline Type-C propio para PS5169.
+
+La prueba viva de v1.34 midió:
+
+- PS5169 enlazado en `4-0028`, ID real `69:87`;
+- QMP combo en `88e8000.phy`;
+- UDC con capacidad SuperSpeed;
+- `mdss_dp0` diferido y ausencia de `card1`, por lo que tampoco arrancó el
+  display manager.
+
+La causa no era el panel ni el PHY. QMP registra un `drm_aux_bridge` y el
+primer intento hizo lo mismo en PS5169. El segundo bridge busca otro bridge en
+`port@0`, pero allí solo existe `usb-c-connector`, que no registra un bridge
+DRM. El resultado es `-EPROBE_DEFER`; como DP forma parte del mismo component
+master MSM, también retiene el DPU/DSI interno. v1.35 añadió explícitamente el
+bridge en PS5169, pero solo creó un segundo `aux_bridge` diferido y repitió el
+fallo. No repetir esa topología.
+
+### v1.36 fallida y v1.37 candidata de recuperación
+
+v1.36 convirtió PS5169 en bridge DRM terminal. Compiló y el hash escrito sobre
+`boot` (`sda21`) coincidió (`77a21be8…`). La primera búsqueda por SSH rechazó
+la host key renovada y llevó a diagnosticar erróneamente que no había llegado
+a userspace. El journal recuperado después desde TWRP demostró lo contrario:
+kernel `#110`, OpenSSH, Wi-Fi, graphical target y más de 1.300 s de uptime. El
+fallo real era gráfico: los dos `aux_bridge` seguían diferidos y GNOME terminó
+con `No GPUs with outputs found`. No repetir el bridge terminal ni usar la
+ausencia de una sesión SSH aceptada como prueba de fallo de boot. Solo se
+escribió `boot`; `vendor_boot` y el rootfs permanecieron intactos.
+
+La alternativa v1.37 elimina por completo el bridge DRM del PS5169. El retimer
+y la orientación siguen en el framework Type-C, independientemente de DRM. Un
+parche mínimo en `msm_dp_display_probe_tail()` trata `-EPROBE_DEFER` igual que
+la ausencia de bridge **solo para DP externo**; eDP sigue exigiendo su panel.
+Así MSM DP conserva sus propios callbacks HPD/detect/EDID/modos y no retiene el
+master compartido por una cola opcional que termina en USB-C.
+
+La build v1.37 terminó con `BUILD_EXIT=0`, aplicó el parche y pasó CRC:
+
+- `boot.img`: `17ad56e9bdc8d9597426feeeffa5c19c1cec1c07dd95c4169594329deec45117`;
+- `vendor_boot.img`: `f36bebc33357e5904ff38371bf9e9055d02365e964571a89a5c557a652d9deb7`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.37-usb3-dp-no-defer-sm-x910-twrp.zip`:
+  `fc05f7d498612ce5e13bdea3a80e8c240707d56c38bfb7f10cdd5b16a9a17045`.
+
+Queda pendiente entrar en TWRP, flashear v1.37 y validar primero arranque,
+`card1`/DSI, Wi-Fi y PS5169/QMP. Solo después se probarán un dongle host sin
+alimentación, uno alimentado y una pantalla USB-C/DP real.
+
+## Sesión 112 — v1.37–v1.39: DRM recuperado y Type-C real sincronizado
+
+### v1.37 valida la separación entre DP y la cola USB-C opcional
+
+Desde TWRP se escribió únicamente `boot` y la lectura completa verificó
+`17ad56e9bdc8d9597426feeeffa5c19c1cec1c07dd95c4169594329deec45117`.
+La tablet arrancó con kernel `#114` y se midió:
+
+- `card0` Adreno, `card1` DPU y `renderD128`;
+- `card1-DSI-1=connected` y `card1-DP-1=disconnected`;
+- DPU enlazado simultáneamente a DSI y `ae90000.displayport-controller`;
+- GNOME Shell y GDM activos, panel recuperado y Wi-Fi/SSH disponibles;
+- QMP combo enlazado, PS5169 en `4-0028` con ID `69:87`;
+- UDC configurado a High Speed con capacidad SuperSpeedPlus;
+- drivers host built-in registrados para UAS, almacenamiento, RTL8152, ASIX,
+  CDC Ethernet/NCM, HID y audio USB.
+
+Sigue apareciendo un `aux_bridge` diferido en la cola opcional del conector,
+pero ya no retiene el master DRM. Esto valida el alcance mínimo del parche de
+MSM DP: eDP sigue estricto y solo DP externo tolera esa cola ausente.
+
+### v1.38: causa raíz de CC físicamente desconectado
+
+Aunque el gadget funcionaba por el rol inicial, Type-C publicaba
+`orientation=unknown`, no existía `port0-partner` y el SM5714 no podía cambiar
+automáticamente a host. La comparación con el GPL Samsung encontró una
+omisión concreta:
+
+- TCPM llama primero a `set_cc(OPEN)`, que escribe `CC_CNTL3=0x88` y apaga los
+  comparadores CC;
+- nuestro `start_toggling()` seleccionaba DRP con `CC_CNTL1=0x40`, pero no
+  retiraba aquel latch;
+- Samsung restaura explícitamente `CC_CNTL3=0x80` al volver a operación normal.
+
+v1.38 incorporó esa escritura. Tras arrancar kernel `#115`, debugfs midió
+`CC_CNTL1=0x40`, `CC_CNTL3=0x80` y `CC_STATUS=0x31`: partner source con Rp 3 A,
+cable invertido/CC2. El hardware ya detectaba el cable, pero TCPM aún quedaba
+sin partner. El contador del IRQ físico subió de 3 a 9 durante transiciones,
+por lo que la línea GPIO133 tampoco estaba muerta.
+
+Durante la escritura de v1.38 el primer script verificó por error solo 64 MiB
+de una imagen `boot.img` de 96 MiB y, correctamente, se negó a reiniciar. El
+backup v1.37 ya estaba a salvo. Se repitió la lectura con 24 bloques de 4 MiB,
+el hash completo coincidió y solo entonces se reinició. Los scripts posteriores
+conservan esa longitud exacta.
+
+### v1.39: carrera de attach inicial resuelta
+
+La secuencia de probe explicaba la última discrepancia: `tcpm_register_port()`
+puede iniciar el DRP antes de que el threaded IRQ haya sido solicitado, y los
+comparadores necesitan un breve tiempo después de `CC_CNTL3=0x80`. El primer
+edge de attach podía perderse aunque `CC_STATUS` quedara correcto.
+
+El driver r82 añade un único `delayed_work` que, 250 ms después de habilitar el
+DRP, resincroniza CC y VBUS mediante `tcpm_cc_change()` y
+`tcpm_vbus_change()`. Se cancela limpiamente en remove; no sondeo registros de
+forma periódica ni sustituye los IRQ posteriores.
+
+Build y escritura:
+
+- `boot.img`:
+  `7418d905c37ced6053809dd2f13fad2d92adb225d1541d22ce8ba1a9519fc862`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.39-usb-typec-resync-sm-x910-twrp.zip`:
+  `38b851b4014ac51ee9338ae9b3ff6ee8809eeb24984bd1e23c65c228e7ec6b78`;
+- backup completo de v1.38:
+  `c15048dee7b5f5bb4d2b46eb4e640e84d875aba2a70383f86be9daee18779c46`;
+- solo `boot`/`sda21`, con hash origen y lectura final idénticos.
+
+Kernel `#116` arrancó con GDM/GNOME, Wi-Fi, DSI, DPU+DP, QMP y PS5169 sin
+regresiones. Por primera vez el cable físico produce:
+
+- `/sys/class/typec/port0-partner`;
+- `orientation=reverse`;
+- power role sink, data role device;
+- role switch DWC3 en `device`;
+- gadget configurado a High Speed.
+
+El control-plane Type-C queda validado como sink. El reto inmediato es la
+prueba física de un dongle sin alimentación: debe pasar a source/host,
+habilitar el boost SM5714 de 5,1 V/900 mA y enumerar un periférico. Después se
+repite con hub alimentado y, por último, con un adaptador/pantalla DP-altmode.
+
+## Sesión 113 — v1.40–v1.45: host estable y frontera USB2 downstream
+
+La primera prueba física con un dongle USB-C pasivo y receptor de ratón
+descubrió dos problemas distintos. El control Type-C oscilaba y, aun cuando
+xHCI aparecía, TCPM desmontaba el host antes de enumerar el receptor.
+
+### v1.40–v1.44: estabilización de Type-C source/host
+
+- v1.40 añadió una resincronización única de CC tras probe. Detectaba
+  `CC_STATUS=0x42`, pero alternaba host/device y desmontaba xHCI.
+- v1.41 cambió la publicidad a Rp default, tal como hace Samsung al aceptar un
+  accesorio OTG. No resolvió el ciclo.
+- El bit 6 de `CC_STATUS` identifica el cable con Ra. v1.42 lo publica a TCPM
+  en el CC inactivo; TCPM pide VCONN y el SM5714 escribe el valor stock
+  `CC_CNTL5=0x19/0x1a`. Tampoco bastó.
+- La traza focal v1.43 encontró la causa del `DETACH`: después de VCONN, boost
+  y `set_roles(source,host)`, TCPM llamaba `set_cc(RP_1_5)` y el driver forzaba
+  `CC_CNTL1=0x49`, `CC_CNTL3=0x81`. El IRQ de detach llegaba inmediatamente.
+  Samsung solo usa esos valores en un role-swap forzado; en un attach natural
+  deja a la máquina DRP en `0x40/0x80`.
+- v1.44 conserva la conexión DRP natural y solo ajusta los bits Rp. Tras una
+  reconexión física desapareció el bucle: existen `port0-partner`,
+  `orientation=normal`, `source/host`, VCONN, boost 5,1 V/900 mA y los dos
+  root hubs xHCI permanecen registrados. El receptor, sin embargo, no aparece
+  en USB ni crea un input.
+
+La medición del PTN3222 acota la nueva frontera. Con el dongle conectado:
+
+- revisión e I2C/tuning correctos (`A2`, `06=20`, `07=21`, `08=63`,
+  `0a=01`);
+- `DEVICE_STATUS=0x0e`: repetidor en rol host;
+- `LINK_STATUS=0x01`: `Connect Detect`, sin pull-up downstream;
+- DWC3, PHY eUSB2, QMP y xHCI permanecen activos.
+
+Por tanto, ya no es un problema de rol TCPM ni de registro del host: falta que
+el periférico sea eléctricamente visible en D+/D−.
+
+### v1.45: pulso OTG-detect exacto del stock
+
+El GPL Samsung y el FDT X910 contienen una acción que faltaba:
+`usbpd,otg_det = GPIO89`. En cada attach source, el driver stock lo eleva
+durante 130 ms y lo baja mientras enciende VCONN/VBUS. v1.45:
+
+- añade `otg-det-gpios = <&tlmm 89 GPIO_ACTIVE_HIGH>` y su pinctrl stock;
+- adquiere el GPIO opcional desde el driver SM5714;
+- inicia el pulso al entrar en `set_vbus(on)` y lo cancela/limpia al salir;
+- conserva intactas la política TCPM y la secuencia de boost ya medida.
+
+Build y escritura autorizada únicamente sobre `boot=/dev/sda21`:
+
+- kernel r88, `Image.gz`
+  `c80ec391b5117dd78fa34d8f30768ae2eade21311629d8a95f81c3c5b81f2190`;
+- `boot.img`
+  `23f77e8431ddd57271190a265cba3cfc359165a302f6123f7e6da21d372393f6`;
+- ZIP `postmarketos-edge-gnome-mainline-v1.45-usb-host-otg-det-sm-x910-twrp.zip`
+  `2e8790e01a8025281d5636aec0959099152d78ec152726dba3145911000412cc`;
+- backup completo v1.44
+  `52ce08f846e28ffa9d367bec2a34d6c8dbf3fc38be84d33e47ea933cfe33d9e1`;
+- lectura completa posterior idéntica al hash de v1.45.
+
+La tablet arrancó con kernel `#123`, GNOME/DSI/Wi-Fi/SSH sin regresiones. Con
+el dongle mantenido conectado durante el reboot, TCPM volvió a source/host y
+xHCI quedó activo, pero el receptor siguió sin enumerar y PTN3222 permaneció
+en `0e/01`. Un cambio lógico de `port_type` mientras el Rd físico seguía
+presente fue rechazado correctamente con `I/O error`; la siguiente prueba
+necesita un unplug de al menos cinco segundos y un replug físico para producir
+un attach nuevo y validar el pulso GPIO89. No se ha hecho commit ni se ha
+declarado USB host funcional.
+
+## Sesión 114 — v1.46–v1.49: hub alimentado, HID real y recuperación de xHCI
+
+La prueba siguiente cambió una variable física importante: se conectó el
+cargador Samsung de 45 W a la entrada PD del hub USB-C, manteniendo el receptor
+Logitech en un puerto downstream. El receptor apareció por primera vez como
+`046d:c54d`; con ello quedó probado que GPIO89/PTN3222/DWC3 sí podían cerrar el
+enlace USB2 cuando el hub tenía alimentación.
+
+### v1.46: `usbhid` no era todavía un dispositivo de entrada
+
+Las tres interfaces HID enlazaban a `usbhid`, pero `/proc/bus/input/devices`
+no contenía el receptor. La causa era el patrón recurrente de este port:
+`CONFIG_HID_GENERIC=m` y no se instala ni autocarga un árbol genérico de
+módulos. v1.46 fuerza `CONFIG_HID_GENERIC=y` (kernel r89). Tras arrancar,
+`hid-generic` creó:
+
+- un ratón `Logitech USB Receiver` con `event*`/`hidraw0`;
+- un teclado con `kbd`, `event*`/`hidraw1`;
+- la tercera interfaz de control como `hidraw2`.
+
+ZIP:
+`postmarketos-edge-gnome-mainline-v1.46-usb-hid-sm-x910-twrp.zip`,
+SHA-256
+`7864a7499d3baf94fc16aeca03efb5c20676323a32113d7aaeb2d37e14f9e48e`.
+
+### v1.47: la resincronización inicial ocurría demasiado pronto
+
+Con el hub alimentado durante un reboot, el SM5714 quedaba físicamente en
+`CC_STATUS=0x11`, pero TCPM no publicaba partner. Su log de estados mostró que
+la resincronización de 250 ms se consumía dentro de `PORT_RESET_WAIT_OFF`; el
+controlador no regresaba a `TOGGLING` hasta aproximadamente 1,02 s y el edge
+de attach ya había ocurrido antes del registro del IRQ.
+
+v1.47 (kernel r90) retrasa esa única resincronización a 1.500 ms. TCPM detectó
+entonces CC y VBUS, inició PD y recibió del hub el primer header `0x0143`.
+El ZIP
+`postmarketos-edge-gnome-mainline-v1.47-usb-tcpm-resync-sm-x910-twrp.zip`
+tiene SHA-256
+`1f63c09bff75b055f13d6f76fcbc74c51aaf0a09cd2c97f73e6609ab898f05c2`.
+
+### v1.48: dock Source/UFP retenido y host mientras carga
+
+El header no era corrupto: el dock alimentado se declaraba **Source/UFP**.
+Suministra energía a la tablet, pero es el periférico en el enlace USB. La
+tablet había arrancado como Sink/UFP, de modo que TCPM diagnosticaba
+`Data role mismatch` y repetía el reset.
+
+Se añadió una extensión opt-in mínima a `tcpc_dev`,
+`adopt_retained_source_ufp`. Solo el SM5714 X910 la activa. Si el primer
+mensaje SOP de un partner retenido anuncia Source/UFP mientras la tablet es
+Sink/UFP, TCPM adopta DFP local antes de procesarlo. No se fuerza host por
+estado de carga y no se altera el camino PC/RNDIS.
+
+La build directa falló una vez porque `build-mainline-kernel.sh` todavía no
+aplicaba el parche nuevo aunque el APKBUILD sí lo enumeraba. Se añadió al
+listado explícito con guarda, se regeneró el parche contra el árbol exacto y
+la tercera ejecución terminó con `BUILD_EXIT=0`.
+
+La v1.48 arrancada físicamente produjo:
+
+- partner Type-C estable, tablet Sink/DFP y `usb_role=host`;
+- contrato PD fijo de 9 V / 1.660 mA;
+- identidad del dock `2d79:e001` y SVIDs `ff01` (DisplayPort) y `2d79`;
+- ambos root hubs xHCI;
+- receptor Logitech y sus tres dispositivos HID.
+
+Solo se escribió `boot=/dev/sda21`, con backup y hash completo posterior. El
+`boot.img` validado es
+`65aa22b9ab7b2cdf1222b5a8d2a55d903467b5845f1e38c8108b76db8d7f4ce3`.
+El ZIP v1.48 tiene SHA-256
+`5e433fff1d28c89dcd078927c2194ccc6f3a9e3aaacaab73fddec0854ea82926`.
+
+### v1.49: el suspend de recuperación del panel destruía xHCI
+
+El host funcionaba al principio del arranque, pero a los ~20 segundos el ciclo
+automático `pm_test=platform` usado para recuperar el ANA38407 registraba:
+
+```text
+port-1 HS-PHY not in L2
+xHCI Host System Error
+```
+
+El receptor se desconectaba. Una alternancia local del role-switch
+`device → host` volvía a registrar xHCI y reenumeraba el mismo HID. El arreglo
+reproducible añade `/usr/libexec/gts9uwifi-usb-host-resume` y lo invoca:
+
+1. al terminar el ciclo frío específico del panel;
+2. desde un hook `system-sleep` después de futuros resumes.
+
+El helper sale sin hacer nada salvo que el rol actual sea exactamente `host`;
+por tanto no interrumpe gadget/RNDIS cuando la tablet es dispositivo de un PC.
+En la prueba fría, el HSE ocurrió como antes, el helper recreó xHCI un segundo
+después y el receptor volvió a aparecer. Más de 40 s después seguían presentes
+el ratón, teclado e interfaces hidraw. `loginctl seat-status seat0` los enumera
+y el proceso GNOME Shell tiene abiertos `/dev/input/event5` y `event6`, por lo
+que la ruta llega también al compositor, no solo al kernel. La tablet mantuvo
+a la vez el contrato PD de 9 V / 1,66 A.
+
+Versiones finales: kernel r91, device r41, firmware r10. El empaquetado v1.49
+pasó CRC y verificó los tres ficheros del overlay. Artefacto:
+
+- `postmarketos-edge-gnome-mainline-v1.49-usb-host-resume-sm-x910-twrp.zip`;
+- 61.946.434 bytes;
+- SHA-256
+  `c0f85920a3210e3992ab4579fe643c8eec10c3363e1dd85772ff385170ee0072`;
+- `boot.img`
+  `65aa22b9ab7b2cdf1222b5a8d2a55d903467b5845f1e38c8108b76db8d7f4ce3`;
+- `vendor_boot.img`
+  `beea1c07abe681b6ebf55dfb3fa279864590cc8a271f8c18bbd6a5161cff2e34`.
+
+Queda por confirmar visualmente el movimiento del cursor y probar clases
+adicionales con hardware real: accesorio pasivo, almacenamiento/UAS y
+DisplayPort altmode. La negociación PD por el hub no resuelve por sí sola la
+carga: la usuaria sigue observando desconexiones lógicas y una estimación de
+unas cinco horas al 10 %, incluso conectando el cargador oficial directamente.
+Ese diagnóstico queda deliberadamente después de cerrar las pruebas USB host.
+
+### v1.50: el receptor era Lightspeed y necesitaba DJ/HID++
+
+La presencia de `hid-generic` aún no equivalía a movimiento real. Dos ventanas
+de lectura sobre el evento genérico no recibieron paquetes. La búsqueda por el
+ID exacto encontró `046d:c54d` en la tabla upstream de
+`hid-logitech-dj.c` como `NANO_RECEIVER_LIGHTSPEED_1_4`. La configuración viva
+explicó por qué el receptor seguía agregado:
+
+```text
+CONFIG_HID_LOGITECH=m
+CONFIG_HID_LOGITECH_DJ=m
+CONFIG_HID_LOGITECH_HIDPP=m
+CONFIG_LEDS_CLASS_MULTICOLOR=m
+```
+
+El port no instala esos módulos. v1.50 los fuerza todos a `=y` y sube kernel a
+r92. La build terminó con `BUILD_EXIT=0`; el log acredita la compilación de
+`hid-lg`, `hid-logitech-dj` y `hid-logitech-hidpp`.
+
+La escritura autorizada se limitó de nuevo a `boot=/dev/sda21`. La herramienta
+local agotó su timeout mientras la tablet ya estaba reiniciando, así que no se
+repitió a ciegas. Tras volver SSH, el kernel `#127` y la lectura completa de
+96 MiB confirmaron exactamente:
+
+`02abad11624b8984430a0e7196ea03706768ee62cb7082ea81f72b64baa364e1`.
+
+Después del HSE esperado y de la recuperación host-only, el receptor volvió a
+enumerar. Esta vez la cadena real es:
+
+```text
+046d:c54d → logitech-djreceiver
+eQUAD Lightspeed, slot 1
+046d:40b8 → logitech-hidpp-device
+Logitech PRO X 2 DEX
+```
+
+El único evento resultante tiene `REL_X/REL_Y`, botones, rueda, LED y otros
+ejes; GNOME Shell mantiene abierto su nodo. No llegaron eventos durante dos
+ventanas de escucha de 20 s, de modo que aún falta que la usuaria confirme que
+el ratón estaba encendido y moviéndose en esas ventanas, y confirmar el cursor
+visualmente. El software ya no confunde el receptor con el dispositivo
+emparejado.
+
+Artefacto final:
+
+- `postmarketos-edge-gnome-mainline-v1.50-usb-lightspeed-sm-x910-twrp.zip`;
+- 61.997.786 bytes;
+- SHA-256
+  `961ab5ae10fe4b063f37b2e972edda91d9da973fb4687e06f147de9f36a4d4d4`;
+- `boot.img`
+  `02abad11624b8984430a0e7196ea03706768ee62cb7082ea81f72b64baa364e1`;
+- `vendor_boot.img`
+  `ea3f4d185b1e5a219f0a54f04acbec81fdf0ae85b395c2c9e1bb2fca551098de`.

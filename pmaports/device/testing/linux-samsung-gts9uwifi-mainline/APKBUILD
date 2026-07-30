@@ -2,7 +2,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 _flavor="samsung-gts9uwifi-mainline"
 pkgname=linux-$_flavor
 pkgver=7.2_rc3
-pkgrel=75
+pkgrel=92
 pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
 arch="aarch64"
 _carch="arm64"
@@ -52,12 +52,15 @@ source="
 	unpark-pcie0-pipe-mux.patch
 	expose-separate-gpu-kms-resources.patch
 	ignore-console-null.patch
+	msm-dp-allow-unresolved-usbc-bridge.patch
+	tcpm-adopt-retained-source-ufp-role.patch
 	config-gts9uwifi.fragment
 	sm8550-samsung-gts9uwifi.dts
 	panel-samsung-ana38407.c
 	sm5440_direct.c
 	sm5714_battery.c
 	sm5714_usbpd.c
+	ps5169.c
 "
 builddir="$srcdir/linux-$_kernelver"
 
@@ -125,6 +128,22 @@ config TYPEC_SM5714\
 		echo 'obj-$(CONFIG_TYPEC_SM5714)	+= sm5714_usbpd.o' \
 			>> drivers/usb/typec/tcpm/Makefile
 
+	# Parade PS5169 SuperSpeed/DisplayPort redriver on the X910.
+	cp "$srcdir/ps5169.c" drivers/usb/typec/mux/
+	if ! grep -q 'TYPEC_MUX_PS5169' drivers/usb/typec/mux/Kconfig; then
+		cat >> drivers/usb/typec/mux/Kconfig <<-'EOF'
+
+	config TYPEC_MUX_PS5169
+		tristate "Parade PS5169 Type-C redriver"
+		depends on I2C
+		depends on TYPEC
+		depends on USB_ROLE_SWITCH
+	EOF
+	fi
+	grep -q 'ps5169.o' drivers/usb/typec/mux/Makefile || \
+		echo 'obj-$(CONFIG_TYPEC_MUX_PS5169)	+= ps5169.o' \
+			>> drivers/usb/typec/mux/Makefile
+
 	cp "$srcdir/config-mainline.aarch64" .config
 
 	unset LDFLAGS
@@ -169,10 +188,13 @@ d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beac
 64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
 2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
 2474760485db3cb72faa8b42106f1633a92ec2fc03a3d3309f7b936f7e53e93fd2c2a6227d245bbcca0795e03224b73916dba572ae81e27a01093af904ec45bf  ignore-console-null.patch
-d52b20e45330785b109bd93e1236a4ef98e42cd2f13049468318f9a4b82772ccfeb32e42bcb9f78745490e9144bedca5af50658e0bd28256735cd9666b988cce  config-gts9uwifi.fragment
-74be5785c98d0d6861425fedbe64106e813b1827d30a3295f50994429acc4647cc2383ed7b6f1a14a8a19040a9722f116148884b9bc2935059fc2912f38a74ad  sm8550-samsung-gts9uwifi.dts
+d14b7b5d43b693e6d8ac9627b529897fe71ecf7f7f804d42a4a74479dd395cef806697c554cbc15e1fa7659b6c52bdbaa16d19e817c17c47ea5cb9e15ad57a47  msm-dp-allow-unresolved-usbc-bridge.patch
+e514a1080ba357db609b457cfc5a2b41f2c65334cde90542fb5fb84565af46490d93859638a5f6bcf386801ae0917059fd144056e354302350b74762854e6d7b  tcpm-adopt-retained-source-ufp-role.patch
+f86d29fe543671cd81d48d2b1ded985ef6166aabbbbba7c270484d9d5fe20e3cd5c278b69dd449cba491d57660669cccdb0594c6412923ae12499bc2af45fc32  config-gts9uwifi.fragment
+4f089d1345c975f867135e079b7a20cf6d329c778d69ba1b91c6c069b3b10432c2e4c63779295ba3af1e24186d2e67376940fbe3868e55a9c1d26bf77910d2a5  sm8550-samsung-gts9uwifi.dts
 c31a52464807d7e66beea30bb247461626acc9cd0da1c9de969c8c73519e4d5bc0ac98f0842bda4ab9d427a7fa5c39c587baf2d5e85df63b18ec8fc273b4847e  panel-samsung-ana38407.c
 5ddb7fd4773eb556865baa45e3a2fbb93644638cc00bc16c0e6ca73aa55d5fa6e103efc75dc21d2265812c5513275dbaf165c870eba830d7d780bdcaa236cf68  sm5440_direct.c
-ce3e92e1dde6f11d8d0957e045030174b9db2baf4d42d2d0a40cbfb6c1ea65be3a9425a8c597e8d04ccd0e509edc37ebe1d0dfdb0c9648902c7b64f0f99ef081  sm5714_battery.c
-2471f12a706cd93e0cf0b3ae63bd886cec6db0cdf967b37df233d7fbee7020d7738b29d3016a368a30fd9571c557d0a5c84dad8753d28047d2e9eebc2a43b7fd  sm5714_usbpd.c
+bab155574ae3eb85943dce1ae4971838e9e0c531d509a16abe160fc8c386555ffb9e18e94923c40968f7574832242b99853cdbc2e3e26ea6f9d2ac3bbfc68e23  sm5714_battery.c
+31fa6c5098eff15546b564194cc2f1ad45ccdc972ffe26b842fdd2fc64c272b3b2b4338e81a683be609374614f5c04859c4039d50ea5d395754336ef7cd513b0  sm5714_usbpd.c
+73e4cac55e45b4f83ece144e207bc0d232eb6bbb6880f7e8caf5c34c6b264717124cefa0b590152cec2c47555bb741af1c5744034cfc61d483fc5e7029f34f4d  ps5169.c
 "

@@ -45,8 +45,15 @@
 #define  SM5714_CHG_STATUS2_TOPOFF	BIT(5)
 #define SM5714_CHG_REG_CNTL1		0x13
 #define  SM5714_CHG_CNTL1_ENQ4FET	BIT(3)
+#define SM5714_CHG_REG_CNTL2		0x14
+#define  SM5714_CHG_CNTL2_MODE_MASK	GENMASK(3, 0)
+#define  SM5714_CHG_CNTL2_CHARGING	0x05
+#define  SM5714_CHG_CNTL2_USB_OTG	0x07
 #define SM5714_CHG_REG_VBUSCNTL		0x15
 #define SM5714_CHG_REG_CHGCNTL2		0x18
+#define SM5714_CHG_REG_BSTCNTL1		0x23
+#define  SM5714_CHG_BSTCNTL1_OTG_MASK	(GENMASK(7, 6) | GENMASK(3, 0))
+#define  SM5714_CHG_BSTCNTL1_5V1_900MA	0x46
 #define SM5714_CHG_REG_DEVICEID		0x50
 
 /* MUIC block (8-bit registers, at SM5714_MUIC_I2C_ADDR). */
@@ -107,15 +114,18 @@ struct sm5714_battery {
 	unsigned int typec_ma;
 	enum sm5714_charge_thermal_state thermal_state;
 	bool direct_charging;
+	bool otg_active;
 };
 
 static DEFINE_MUTEX(sm5714_global_lock);
 static struct sm5714_battery *sm5714_primary;
 
+static int sm5714_get_online_raw(struct sm5714_battery *sm);
 static int sm5714_get_online(struct sm5714_battery *sm);
 static int sm5714_get_temp(struct sm5714_battery *sm, int *val);
 int sm5714_battery_set_pd_contract(unsigned int mv, unsigned int ma);
 int sm5714_battery_set_direct_charge(bool active);
+int sm5714_battery_set_otg(bool active);
 
 static int sm5714_chg_update_bits(struct sm5714_battery *sm, u8 reg,
 				  u8 mask, u8 val)
@@ -219,6 +229,11 @@ static int sm5714_configure_charging(struct sm5714_battery *sm)
 	int ret;
 
 	mutex_lock(&sm->chg_lock);
+	if (READ_ONCE(sm->otg_active)) {
+		ret = -EBUSY;
+		goto out_unlock;
+	}
+
 	typec_mv = sm->typec_mv;
 	typec_ma = sm->typec_ma;
 	usb_type = sm5714_get_usb_type(sm);
@@ -401,6 +416,102 @@ out:
 EXPORT_SYMBOL_GPL(sm5714_battery_set_direct_charge);
 
 /*
+ * Feed VBUS while TCPM owns the source role.  Samsung's downstream charger
+ * driver uses mode 0x7 with a 5.1 V / 900 mA boost setting on this exact
+ * board.  Keep that conservative stock limit: it is sufficient for keyboards,
+ * storage and self-powered docks without inventing a larger board budget.
+ *
+ * Q4 must remain open while the boost drives the connector.  Conversely, do
+ * not enable the boost if an external source is already present, and restore
+ * the ordinary switching-charger mode before accepting a sink attachment.
+ */
+int sm5714_battery_set_otg(bool active)
+{
+	struct sm5714_battery *sm;
+	bool restore_charging = false;
+	int online;
+	int ret = 0;
+
+	mutex_lock(&sm5714_global_lock);
+	sm = sm5714_primary;
+	if (!sm) {
+		ret = -EPROBE_DEFER;
+		goto out_global;
+	}
+
+	if (active == READ_ONCE(sm->otg_active))
+		goto out_notify;
+
+	if (active) {
+		if (READ_ONCE(sm->direct_charging)) {
+			ret = -EBUSY;
+			goto out_global;
+		}
+
+		online = sm5714_get_online_raw(sm);
+		if (online < 0) {
+			ret = online;
+			goto out_global;
+		}
+		if (online) {
+			ret = -EBUSY;
+			goto out_global;
+		}
+
+		mutex_lock(&sm->chg_lock);
+		ret = sm5714_chg_update_bits(sm, SM5714_CHG_REG_CNTL1,
+					     SM5714_CHG_CNTL1_ENQ4FET, 0);
+		if (!ret)
+			ret = sm5714_chg_update_bits(
+				sm, SM5714_CHG_REG_BSTCNTL1,
+				SM5714_CHG_BSTCNTL1_OTG_MASK,
+				SM5714_CHG_BSTCNTL1_5V1_900MA);
+		if (!ret)
+			ret = sm5714_chg_update_bits(
+				sm, SM5714_CHG_REG_CNTL2,
+				SM5714_CHG_CNTL2_MODE_MASK,
+				SM5714_CHG_CNTL2_USB_OTG);
+		if (!ret)
+			WRITE_ONCE(sm->otg_active, true);
+		mutex_unlock(&sm->chg_lock);
+
+		if (!ret)
+			dev_info(sm->dev,
+				 "enabled USB OTG boost at 5.1 V / 900 mA\n");
+	} else {
+		mutex_lock(&sm->chg_lock);
+		ret = sm5714_chg_update_bits(
+			sm, SM5714_CHG_REG_CNTL2,
+			SM5714_CHG_CNTL2_MODE_MASK,
+			SM5714_CHG_CNTL2_CHARGING);
+		if (!ret)
+			WRITE_ONCE(sm->otg_active, false);
+		mutex_unlock(&sm->chg_lock);
+
+		if (!ret) {
+			restore_charging = sm5714_get_online_raw(sm) > 0;
+			dev_info(sm->dev, "disabled USB OTG boost\n");
+		}
+	}
+
+out_notify:
+	power_supply_changed(sm->psy_usb);
+	power_supply_changed(sm->psy_bat);
+out_global:
+	mutex_unlock(&sm5714_global_lock);
+
+	/*
+	 * configure_charging() takes chg_lock and consults the exported state;
+	 * run it after dropping the global lock used by TCPM callbacks.
+	 */
+	if (!ret && restore_charging)
+		ret = sm5714_configure_charging(sm);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(sm5714_battery_set_otg);
+
+/*
  * The fuel gauge exposes its measurements through an SRAM read window: point
  * RADDR at the word of interest, then read RDATA.
  */
@@ -528,7 +639,7 @@ static int sm5714_get_temp(struct sm5714_battery *sm, int *val)
 	return 0;
 }
 
-static int sm5714_get_online(struct sm5714_battery *sm)
+static int sm5714_get_online_raw(struct sm5714_battery *sm)
 {
 	int ret = i2c_smbus_read_byte_data(sm->chg, SM5714_CHG_REG_STATUS1);
 
@@ -538,9 +649,20 @@ static int sm5714_get_online(struct sm5714_battery *sm)
 	return !!(ret & SM5714_CHG_STATUS1_VBUS_POK);
 }
 
+static int sm5714_get_online(struct sm5714_battery *sm)
+{
+	if (READ_ONCE(sm->otg_active))
+		return 0;
+
+	return sm5714_get_online_raw(sm);
+}
+
 static int sm5714_get_status(struct sm5714_battery *sm)
 {
 	int st1, st2;
+
+	if (READ_ONCE(sm->otg_active))
+		return POWER_SUPPLY_STATUS_DISCHARGING;
 
 	st1 = i2c_smbus_read_byte_data(sm->chg, SM5714_CHG_REG_STATUS1);
 	if (st1 < 0)

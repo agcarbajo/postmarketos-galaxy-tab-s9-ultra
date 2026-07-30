@@ -37,6 +37,15 @@ also fixes two desktop-polish issues: a persisted
 rotation lock no longer needs to be toggled after login, and the SM5714 driver
 now restores the charging path that Samsung's shutdown sequence can leave
 disabled.
+v1.50 completes the first physically validated USB host path. A powered
+charge-through hub can keep supplying the tablet while the tablet acts as the
+USB data host: TCPM negotiates 9 V / 1.66 A, xHCI enumerates a real Logitech
+Lightspeed receiver, and the built-in Logitech DJ/HID++ drivers discover the
+paired PRO X SUPERLIGHT 2 DEX with relative axes, buttons and wheel. The device
+package also recreates xHCI after the platform suspend/resume used for cold-boot
+panel recovery; it does so only if the tablet was already the host, so PC/RNDIS
+device mode is left untouched. Passive/unpowered accessories, mass-storage
+classes and external DisplayPort still need physical validation.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -68,11 +77,11 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Microphones** | ✅ | DMICs through the VA macro, capture measured at −30.6 dBFS |
 | **System audio** | ✅ | Custom UCM profile → PulseAudio, all apps and desktop volume control |
 | **Battery** | ✅ | Charge level, voltage, current and temperature via the Silicon Mitus SM5714 |
-| **Charging status** | ✅ | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and stock 1.8 A / 2.1 A limits when needed, and notifies UPower within about one second. Recovery from an injected disabled state was measured on hardware |
-| **Fast charging (45 W charger)** | ✅ | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 enters PPS, the pump remains stable with a 2 s keepalive, and real hardware measured about 2.8 A net into the battery at 78–82% state of charge before normal CV tapering. Pack temperature remained about 35 °C. Peak 45 W at low state of charge has not yet been quantified |
+| **Charging status** | 🟡 | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and notifies UPower. v1.49 also negotiates a measured 9 V / 1.66 A PD contract through a powered hub. However, the user still observes intermittent charging indication and roughly five-hour estimates at low state of charge, both directly and through the hub; charging is therefore no longer considered fully polished |
+| **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
-| **USB** | 🟡 | Works as a secondary channel; Windows needs the composite driver forced (Code 43) |
-| **USB-C video out** | ❌ | Upstream `sm8550.dtsi` already has the DisplayPort controller (`mdss_dp0`) and v1.32 now supplies a real TCPM port; Type-C orientation switching and DP altmode integration are still missing |
+| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. v1.50 physically validates simultaneous powered-hub charging and USB host data: TCPM adopts DFP for a retained Source/UFP dock, negotiates 9 V / 1.66 A, and xHCI enumerates a Logitech `046d:c54d` Lightspeed receiver. Built-in DJ/HID++ discovers the paired `046d:40b8` mouse with relative axes/buttons/wheel and GNOME opens its event node. A host-only resume hook recovers xHCI after the board's automatic platform suspend. Physical cursor movement, passive accessories and USB storage still need final tests |
+| **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
 | **Keyboard cover (pogo pins)** | ❌ | Bridged by an STM32 microcontroller (`stm,stm32_pogo`) at I²C `0x2a`, exposing keypad and touchpad. No mainline driver |
@@ -88,13 +97,29 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 
 ## Current focus
 
-The next milestone is to finish the USB path. The tablet can expose a secondary
-USB channel, but Windows still frequently sees the X910 as
-`VID_0000&PID_0002` with a descriptor-request failure / Code 43 instead of a
-stable composite gadget. The next investigation will start from the already
-documented NXP PTN3222 eUSB2 repeater, DWC3 peripheral mode and EP0 descriptor
-evidence; it must not reintroduce general module autoloading or repeat the
-discarded reset/polarity experiments.
+The current milestone is broad physical validation of USB host classes and
+DisplayPort altmode. USB gadget/RNDIS works at High Speed when Windows uses the
+RNDIS driver rather than an ADB driver. v1.33–v1.45 implemented the SM5714
+DRP/OTG boost, stock CC/VCONN handling, QMP USB3/DP PHY, PS5169 retimer and
+GPIO89 OTG-detect pulse. The powered-hub test exposed three final issues:
+`HID_GENERIC` and the Logitech DJ/HID++ stack were still modules in a port
+without a module tree; the initial
+250 ms Type-C resync ran while TCPM was still in `PORT_RESET_WAIT_OFF`; and the
+dock retained the unusual but valid Source/UFP pairing across a tablet reboot.
+v1.46 makes generic HID built-in, v1.47 delays the one-shot resync to 1.5 s,
+v1.48 lets the SM5714 opt into adopting DFP for that retained dock, and v1.50
+makes the Logitech Lightspeed demultiplexer and HID++ driver built-in.
+
+On real hardware this produces a stable Sink/DFP Type-C partner, a 9 V /
+1.66 A PD contract, both xHCI root hubs, and a Logitech receiver whose paired
+PRO X SUPERLIGHT 2 DEX is exposed to GNOME with a complete relative-pointer
+event node. The platform suspend used to recover the panel then
+triggered an xHCI Host System Error (`HS-PHY not in L2`). v1.49 adds a narrowly
+scoped recovery: after that board-specific cycle, and after future real
+resumes, it recreates xHCI only if the current USB role is already `host`.
+Device/RNDIS mode is not changed. The next USB checks are physical cursor
+movement, an unpowered accessory, mass storage/UAS and then a DP-altmode
+display.
 
 Automatic brightness is deliberately parked rather than declared solved. SSC
 publishes both native STK31610 SUIDs and accepts Samsung's factory requests,
@@ -103,10 +128,13 @@ registry, polling/DRI, QUP-clock and panel-notification experiments were all
 measured and rolled back. Neither the Galaxy A52/A72 note nor Xiaomi Pad 6
 contains a compatible STK31610 implementation to transplant.
 
-Fast charging is now functional and reproducible in v1.32. The next USB work
-can build on a real TCPM/Type-C port instead of treating the connector as a
-fixed peripheral-only path; orientation switching, a stable gadget and DP
-altmode are still pending.
+Charging and USB data now share the same real TCPM/Type-C state rather than a
+fixed peripheral-only path. The powered hub proves that charging and host data
+can coexist, but it does not prove that low-battery fast charging is healthy:
+the user still sees intermittent charging state and slow estimates even with
+the official 45 W charger connected directly. That is the next independent
+power task after host peripherals; it must not be hidden by the successful
+9 V hub contract.
 
 v1.14 closes the earlier polish work. Mutter keeps the persisted user rotation
 lock separate from the anonymous panel-management inhibitor count, so a late

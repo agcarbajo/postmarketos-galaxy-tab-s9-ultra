@@ -61,7 +61,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.73 validada en vivo: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; los nodos aparecen y sus bloqueos actuales son proveedores kernel identificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v1.32: kernel r75, device r40, firmware r10, GNOME Control Center r2, Mutter r5, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; el resto crítico permanece built-in |
+| Paquetes pmaports | 🟡 v1.50 candidata: kernel r92, device r41, firmware r10, GNOME Control Center r2, Mutter r5, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v1.32 construida y validada**: `postmarketos-edge-gnome-mainline-v1.32-sm5440-direct-charge-sm-x910-twrp.zip`, SHA-256 `cc506b82c82c7a687c9edcb2d31ed40a80d888e538528db29d27e8f917843ca3`; boot `2a8e9c8b…`, vendor_boot `2f5322ad…`. La tablet corre el kernel v1.32 |
+| Imagen/paquete de prueba | 🟡 **v1.50 arrancada**: el hub alimentado conserva un contrato PD de 9 V / 1,66 A mientras xHCI enumera el Lightspeed; DJ/HID++ descubre el PRO X SUPERLIGHT 2 DEX con ejes/botones/rueda y GNOME abre su evento. Incluye la recuperación host-only de xHCI. ZIP `postmarketos-edge-gnome-mainline-v1.50-usb-lightspeed-sm-x910-twrp.zip`, SHA-256 `961ab5ae10fe4b063f37b2e972edda91d9da973fb4687e06f147de9f36a4d4d4`; falta confirmar movimiento físico y probar almacenamiento/DP |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -83,13 +83,40 @@ demostrarlo en este dispositivo.
 
 ## Reto en curso
 
-**Actualización sesión 110:** el brillo automático queda aparcado tras acotar
-el fallo al driver STK31610 dentro del DSP. El reto activo pasa a ser terminar
-USB: Windows todavía puede enumerar la X910 como `VID_0000&PID_0002` con fallo
-de descriptor / Code 43 en vez del gadget compuesto estable. v1.32 deja ya una
-base Type-C real: el SM5714 USB-PD registra TCPM, descubre PDO/APDO y mantiene
-un contrato PPS. El siguiente trabajo USB debe reutilizar ese puerto para
-orientación, gadget estable y posteriormente DP altmode.
+**Actualización sesión 114:** el camino USB host con hub alimentado ya llega
+hasta el ratón Lightspeed real. La tablet se mantiene Sink/DFP, negocia 9 V /
+1,66 A, enumera `046d:c54d` y DJ/HID++ descubre `046d:40b8` con ejes
+relativos, botones y rueda. El penúltimo fallo era el
+`xHCI Host System Error` provocado por el mismo `pm_test=platform` que repara
+el panel; v1.49 recrea el host después del ciclo y de futuros resumes, solo si
+el rol ya era `host`. v1.50 integra además DJ/HID++ porque el receptor
+Lightspeed no transmite el ratón emparejado mediante `hid-generic`. El reto
+inmediato es validar el movimiento físico del
+cursor, un periférico pasivo y almacenamiento/UAS, y después una pantalla
+DP-altmode. A continuación se reabrirá la carga: pese al contrato PD medido,
+la usuaria observa estado intermitente y unas cinco horas estimadas al 10 %
+incluso con el cargador oficial conectado directamente.
+
+**Actualización sesiones 111–113:** USB gadget/RNDIS funciona a High Speed cuando
+Windows usa el driver RNDIS y no el ADB. v1.33 añade DRP/host, boost OTG
+SM5714 a 5,1 V/900 mA y drivers built-in para almacenamiento, UAS, Ethernet y
+audio USB. v1.34 habilita QMP USB3/DP, SBU y PS5169 (`69:87` medido), pero una
+cadena DRM transparente sin terminador difirió `mdss_dp0` y bloqueó también el
+DSI interno. v1.35 repitió el bloqueo. El journal recuperado de v1.36 corrigió
+el diagnóstico inicial: sí llegó a userspace y a Wi-Fi, pero GNOME no encontró
+ninguna GPU con salida por la cadena DRM rota. v1.37 elimina ese bridge y
+permite que el bridge nativo MSM DP continúe cuando solo falta la cola DRM
+opcional de USB-C; DPU enlaza DSI+DP y GNOME vuelve a arrancar. v1.38 restaura
+`CC_CNTL3=0x80` al salir de `OPEN`, tal como hace Samsung. v1.39 resuelve la
+carrera de attach inicial con una resincronización diferida de TCPM: se han
+medido `CC_STATUS=0x31`, `port0-partner`, `orientation=reverse`, sink/device y
+gadget configurado. v1.40–v1.44 estabilizan el rol source/host con un dongle
+pasivo: VCONN y boost 5,1 V/900 mA permanecen encendidos y xHCI conserva sus
+dos root hubs. El receptor no enumera y el PTN3222 queda en host
+`Connect Detect` (`0f=0e`, `10=01`), por lo que falta el evento eléctrico
+downstream. v1.45 reproduce el pulso stock `usbpd,otg_det` de GPIO89 durante
+130 ms; queda pendiente validarlo tras un unplug/replug físico. Después se
+medirán dongles alimentados y finalmente DP altmode con una pantalla real.
 
 ✅ Los hitos de arranque, microSD, Wi-Fi/SSH, táctil, escritorio, DRM/DSI,
 Turnip y ahora el controlador Bluetooth están cumplidos sobre Linux mainline
@@ -1579,7 +1606,63 @@ lado del workspace.
 - El X910 no expone un sensor proximity: el SSC devuelve UNKNOWN y sus JSON
   stock solo configuran el hijo `ambient_light`.
 
+## USB host con hub alimentado
+
+- Un hub USB-C con alimentación pasante puede conservar su rol PD
+  **Source/UFP** mientras la tablet se reinicia: suministra energía, pero en el
+  plano de datos sigue siendo el periférico. Si la X910 vuelve como Sink/UFP,
+  ambos extremos reclaman UFP y TCPM entra en `Data role mismatch`. El SM5714
+  activa de forma explícita la adopción de DFP únicamente para este primer
+  mensaje retenido; no se fuerza host por el mero hecho de estar cargando.
+- La resincronización inicial de CC/VBUS debe ocurrir después del
+  `PORT_RESET_WAIT_OFF` de TCPM. A 250 ms se consumía dentro del reset de
+  aproximadamente 1,02 s y se perdía el attach previo al registro del IRQ.
+  Una única resincronización a 1.500 ms recupera el partner sin crear un bucle
+  de sondeo.
+- Este port no instala el árbol genérico de módulos. `usbhid` enlazado a las
+  interfaces no basta: `CONFIG_HID_GENERIC=y` crea los nodos base. En un
+  receptor Logitech Lightspeed tampoco basta el genérico: el ID `046d:c54d`
+  está en la tabla de `hid-logitech-dj` y necesita DJ + HID++ para demultiplexar
+  el dispositivo emparejado. v1.50 los integra y descubre el PRO X SUPERLIGHT
+  2 DEX `046d:40b8` con `REL_X/REL_Y`, botones y rueda.
+- El ciclo `pm_test=platform` que recupera el panel provoca en DWC3 host
+  `HS-PHY not in L2` seguido de `xHCI Host System Error`. El role-switch local
+  `host → device → host` vuelve a registrar xHCI y reenumera el receptor. v1.49
+  automatiza exactamente eso al terminar la recuperación fría y tras futuros
+  resumes, pero solo si el rol local ya era `host`; RNDIS/device no se toca.
+- Con el hub alimentado se midió simultáneamente Sink/DFP, contrato PD de
+  9 V / 1,66 A, xHCI vivo y los inputs HID. Esto valida la coexistencia de
+  alimentación y datos host, no la estabilidad de carga rápida a batería baja.
+  Siguen pendientes accesorios pasivos, almacenamiento/UAS y DP-altmode.
+
 ## Lo que no ha funcionado / no repetir
+
+- No volver a forzar `CC_CNTL1=0x49/0x59` y `CC_CNTL3=0x81` después de una
+  conexión source/host natural. La traza v1.43 demostró que esa escritura
+  genera un `DETACH` inmediato. En DRP natural hay que conservar `0x40/0x80`
+  y modificar únicamente la selección Rp.
+- No considerar host USB resuelto porque TCPM publique un rol y xHCI cree sus
+  root hubs. v1.44 cumplía eso, pero el PTN3222 seguía en `Connect Detect`.
+  La prueba válida llegó en v1.48/v1.49: enumeración downstream y dispositivos
+  `event*`/`hidraw*` reales después del ciclo de plataforma.
+- No omitir el pulso stock `usbpd,otg_det` de GPIO89 al entrar en source. El
+  kernel Samsung lo mantiene alto 130 ms antes/en paralelo al boost; v1.45 lo
+  reproduce como GPIO opcional.
+- No dejar `CONFIG_HID_GENERIC=m` ni aceptar que `usbhid` enlazado equivale a
+  un ratón funcional: sin el módulo genérico no aparecen inputs en este port.
+- Para Lightspeed `046d:c54d`, tampoco detenerse cuando `hid-generic` crea
+  ratón/teclado genéricos del receptor: los reportes del dispositivo emparejado
+  están multiplexados. `HID_LOGITECH`, `HID_LOGITECH_DJ`,
+  `HID_LOGITECH_HIDPP` y su dependencia `LEDS_CLASS_MULTICOLOR` deben ser
+  built-in. La prueba válida es el hijo HID++ `046d:40b8`.
+- No volver a programar la resincronización CC a 250 ms. La traza de v1.47
+  demuestra que TCPM sigue entonces dentro de `PORT_RESET_WAIT_OFF`.
+- No interpretar Source/UFP de un hub alimentado como un paquete PD inválido:
+  describe un dock que alimenta a la tablet pero es periférico de datos. La
+  solución es adoptar DFP en la tablet de forma opt-in, no resetear PD.
+- No alternar roles después de cada resume si el rol actual es `device`: eso
+  cortaría RNDIS/SSH hacia un PC. La recuperación de xHCI de v1.49 está
+  condicionada a que el role-switch ya diga `host`.
 
 - No gestionar `vreg_l1b_1p8`/`vreg_l16b_3p0` desde PAS como primer arreglo
   del ALS. La prueba v1.10 reprodujo el ciclo downstream y dejó ambos raíles

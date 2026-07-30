@@ -119,6 +119,21 @@ elif ! grep -q 'mode_config.max_width = 16384' \
 	echo 'separate GPU framebuffer bounds missing; refusing to build' >&2
 	exit 1
 fi
+# The USB-C connector beyond the QMP/PS5169 path is not a DRM bridge.  External
+# DP remains usable through msm_dp's own connector operations; do not let the
+# unresolved optional tail defer the complete MSM component master (and DSI).
+if ! grep -q 'ret != -ENODEV && ret != -EPROBE_DEFER' \
+	"$kernel_tree/drivers/gpu/drm/msm/dp/dp_display.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/msm-dp-allow-unresolved-usbc-bridge.patch"
+fi
+# A powered charge-through dock can retain Source/UFP while the tablet reboots.
+# Let the SM5714 opt in to adopting DFP rather than looping in error recovery.
+if ! grep -q 'adopt_retained_source_ufp' \
+	"$kernel_tree/include/linux/usb/tcpm.h"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/tcpm-adopt-retained-source-ufp-role.patch"
+fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then
 	sed -i '/sm8550-samsung-gts9uwifi\.dtb/a DTC_FLAGS_sm8550-samsung-gts9uwifi := -@' \
@@ -203,6 +218,28 @@ fi
 if ! grep -q 'sm5714_usbpd.o' "$tcpm_dir/Makefile"; then
 	printf 'obj-$(CONFIG_TYPEC_SM5714)\t+= sm5714_usbpd.o\n' \
 		>> "$tcpm_dir/Makefile"
+fi
+
+# Parade PS5169 Type-C SuperSpeed/DisplayPort redriver.  Its register
+# programming is taken from Samsung's GPL source, while policy and chaining use
+# the mainline orientation-switch/retimer graph.
+typec_mux_dir="$kernel_tree/drivers/usb/typec/mux"
+install -m 0644 "$package/ps5169.c" "$typec_mux_dir/ps5169.c"
+if ! grep -q 'TYPEC_MUX_PS5169' "$typec_mux_dir/Kconfig"; then
+	cat >> "$typec_mux_dir/Kconfig" <<'EOF'
+
+config TYPEC_MUX_PS5169
+	tristate "Parade PS5169 Type-C redriver"
+	depends on I2C
+	depends on TYPEC
+	depends on USB_ROLE_SWITCH
+	help
+	  USB 3.x and DisplayPort lane redriver used by the SM-X910.
+EOF
+fi
+if ! grep -q 'ps5169.o' "$typec_mux_dir/Makefile"; then
+	printf 'obj-$(CONFIG_TYPEC_MUX_PS5169)\t+= ps5169.o\n' \
+		>> "$typec_mux_dir/Makefile"
 fi
 
 cp "$base/pmaports/device/main/linux-postmarketos-mainline/config-mainline.aarch64" \
