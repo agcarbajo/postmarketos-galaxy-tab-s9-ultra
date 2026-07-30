@@ -68,7 +68,9 @@ without its PD input (`USB_COMM=false`), which remains a limitation of that
 dock rather than of the tablet. Device package r44 now pulls in
 `linux-firmware-rtl_nic`; after a live driver rebind `ethtool -i` reports
 `rtl8153a-3 v2 02/07/20`, although Ethernet traffic still needs a cable test.
-Mass storage and external DisplayPort remain to be tested.
+A 16 GB USB 2.0 flash drive also enumerates through the passive hub, is
+automounted as FAT32 and sustains a 128 MiB direct read at 20.4 MB/s without
+errors. UAS and external DisplayPort remain to be tested.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -107,7 +109,7 @@ also updating its matching modules on the microSD.
 | **Charging status** | 🟡 | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and notifies UPower. v1.49 also negotiates a measured 9 V / 1.66 A PD contract through a powered hub. However, the user still observes intermittent charging indication and roughly five-hour estimates at low state of charge, both directly and through the hub; charging is therefore no longer considered fully polished |
 | **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
-| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. Powered host mode is validated at 9 V / 1.66 A with a Logitech Lightspeed receiver. v1.60 also validates a genuinely bus-powered hub at 5.1 V / 900 mA: the SM5714 MUIC routes D-/D+ before OTG VBUS, TCPM retains Source/Host, and Genesys `05e3:0610`, RTL8153 `0bda:8153` and Logitech `046d:c54d` enumerate from cold boot and after xHCI recovery. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse; GNOME keeps autorotation managed. Device r44 includes `linux-firmware-rtl_nic`; after installing it live and rebinding r8152, `ethtool -i` reports firmware `rtl8153a-3 v2 02/07/20`, but Ethernet traffic is still unverified because no cable was attached. The original charge-through dock still disables data when its own PD input is absent (`USB_COMM=false`). USB storage still needs testing |
+| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. Powered host mode is validated at 9 V / 1.66 A with a Logitech Lightspeed receiver. v1.60 also validates a genuinely bus-powered hub at 5.1 V / 900 mA: the SM5714 MUIC routes D-/D+ before OTG VBUS, TCPM retains Source/Host, and Genesys `05e3:0610`, RTL8153 `0bda:8153` and Logitech `046d:c54d` enumerate from cold boot and after xHCI recovery. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse; GNOME keeps autorotation managed. A USB 2.0 flash drive enumerates through the same passive hub, GNOME automounts its FAT32 partition, and a 128 MiB direct read completes at 20.4 MB/s without errors. Device r44 includes `linux-firmware-rtl_nic`; after installing it live and rebinding r8152, `ethtool -i` reports firmware `rtl8153a-3 v2 02/07/20`, but Ethernet traffic is still unverified because no cable was attached. The original charge-through dock still disables data when its own PD input is absent (`USB_COMM=false`). UAS remains untested because the available flash drive only advertises classic `usb-storage` |
 | **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
@@ -185,8 +187,9 @@ panel-recovery HSE. PTN3222 measures `DEVICE_STATUS=0x0a`,
 `linux-firmware-rtl_nic`; installing it on the running tablet and rebinding
 r8152 makes `ethtool -i` report `rtl8153a-3 v2 02/07/20`. `eth0` remains
 `NO-CARRIER`, as expected with no Ethernet cable, so link and traffic are not
-yet claimed. The next USB checks are mass-storage/UAS and then a DP-altmode
-display.
+yet claimed. Classic USB mass storage is now validated with a FAT32 flash
+drive and a 128 MiB direct read at 20.4 MB/s. The next USB checks are UAS with
+a capable SSD and then a DP-altmode display.
 
 GNOME's former rotation regression was independent from USB. Its fallback
 touch-mode heuristic stopped managing panel orientation whenever any pointer

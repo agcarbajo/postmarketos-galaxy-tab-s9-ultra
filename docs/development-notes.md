@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v1.60 validada**: conserva el hub alimentado de v1.55 y añade host pasivo real. La tablet alimenta un hub Genesys a 5,1 V/900 mA y enumera RTL8153 + Logitech desde arranque y tras la recuperación xHCI, sin perder Wi-Fi ni autorrotación. Device r44 incluye el firmware RTL8153; faltan enlace Ethernet, almacenamiento y DP |
+| Imagen/paquete de prueba | ✅ **v1.60 validada**: conserva el hub alimentado de v1.55 y añade host pasivo real. La tablet alimenta un hub Genesys a 5,1 V/900 mA y enumera RTL8153 + Logitech desde arranque y tras la recuperación xHCI, sin perder Wi-Fi ni autorrotación. Un pendrive USB 2.0/FAT32 automonta y lee 128 MiB a 20,4 MB/s sin errores. Device r44 incluye el firmware RTL8153; faltan enlace Ethernet, UAS y DP |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -95,9 +95,12 @@ cable.
 La build limpia también queda reparada: kernel r103 corrige los contadores
 malformados de `ignore-console-null.patch`, y device r44 crea
 `multi-user.target.wants/` antes de su primer enlace. Ambos paquetes se
-construyen de principio a fin. El reto inmediato es validar almacenamiento/UAS
-y una pantalla DP-altmode; después se reabre la carga a batería baja, que el
-contrato PD del hub no valida.
+construyen de principio a fin. El almacenamiento masivo clásico queda validado:
+un pendrive USB 2.0 crea su disco SCSI, GNOME automonta FAT32 y una lectura
+directa de 128 MiB termina a 20,4 MB/s sin errores. UAS sigue pendiente porque
+esa unidad solo anuncia `usb-storage`. El reto inmediato es una pantalla
+DP-altmode y, si aparece un SSD compatible, UAS; después se reabre la carga a
+batería baja, que el contrato PD del hub no valida.
 
 **Actualización sesiones 111–113:** USB gadget/RNDIS funciona a High Speed cuando
 Windows usa el driver RNDIS y no el ADB. v1.33 añade DRP/host, boost OTG
@@ -2021,6 +2024,11 @@ lado del workspace.
   contenido, pero `abuild` lo rechazó como parche malformado. Kernel r103
   corrige únicamente los contadores/metadatos del parche; el código resultante
   no cambia.
+- El almacenamiento USB 2.0 clásico funciona a través del hub pasivo:
+  `usb-storage` crea un disco SCSI removible de 14,6 GiB, GNOME automonta su
+  partición FAT32 y una lectura directa de 128 MiB alcanza 20,4 MB/s sin
+  errores. No declarar UAS validado: la unidad `346d:5678` no ofrece una
+  interfaz UAS.
 
 ## Referencias locales
 

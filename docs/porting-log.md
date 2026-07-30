@@ -6266,3 +6266,33 @@ La validación final terminó con `BUILD_EXIT=0`:
 No se escribió ninguna partición en esta sesión. La tablet siguió ejecutando
 v1.60, con hub pasivo, RTL8153 y receptor Logitech presentes, rol USB host,
 acelerómetro disponible y orientación administrada.
+
+## Sesión 118 — almacenamiento USB 2.0 validado
+
+Se conectó un pendrive USB 2.0 real al hub pasivo, sin alimentación externa.
+La topología mantuvo simultáneamente el hub Genesys, el RTL8153 y el receptor
+Logitech. El nuevo dispositivo `346d:5678` se enlazó mediante
+`usb-storage`, creó un disco SCSI removible de 14,6 GiB y una partición FAT32.
+GNOME la automontó en la sesión de `phablet`; la usuaria confirmó que la unidad
+parecía funcionar desde la interfaz.
+
+La validación no destructiva fue:
+
+```text
+usb-storage 1-1.3:1.0: USB Mass Storage device detected
+scsi host1: usb-storage 1-1.3:1.0
+sd 1:0:0:0: [sdg] Attached SCSI removable disk
+32+0 records in
+32+0 records out
+134217728 bytes copied, 6.277328 seconds, 20.4MB/s
+```
+
+Se leyeron directamente 128 MiB desde el disco hacia `/dev/null`; no hubo
+errores de E/S ni se escribió en la unidad. El automontaje de GNOME ya existía
+al comenzar la prueba y estaba en modo lectura/escritura, pero el procedimiento
+de validación solo realizó sondeos de metadatos y lecturas.
+
+Esto valida almacenamiento masivo USB clásico sobre el hub alimentado por la
+tablet. No valida UAS: el pendrive solo anuncia una interfaz
+`usb-storage`. El driver UAS sí está built-in, pero hace falta un SSD/carcasa
+que ofrezca ese protocolo para medirlo.
