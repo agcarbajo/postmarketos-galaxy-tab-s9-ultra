@@ -5938,3 +5938,127 @@ Artefacto final:
   `02abad11624b8984430a0e7196ea03706768ee62cb7082ea81f72b64baa364e1`;
 - `vendor_boot.img`
   `ea3f4d185b1e5a219f0a54f04acbec81fdf0ae85b395c2c9e1bb2fca551098de`.
+
+## Sesión 115 — v1.51–v1.55: PR_SWAP estable, ratón repetible y rotación con puntero
+
+### El ratón era funcional, pero conectarlo desactivaba la orientación
+
+La usuaria confirmó movimiento real del cursor, no solo nodos de input. El
+hub alimentado mantenía a la tablet como Sink/DFP y el Logitech Lightspeed
+funcionaba, pero GNOME ocultaba el control de rotación y dejaba de girar al
+conectar el ratón.
+
+La regla udev específica del hijo HID++ corrigió su clasificación engañosa
+como teclado integrado, pero no la política final. Mutter usa como fallback
+`clutter_seat_get_touch_mode()`: cualquier puntero hace que una slate sin
+switch de modo deje de considerarse tablet. El paquete específico de la X910
+sube Mutter a r6 y mantiene `PanelOrientationManaged` siempre que existan el
+acelerómetro y el panel integrado. Con el mouse presente se midieron
+simultáneamente:
+
+```text
+HasAccelerometer = true
+PanelOrientationManaged = true
+```
+
+El instalador persistente de la microSD conservaba todavía los APK r5 y
+degradaba r6 después de cada reinicio. Se actualizaron tanto los cuatro APK
+del overlay como `/usr/libexec/gts9uwifi-install-sensor-packages`; r6 permanece
+instalado tras boot.
+
+### PR_SWAP Source→Sink sin perder el dock
+
+Al enchufar el cargador a un hub que la tablet ya alimentaba, el primer driver
+abría brevemente ambos CC al cambiar de Source a Sink. El dock desaparecía
+antes de completar el intercambio. La comparación con el driver Samsung dio
+la secuencia exacta:
+
+1. congelar el estado detectado en `CC_CNTL3`;
+2. cambiar el pull in-place con el bit 0 de `CC_CNTL7`;
+3. liberar el hold al recibir `PS_RDY`.
+
+v1.53 implementa esa secuencia solo cuando el paquete PD recibido es
+`PR_SWAP`, sin reutilizar el estado CC bruto como heurístico. Tres ciclos
+físicos de desconectar y reconectar el hub con el cargador mantenido
+recuperaron 9 V/1,66 A y el receptor al primer intento. Una transición posterior
+desde hub sin alimentar a alimentado volvió a enumerar el receptor en unos
+1,2 segundos.
+
+### El dock probado no transmite datos alimentado por bus
+
+Sin cargador, la ruta de la tablet sí llega a su estado esperado:
+
+```text
+power_role = source
+data_role = host
+SM5714 boost = 5.1 V / 900 mA
+PTN3222 DEVICE_STATUS = 0x0e
+PTN3222 LINK_STATUS = 0x01
+```
+
+Sin embargo, el RDO del partner declara `USB_COMM=false` y nunca aparece el
+pull-up downstream. Solo enumeran los root hubs xHCI; no aparecen ni el
+controlador del hub ni el receptor. Esto ya no es una ausencia de VBUS, un rol
+TCPM erróneo ni una carrera de GPIO89.
+
+Al retirar el cargador en caliente, el dock deja de enviar su `PS_RDY`. v1.54
+probó una extensión opt-in a TCPM que completaba localmente el PR_SWAP
+Sink→Source al medir VSAFE0V. La transición bajó del timeout de 920 ms a unos
+20 ms, pero el dock siguió sin presentar datos y TCPM necesitó hard-reset y
+varios Source_Capabilities porque el partner ya se había apagado. Al no aportar
+funcionalidad y saltarse una fase normativa, el experimento se eliminó de
+v1.55. Queda pendiente probar un adaptador OTG pasivo o un hub distinto que se
+sepa que soporta datos sin alimentación externa.
+
+### Build limpia: dos trampas reproducibles encontradas
+
+El primer intento de v1.55 se descartó antes de flashear: aunque se había
+retirado el parche v1.54 de las fuentes, el worktree conservaba la modificación
+aplicada. Se eliminó el worktree y el `O=` completo. El nuevo build demostró
+otra dependencia que los objetos antiguos ocultaban: un `M=` aislado no puede
+enlazar `.ko` en un árbol limpio hasta ejecutar `modules_prepare`, porque falta
+`scripts/module.lds`. `build-mainline-kernel.sh` lo hace ahora explícitamente y
+usa la ruta absoluta del subárbol ath12k.
+
+La primera escritura de `boot` v1.55 arrancó escritorio, táctil y resto del
+hardware, pero no Wi-Fi. El journal recuperado desde TWRP dio la causa exacta:
+
+```text
+Lockdown: unsigned module loading is restricted
+Failed to insert module 'ath12k_wifi7': Operation not permitted
+```
+
+Al regenerar un `O=` limpio también se había generado una nueva clave de firma.
+Se actualizó `boot`, pero la microSD conservaba los módulos firmados por la
+clave anterior. En TWRP se montó `mmcblk1p2`, se guardó una copia persistente
+del directorio anterior y se instalaron los dos módulos producidos por la misma
+build v1.55. Sus hashes se verificaron antes de reiniciar:
+
+- `ath12k.ko.zst`:
+  `5eb4e012bb876638fe46b40e6c7b1b48799be644adf9e9b9b5a3caeed2615eb7`;
+- `ath12k_wifi7.ko.zst`:
+  `db18ca706e59eb89ae907ceaba6c0d04c4c1f13bdc00e25cfaa16f1abf2a0ee9`.
+
+El siguiente arranque cargó ambos módulos, creó `wlan0`, NetworkManager volvió
+a `connected` y SSH reapareció. Esto fija una regla nueva: con kernel lockdown,
+una iteración desde build limpio no puede actualizar solo `boot`; debe aplicar
+también los módulos del mismo bundle. El ZIP ya cumple esa propiedad porque
+lleva ambos en su overlay.
+
+### Artefacto v1.55
+
+- kernel r97, device r42, firmware r10, Mutter r6;
+- `Image.gz`:
+  `3fc2e92508f7d36669b77c87b2d5634419d2392e6516cafef9d29aa1aac949c2`;
+- `boot.img`:
+  `031df649c81e1f71804dad47d0e2347fffaeecdbae0f6dded2fefb8264cee039`;
+- `vendor_boot.img`:
+  `07e1df2960729ad5fd09cb8eef711d94e3e25ccaf50dc616d7cbc70e274a7498`;
+- ZIP
+  `postmarketos-edge-gnome-mainline-v1.55-usb-host-rotation-stable-sm-x910-twrp.zip`,
+  61.995.173 bytes, SHA-256
+  `365b98801c71ddb9954bf24d629aa9d21a36d78b22c8becb287cdca13e12e806`.
+
+La validación final de la tablet arrancada confirma kernel `#1`, Wi-Fi/SSH,
+display manager, SensorProxy y Mutter r6. Quedan para hardware distinto:
+host pasivo, almacenamiento/UAS y DisplayPort altmode.

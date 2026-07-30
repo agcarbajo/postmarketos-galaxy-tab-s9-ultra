@@ -37,15 +37,26 @@ also fixes two desktop-polish issues: a persisted
 rotation lock no longer needs to be toggled after login, and the SM5714 driver
 now restores the charging path that Samsung's shutdown sequence can leave
 disabled.
-v1.50 completes the first physically validated USB host path. A powered
+v1.55 completes the first physically validated USB host path. A powered
 charge-through hub can keep supplying the tablet while the tablet acts as the
 USB data host: TCPM negotiates 9 V / 1.66 A, xHCI enumerates a real Logitech
 Lightspeed receiver, and the built-in Logitech DJ/HID++ drivers discover the
-paired PRO X SUPERLIGHT 2 DEX with relative axes, buttons and wheel. The device
+paired PRO X SUPERLIGHT 2 DEX with a working cursor, buttons and wheel. Three
+powered disconnect/reconnect cycles and a later power-role transition all
+enumerated it on the first attempt. The device
 package also recreates xHCI after the platform suspend/resume used for cold-boot
 panel recovery; it does so only if the tablet was already the host, so PC/RNDIS
-device mode is left untouched. Passive/unpowered accessories, mass-storage
-classes and external DisplayPort still need physical validation.
+device mode is left untouched. Mutter r6 keeps autorotation and its control
+available when an external pointer is connected.
+
+The tested charge-through dock does not expose USB data when its PD input is
+unpowered: the tablet correctly becomes Source/Host and supplies 5.1 V / 900 mA,
+but the dock itself reports `USB_COMM=false` and its USB2 repeater never sees a
+downstream pull-up. This is a measured limitation of that dock, not a failure
+of the tablet's Type-C role or VBUS path. A simple passive OTG adapter or another
+hub known to support bus-powered data is still needed to validate generic
+unpowered peripherals. Mass storage and external DisplayPort also remain to be
+tested.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -58,6 +69,10 @@ measured acoustically.
 
 The system installs on microSD and boots from `boot`/`vendor_boot` on the
 internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
+Kernel lockdown is active, so `boot` and the two isolated ath12k modules are a
+signed set. The ZIP installs them together; when iterating directly through
+UFS, a kernel rebuilt from a clean output tree must never be written without
+also updating its matching modules on the microSD.
 
 ## Hardware support
 
@@ -80,7 +95,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Charging status** | 🟡 | v1.14 classifies SDP/CDP/DCP through the SM5714 MUIC, restores Samsung's Q4 charging path and notifies UPower. v1.49 also negotiates a measured 9 V / 1.66 A PD contract through a powered hub. However, the user still observes intermittent charging indication and roughly five-hour estimates at low state of charge, both directly and through the hub; charging is therefore no longer considered fully polished |
 | **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
-| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. v1.50 physically validates simultaneous powered-hub charging and USB host data: TCPM adopts DFP for a retained Source/UFP dock, negotiates 9 V / 1.66 A, and xHCI enumerates a Logitech `046d:c54d` Lightspeed receiver. Built-in DJ/HID++ discovers the paired `046d:40b8` mouse with relative axes/buttons/wheel and GNOME opens its event node. A host-only resume hook recovers xHCI after the board's automatic platform suspend. Physical cursor movement, passive accessories and USB storage still need final tests |
+| **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. v1.55 consolidates the powered-hub path physically validated on its v1.53 base: TCPM keeps DFP while changing power role, negotiates 9 V / 1.66 A, and xHCI enumerated the Logitech `046d:c54d` Lightspeed receiver on the first attempt across three reconnect cycles. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse and its cursor works in GNOME. A host-only resume hook recovers xHCI after the board's automatic platform suspend. The tested dock deliberately disables USB data without PD input (`USB_COMM=false`); a passive OTG adapter or another bus-powered hub is required to validate generic unpowered host mode. USB storage still needs testing |
 | **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
@@ -89,7 +104,7 @@ internal UFS. TWRP, Download Mode and Odin remain recoverable at all times.
 | **Vibration motor / haptics** | ❌ | Hardware exists but has not been identified or brought up yet |
 | **Camera flash / torch** | ❌ | `qcom,pm8350c-flash-led` on the PMIC. Mainline has `leds-qcom-flash` (`qcom,spmi-flash-led`) for this family |
 | **Cameras** | ❌ | Not started |
-| **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix; Mutter r5 keeps a persisted orientation lock independent from late panel/sensor inhibitors |
+| **Motion and orientation sensors** | ✅ | Qualcomm SSC on the ADSP exposes the LSM6DSO accelerometer/gyroscope and AK0991x magnetometer/compass. GNOME autorotation is physically verified with the X910 mount matrix; Mutter r5 keeps a persisted orientation lock independent from late panel/sensor inhibitors, and device-scoped Mutter r6 keeps panel orientation managed when a USB mouse is attached |
 | **Proximity sensor** | — | The stock X910 SSC configuration does not instantiate a proximity child; `ssccli` reports it unavailable |
 | **Automatic brightness** | ❌ | SSC discovers both Sensortek STK31610 instances, but neither emits a lux sample. Standard streaming modes, native registry data, Samsung's physical/DHR/register tests, sensor rails, QUP hub clocks and Samsung panel-state notifications have all been measured without success. The remaining boundary is inside the DSP's STK bus transaction, for which mainline currently exposes no diagnostic trace |
 | **Speaker protection** | ❌ | Cirrus DSP firmware is not loaded, which is why hardware volume is kept conservative |
@@ -108,18 +123,41 @@ without a module tree; the initial
 dock retained the unusual but valid Source/UFP pairing across a tablet reboot.
 v1.46 makes generic HID built-in, v1.47 delays the one-shot resync to 1.5 s,
 v1.48 lets the SM5714 opt into adopting DFP for that retained dock, and v1.50
-makes the Logitech Lightspeed demultiplexer and HID++ driver built-in.
+makes the Logitech Lightspeed demultiplexer and HID++ driver built-in. v1.53
+adds Samsung's in-place CC hold/toggle sequence for a Source-to-Sink PR_SWAP;
+the powered dock can take over VBUS without electrically detaching its USB
+data path.
 
 On real hardware this produces a stable Sink/DFP Type-C partner, a 9 V /
 1.66 A PD contract, both xHCI root hubs, and a Logitech receiver whose paired
 PRO X SUPERLIGHT 2 DEX is exposed to GNOME with a complete relative-pointer
-event node. The platform suspend used to recover the panel then
+event node, and physical cursor movement is confirmed. The platform suspend
+used to recover the panel then
 triggered an xHCI Host System Error (`HS-PHY not in L2`). v1.49 adds a narrowly
 scoped recovery: after that board-specific cycle, and after future real
 resumes, it recreates xHCI only if the current USB role is already `host`.
-Device/RNDIS mode is not changed. The next USB checks are physical cursor
-movement, an unpowered accessory, mass storage/UAS and then a DP-altmode
-display.
+Device/RNDIS mode is not changed.
+
+Powered hotplug is now repeatable: three full detach/attach cycles all restored
+the 9 V / 1.66 A contract and receiver on the first try. Removing and adding
+the charger also preserves the tablet's DFP data role; adding power brings the
+receiver back in about one second. The same dock cannot be used to prove
+unpowered USB data, however: when bus-powered it explicitly advertises
+`USB_COMM=false` and PTN3222 remains at `DEVICE_STATUS=0x0e`,
+`LINK_STATUS=0x01` (host/Connect Detect, no downstream pull-up), even though
+the X910 is correctly Source/Host at 5.1 V / 900 mA. An experimental TCPM
+shortcut that completed Sink-to-Source PR_SWAP at VSAFE0V without the dock's
+missing `PS_RDY` reduced the transition to 20 ms but did not change that
+electrical result, so it was removed from the stable v1.55. The next checks
+need different hardware: a passive OTG adapter or known bus-powered hub,
+mass-storage/UAS and then a DP-altmode display.
+
+GNOME's former rotation regression was independent from USB. Its fallback
+touch-mode heuristic stopped managing panel orientation whenever any pointer
+appeared. The X910-specific Mutter r6 treats this fixed slate as orientation
+managed whenever its accelerometer and built-in panel exist. With the Logitech
+mouse attached, both `HasAccelerometer` and `PanelOrientationManaged` remain
+true and the rotation control stays available.
 
 Automatic brightness is deliberately parked rather than declared solved. SSC
 publishes both native STK31610 SUIDs and accepts Samsung's factory requests,

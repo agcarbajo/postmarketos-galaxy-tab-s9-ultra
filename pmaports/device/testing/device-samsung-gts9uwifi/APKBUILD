@@ -3,7 +3,7 @@ maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
 pkgname=device-samsung-gts9uwifi
 pkgdesc="Samsung Galaxy Tab S9 Ultra Wi-Fi"
 pkgver=1
-pkgrel=41
+pkgrel=42
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -25,7 +25,7 @@ depends="
 	linux-samsung-gts9uwifi-mainline
 	lsblk
 	mkbootimg
-	mutter=999950.2-r5
+	mutter=999950.2-r6
 	partx
 	pd-mapper
 	postmarketos-base
@@ -40,6 +40,7 @@ source="
 	20-gts9uwifi-display.conf
 	20-gts9uwifi-panel-reinit.conf
 	61-gts9uwifi-sensor-mount-matrix.rules
+	99-gts9uwifi-logitech-lightspeed.rules
 	deviceinfo
 	gts9uwifi-display-handoff
 	gts9uwifi-display-handoff.service
@@ -158,6 +159,8 @@ package() {
 		"$pkgdir/etc/systemd/logind.conf.d/10-gts9uwifi-lid.conf"
 	install -Dm644 "$srcdir/61-gts9uwifi-sensor-mount-matrix.rules" \
 		"$pkgdir/usr/lib/udev/rules.d/61-gts9uwifi-sensor-mount-matrix.rules"
+	install -Dm644 "$srcdir/99-gts9uwifi-logitech-lightspeed.rules" \
+		"$pkgdir/usr/lib/udev/rules.d/99-gts9uwifi-logitech-lightspeed.rules"
 	ln -s ../hexagonrpcd-adsp-sensorspd.service \
 		"$pkgdir/usr/lib/systemd/system/multi-user.target.wants/hexagonrpcd-adsp-sensorspd.service"
 	install -Dm755 "$srcdir/gts9uwifi-sensors-resume" \
@@ -188,6 +191,7 @@ c2fffc648f136ba6f7611f918f0914ce90377cbfbb49d5b9be456091ce43a793d5b59c5828a7f1e9
 89d013c3b56a331527a1e21e3e90449a4506fc4247cff54eceb0120e35bb402f91866887b4eef94f932fdf296512f33c8cc26cd4620a9853efa23d58b3c00ac8  20-gts9uwifi-display.conf
 5f7c50bf4b26c7435628fb9dbcef8a2eaf511a90dcb38c43f5272a5f1768a85d6ceadb14c93424b274406b04fd3e547e6c20ba77e8a08c0addf490bf610ac15d  20-gts9uwifi-panel-reinit.conf
 231ae50f297ec98925cba9824c7b9bc1d223ff1da474830d4df359bfe4ddf8c8475af13013470fdd21a267befa7c2f9436528917625cfb29af9e3d74e3030dab  61-gts9uwifi-sensor-mount-matrix.rules
+309fc2df69a80ac1cd25d50609967154e620aa42f339ee192d93c1bd0035b831277a0bee4aa9a95fd48b59ac06df2eaf8a5bcce663f85c3c2236e1b133072abe  99-gts9uwifi-logitech-lightspeed.rules
 75b642beea4cf983a553e9f7de6987880f6debe91c1a4f3a5b9d77dd41f4d99f5ced2e4852db5055446cc194ca3d3f6653db37f77fc423b4247cd1a229410f87  deviceinfo
 79c03d4c8a779d3951fa2d0699cad083d4329381c16036e16b581a49d1d7db82b46cf28404d86cdc615dc2608b37c46deb357a3f6c70c9b4eb2281c374105d75  gts9uwifi-display-handoff
 b455615b7a1a20779968344c40d6366a2fcf835c130b39819d647e10dd58eba55cd1ef2cc39b420e2d219667f79172827dbda2f7440d1dc6367cb8a9a3597987  gts9uwifi-display-handoff.service

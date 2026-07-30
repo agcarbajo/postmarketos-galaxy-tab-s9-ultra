@@ -766,6 +766,14 @@
 		bias-disable;
 	};
 
+	sm5714_vbus_dischg_default: sm5714-vbus-dischg-default-state {
+		pins = "gpio175";
+		function = "gpio";
+		drive-strength = <2>;
+		output-low;
+		bias-pull-down;
+	};
+
 	tdm0_clk_active: tdm0-clk-active-state {
 		pins = "gpio126";
 		function = "i2s0_sck";
@@ -1013,7 +1021,8 @@
 		reg = <0x33>;
 		interrupts-extended = <&tlmm 133 IRQ_TYPE_LEVEL_LOW>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&sm5714_usbpd_int &sm5714_otg_det_default>;
+		pinctrl-0 = <&sm5714_usbpd_int &sm5714_otg_det_default
+			     &sm5714_vbus_dischg_default>;
 		otg-det-gpios = <&tlmm 89 GPIO_ACTIVE_HIGH>;
 		wakeup-source;
 

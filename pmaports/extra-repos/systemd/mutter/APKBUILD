@@ -5,7 +5,7 @@ maintainer="Stefan Hansson <newbyte@postmarketos.org>"
 pkgname=mutter
 _pkgver=50.2
 pkgver=9999$_pkgver
-pkgrel=5
+pkgrel=6
 pkgdesc="clutter-based window manager and compositor"
 url="https://gitlab.gnome.org/GNOME/mutter"
 arch="all !armhf"
@@ -76,6 +76,7 @@ source="https://download.gnome.org/sources/mutter/${_pkgver%%.*}/mutter-$_pkgver
 	fixudev-req.patch
 	pcversion.patch
 	fix-orientation-inhibit-underflow.patch
+	keep-slate-orientation-with-pointer.patch
 	"
 builddir="$srcdir/$pkgname-$_pkgver"
 
@@ -111,4 +112,5 @@ sha512sums="
 60eb075a88ca301470130d17371c1410220be0c7d5a929f6b528ec838a1133ebccf46d29f448060043e94c2edf4615ae431927911bede1972ac37f04ff9f29b4  fixudev-req.patch
 52ae70a818ab1bbeeeb1259405c964baf48cd793385fae9200b57b7160cb8094041b2c2336fc57349e562aa142d631c5668a2d0a4dc32f6a6854c0ea2bb0d2c0  pcversion.patch
 04537b715e04c72f06b8af35b03ef439f24c29665bc2b0fc82c823d97f01aa0df99989d2ad78ff77e0fcb40c8f926127a30f3a207fcb324e6afb9e61ea3a2ea8  fix-orientation-inhibit-underflow.patch
+3320b36d42df30c02f336ba38480d2751280caa2f55326b4566724257683d23810ddf2952a316da31fab8cd383d26d5baf9618a9d4a3965c2c70b3d83d930e18  keep-slate-orientation-with-pointer.patch
 "

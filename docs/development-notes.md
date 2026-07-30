@@ -61,7 +61,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.73 validada en vivo: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; los nodos aparecen y sus bloqueos actuales son proveedores kernel identificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | 🟡 v1.50 candidata: kernel r92, device r41, firmware r10, GNOME Control Center r2, Mutter r5, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
+| Paquetes pmaports | 🟡 v1.55 candidata: kernel r97, device r42, firmware r10, GNOME Control Center r2, Mutter r6, iio-sensor-proxy r3 y Xorg r10 reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | 🟡 **v1.50 arrancada**: el hub alimentado conserva un contrato PD de 9 V / 1,66 A mientras xHCI enumera el Lightspeed; DJ/HID++ descubre el PRO X SUPERLIGHT 2 DEX con ejes/botones/rueda y GNOME abre su evento. Incluye la recuperación host-only de xHCI. ZIP `postmarketos-edge-gnome-mainline-v1.50-usb-lightspeed-sm-x910-twrp.zip`, SHA-256 `961ab5ae10fe4b063f37b2e972edda91d9da973fb4687e06f147de9f36a4d4d4`; falta confirmar movimiento físico y probar almacenamiento/DP |
+| Imagen/paquete de prueba | 🟡 **v1.55 candidata**: consolida PR_SWAP SM5714 estable, hotplug alimentado 3/3 al primer intento, ratón Lightspeed físicamente funcional y Mutter r6, que conserva autorrotación con el puntero conectado. El hub probado no expone datos cuando se alimenta desde la tablet aunque ésta entrega 5,1 V/900 mA; hace falta otro adaptador para validar host pasivo. Falta probar almacenamiento y DP |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -83,19 +83,23 @@ demostrarlo en este dispositivo.
 
 ## Reto en curso
 
-**Actualización sesión 114:** el camino USB host con hub alimentado ya llega
-hasta el ratón Lightspeed real. La tablet se mantiene Sink/DFP, negocia 9 V /
-1,66 A, enumera `046d:c54d` y DJ/HID++ descubre `046d:40b8` con ejes
-relativos, botones y rueda. El penúltimo fallo era el
-`xHCI Host System Error` provocado por el mismo `pm_test=platform` que repara
-el panel; v1.49 recrea el host después del ciclo y de futuros resumes, solo si
-el rol ya era `host`. v1.50 integra además DJ/HID++ porque el receptor
-Lightspeed no transmite el ratón emparejado mediante `hid-generic`. El reto
-inmediato es validar el movimiento físico del
-cursor, un periférico pasivo y almacenamiento/UAS, y después una pantalla
-DP-altmode. A continuación se reabrirá la carga: pese al contrato PD medido,
-la usuaria observa estado intermitente y unas cinco horas estimadas al 10 %
-incluso con el cargador oficial conectado directamente.
+**Actualización sesión 115:** USB host queda reproducible y físicamente estable
+con el hub alimentado. El cursor Lightspeed funciona, tres desconexiones y
+reconexiones completas recuperaron receptor y 9 V/1,66 A al primer intento, y
+el camino Source→Sink conserva DFP mediante la secuencia stock de congelar,
+conmutar y liberar CC. Mutter r6 elimina además la dependencia del heurístico
+`touch-mode` para esta tablet fija: conectar el ratón ya no oculta el control ni
+detiene la autorrotación.
+
+La prueba sin alimentación del mismo dock acota una frontera de hardware:
+la X910 sí queda Source/Host y entrega 5,1 V/900 mA, pero el partner declara
+`USB_COMM=false` y PTN3222 permanece en `0e/01` (host, Connect Detect, sin
+pull-up downstream). Incluso completar localmente el PR_SWAP inverso en 20 ms
+al llegar a VSAFE0V no hizo aparecer datos; ese experimento no estándar se
+retiró de v1.55. Por tanto el reto inmediato requiere otro adaptador pasivo o un
+hub que se sepa que transmite datos alimentado por bus. Después: almacenamiento
+UAS y una pantalla DP-altmode. A continuación se reabrirá la carga a batería
+baja, que el contrato PD del hub no valida.
 
 **Actualización sesiones 111–113:** USB gadget/RNDIS funciona a High Speed cuando
 Windows usa el driver RNDIS y no el ADB. v1.33 añade DRP/host, boost OTG
@@ -223,7 +227,7 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    SM5440 queda conservador; falta
    cuantificar la potencia pico con la batería baja, no demostrar que PPS o la
    bomba funcionen.
-6. **Bloqueo de rotación persistente — RESUELTO en Mutter r5.** Mutter usaba
+6. **Rotación persistente y punteros externos — RESUELTO en Mutter r6.** Mutter usaba
    un solo `inhibited_count` tanto para el ajuste del usuario como para las
    transiciones temporales de panel administrado. Si
    `orientation-lock=true` se cargaba antes de que apareciese el acelerómetro,
@@ -231,8 +235,13 @@ Trabajo actual (con canal de control en vivo por SSH y UFS):
    pero había que activar y desactivar de nuevo el control. El booleano
    `orientation_locked` ya existía: r5 lo convierte en condición independiente
    de `sync_accelerometer_claimed()` y deja el contador solo para inhibidores
-   anónimos. El instalador persistente y los cuatro APK del overlay también
-   deben ser r5; de lo contrario el servicio de arranque vuelve a instalar r4.
+   anónimos. El instalador persistente y los cuatro APK del overlay deben
+   coincidir en r6; de lo contrario el servicio de arranque reinstala una
+   versión anterior. r6 modifica además `update_panel_orientation_managed()`:
+   la X910 es una slate fija, así que la presencia de un ratón no debe convertir
+   el heurístico del asiento en «portátil sin modo tablet». Mientras existan el
+   acelerómetro y el panel integrado, conserva
+   `PanelOrientationManaged=true`.
 
 Hito recién cerrado — **HiDPI/120 Hz y Bluetooth reproducibles (sesiones 76–80)**:
 
@@ -1633,7 +1642,24 @@ lado del workspace.
 - Con el hub alimentado se midió simultáneamente Sink/DFP, contrato PD de
   9 V / 1,66 A, xHCI vivo y los inputs HID. Esto valida la coexistencia de
   alimentación y datos host, no la estabilidad de carga rápida a batería baja.
-  Siguen pendientes accesorios pasivos, almacenamiento/UAS y DP-altmode.
+  v1.53 añade la secuencia exacta de Samsung para un PR_SWAP Source→Sink:
+  congela CC antes de retirar VBUS, conmuta `CC_CNTL7` sin abrir la conexión y
+  libera el hold al recibir `PS_RDY`. Tres ciclos físicos completos recuperaron
+  alimentación y ratón al primer intento.
+- El hub probado no es un instrumento válido para demostrar datos sin
+  alimentación externa. En ese modo la X910 sí publica Source/Host, activa
+  boost a 5,1 V/900 mA y conserva xHCI, pero el propio partner declara
+  `USB_COMM=false`; PTN3222 acaba en `DEVICE_STATUS=0x0e`,
+  `LINK_STATUS=0x01`, sin pull-up downstream. Un atajo v1.54 que completaba el
+  PR_SWAP Sink→Source en VSAFE0V pese a no llegar `PS_RDY` redujo la transición
+  de 920 a 20 ms, pero produjo el mismo resultado eléctrico y reintentos PD.
+  Se retiró de la v1.55 estable.
+- Conectar un ratón no debe cambiar la política de orientación de esta slate.
+  Mutter r6 ignora `clutter_seat_get_touch_mode()` únicamente en el paquete
+  específico de la X910; con el Lightspeed presente se midieron a la vez
+  `HasAccelerometer=true` y `PanelOrientationManaged=true`.
+- Siguen pendientes una prueba pasiva con hardware distinto,
+  almacenamiento/UAS y DP-altmode.
 
 ## Lo que no ha funcionado / no repetir
 
@@ -1663,6 +1689,23 @@ lado del workspace.
 - No alternar roles después de cada resume si el rol actual es `device`: eso
   cortaría RNDIS/SSH hacia un PC. La recuperación de xHCI de v1.49 está
   condicionada a que el role-switch ya diga `host`.
+- No seguir cambiando VBUS, PTN3222 o TCPM para obligar al hub `2d79:e001` a
+  transmitir datos sin alimentación externa. En ese modo el partner declara
+  explícitamente `USB_COMM=false` y nunca presenta pull-up downstream aunque
+  la tablet entregue 5,1 V/900 mA. Probar otro adaptador.
+- No conservar el experimento `complete_pr_swap_on_vsafe0v`: saltarse el
+  `PS_RDY` ausente del hub acortó el cambio de rol pero no habilitó sus datos y
+  añadió hard-reset/reintentos. La v1.55 vuelve al estado TCPM estándar.
+- No usar el `touch-mode` global de Mutter como sinónimo de postura en la
+  X910. Cualquier puntero externo lo desactiva y, sin r6, también oculta el
+  bloqueo y detiene la autorrotación.
+- No escribir solo `boot` después de recrear el árbol `O=`. El kernel genera
+  una clave de firma nueva y lockdown rechaza los ath12k antiguos con
+  `Operation not permitted`. Sincronizar siempre los dos módulos de la misma
+  build en la microSD; el ZIP ya lo hace mediante su overlay.
+- No asumir que un `M=` aislado funciona porque quedaron objetos antiguos.
+  En un árbol limpio falta `scripts/module.lds` hasta ejecutar
+  `modules_prepare`; el pipeline lo invoca explícitamente antes de ath12k.
 
 - No gestionar `vreg_l1b_1p8`/`vreg_l16b_3p0` desde PAS como primer arreglo
   del ALS. La prueba v1.10 reprodujo el ciclo downstream y dejó ambos raíles

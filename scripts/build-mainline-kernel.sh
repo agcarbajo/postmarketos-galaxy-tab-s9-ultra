@@ -313,11 +313,17 @@ if [ "${BUILD_WIFI_MODULES:-0}" = 1 ]; then
 	# Building Image produces the complete built-in export table as
 	# vmlinux.symvers.  An isolated in-tree M= build expects the same table
 	# under the external-module name before it can resolve core symbols.
+	# A clean O= tree also lacks scripts/module.lds until modules_prepare;
+	# stale worktrees hid this dependency in older builds.  Keep M= absolute
+	# so its source/output location is unambiguous across callers.
+	module_tree="$kernel_tree/drivers/net/wireless/ath/ath12k"
+	make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 \
+		modules_prepare
 	cp "$build_dir/vmlinux.symvers" "$build_dir/Module.symvers"
 	make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 -j"$(nproc)" \
-		M=drivers/net/wireless/ath/ath12k modules
+		M="$module_tree" modules
 	make -C "$kernel_tree" O="$build_dir" ARCH=arm64 LLVM=1 \
-		M=drivers/net/wireless/ath/ath12k \
+		M="$module_tree" \
 		INSTALL_MOD_PATH="$modules_root" INSTALL_MOD_STRIP=1 \
 		DEPMOD=true modules_install
 

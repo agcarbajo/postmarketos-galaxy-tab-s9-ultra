@@ -15,10 +15,10 @@ xorg_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/xorg-server-99992
 iio_sensor_proxy_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-3.9-r3.apk"
 iio_sensor_proxy_systemd_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-systemd-3.9-r3.apk"
 iio_sensor_proxy_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/iio-sensor-proxy-udev-3.9-r3.apk"
-mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r5.apk"
-mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r5.apk"
-mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r5.apk"
-mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r5.apk"
+mutter_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-999950.2-r6.apk"
+mutter_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-lang-999950.2-r6.apk"
+mutter_schemas_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-schemas-999950.2-r6.apk"
+mutter_udev_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/mutter-udev-999950.2-r6.apk"
 gnome_control_center_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/gnome-control-center-999950.3-r2.apk"
 gnome_control_center_lang_apk="$base/pmbootstrap-work/packages/systemd-edge/aarch64/gnome-control-center-lang-999950.3-r2.apk"
 
@@ -197,6 +197,8 @@ install -m 0755 "$project/configs/usb/gts9uwifi-usb-host-resume" \
 	"$overlay/usr/libexec/gts9uwifi-usb-host-resume"
 install -m 0755 "$project/configs/usb/gts9uwifi-usb-host-resume-system-sleep" \
 	"$overlay/usr/lib/systemd/system-sleep/gts9uwifi-usb-host-resume"
+install -m 0644 "$project/configs/usb/99-gts9uwifi-logitech-lightspeed.rules" \
+	"$overlay/usr/lib/udev/rules.d/99-gts9uwifi-logitech-lightspeed.rules"
 install -m 0644 "$project/configs/sensors/99_gts9uwifi-sensors.gschema.override" \
 	"$overlay/usr/share/glib-2.0/schemas/99_gts9uwifi-sensors.gschema.override"
 install -m 0644 "$project/configs/sensors/gts9uwifi-compile-sensor-schemas.service" \

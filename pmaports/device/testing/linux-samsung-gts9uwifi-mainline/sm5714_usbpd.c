@@ -49,6 +49,7 @@
 #define SM5714_REG_CC_CNTL1		0x29
 #define SM5714_REG_CC_CNTL3		0x2b
 #define SM5714_REG_CC_CNTL5		0x2d
+#define SM5714_REG_CC_CNTL7		0x2f
 #define SM5714_REG_PD_CNTL1		0x38
 #define SM5714_REG_PD_CNTL2		0x39
 #define SM5714_REG_PD_CNTL4		0x3b
@@ -77,6 +78,8 @@ struct sm5714_usbpd {
 	struct delayed_work otg_det_work;
 	struct gpio_desc *otg_det_gpio;
 	enum typec_cc_polarity polarity;
+	bool pr_swap_src_to_snk;
+	bool pr_swap_snk_to_src;
 	unsigned int negotiated_mv;
 	unsigned int negotiated_ma;
 };
@@ -91,6 +94,12 @@ static const struct regmap_config sm5714_usbpd_regmap_config = {
 static inline struct sm5714_usbpd *tcpc_to_sm5714(struct tcpc_dev *tcpc)
 {
 	return container_of(tcpc, struct sm5714_usbpd, tcpc);
+}
+
+static int sm5714_usbpd_set_cc_hold(struct sm5714_usbpd *sm, u8 hold)
+{
+	return regmap_update_bits(sm->regmap, SM5714_REG_CC_CNTL3,
+				  GENMASK(5, 4), hold);
 }
 
 static void sm5714_usbpd_cc_resync_work(struct work_struct *work)
@@ -257,12 +266,16 @@ static int sm5714_usbpd_set_cc(struct tcpc_dev *tcpc,
 			       enum typec_cc_status cc)
 {
 	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
+	unsigned int role;
 	unsigned int status;
 	int ret;
 
 	mutex_lock(&sm->lock);
 	switch (cc) {
 	case TYPEC_CC_OPEN:
+		sm->pr_swap_src_to_snk = false;
+		sm->pr_swap_snk_to_src = false;
+		sm5714_usbpd_set_cc_hold(sm, 0);
 		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3, 0x88);
 		break;
 	case TYPEC_CC_RD:
@@ -273,6 +286,28 @@ static int sm5714_usbpd_set_cc(struct tcpc_dev *tcpc,
 		if ((status & SM5714_CC_ATTACH_MASK) ==
 		    SM5714_CC_ATTACH_SOURCE)
 			break;
+		if (sm->pr_swap_src_to_snk) {
+			/*
+			 * Apply an in-place Source -> Sink PR_SWAP.  Forcing
+			 * CC_CNTL1/3 here briefly opens both CC pins and the
+			 * powered dock disappears before TCPM can complete the
+			 * swap.  Samsung's driver toggles bit 0 of CC_CNTL7 for
+			 * both PR_SWAP directions; the SM5714 then changes the
+			 * pull while preserving the existing attachment.
+			 */
+			ret = sm5714_usbpd_set_cc_hold(sm, 0x10);
+			if (!ret)
+				ret = regmap_read(sm->regmap,
+						  SM5714_REG_CC_CNTL7, &role);
+			if (!ret)
+				ret = regmap_write(sm->regmap,
+						   SM5714_REG_CC_CNTL7,
+						   role ^ BIT(0));
+			if (!ret)
+				dev_info(sm->dev,
+					 "Source-to-Sink PR_SWAP: CC hold applied\n");
+			break;
+		}
 
 		/* No natural DRP attachment exists: force sink/UFP. */
 		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, 0x45);
@@ -310,6 +345,19 @@ static int sm5714_usbpd_set_cc(struct tcpc_dev *tcpc,
 			ret = regmap_update_bits(sm->regmap,
 						 SM5714_REG_CC_CNTL1,
 						 GENMASK(5, 4), 0);
+			break;
+		}
+		if (sm->pr_swap_snk_to_src) {
+			/* Apply the inverse Sink -> Source PR_SWAP in place. */
+			ret = regmap_read(sm->regmap, SM5714_REG_CC_CNTL7,
+					  &role);
+			if (!ret)
+				ret = regmap_write(sm->regmap,
+						   SM5714_REG_CC_CNTL7,
+						   role ^ BIT(0));
+			if (!ret)
+				dev_info(sm->dev,
+					 "Sink-to-Source PR_SWAP: Rp applied\n");
 			break;
 		}
 
@@ -355,6 +403,9 @@ static int sm5714_usbpd_start_toggling(struct tcpc_dev *tcpc,
 	 */
 
 	mutex_lock(&sm->lock);
+	sm->pr_swap_src_to_snk = false;
+	sm->pr_swap_snk_to_src = false;
+	sm5714_usbpd_set_cc_hold(sm, 0);
 	ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, val);
 	/*
 	 * set_cc(OPEN) disables both CC comparators with CC_CNTL3=0x88.
@@ -397,6 +448,22 @@ static int sm5714_usbpd_set_vbus(struct tcpc_dev *tcpc, bool on, bool charge)
 	int ret;
 
 	/*
+	 * Samsung freezes the detected CC state before removing VBUS in a
+	 * Source-to-Sink PR_SWAP.  TCPM already supplies the stock 25 ms and
+	 * 350 ms timing windows; without this SM5714-specific latch the powered
+	 * dock electrically detaches while it is taking over as the new source.
+	 */
+	if (!on && sm->pr_swap_src_to_snk) {
+		mutex_lock(&sm->lock);
+		ret = sm5714_usbpd_set_cc_hold(sm, 0x20);
+		mutex_unlock(&sm->lock);
+		if (ret)
+			return ret;
+		dev_info(sm->dev,
+			 "Source-to-Sink PR_SWAP: CC state frozen\n");
+	}
+
+	/*
 	 * The X910 stock driver pulses usbpd,otg_det high for 130 ms on every
 	 * source attachment.  This board signal is distinct from the SM5714
 	 * boost controls: without it the PTN3222 reaches host Connect Detect,
@@ -404,11 +471,16 @@ static int sm5714_usbpd_set_vbus(struct tcpc_dev *tcpc, bool on, bool charge)
 	 */
 	if (on && sm->otg_det_gpio) {
 		gpiod_set_value_cansleep(sm->otg_det_gpio, 1);
-		mod_delayed_work(system_wq, &sm->otg_det_work,
+		mod_delayed_work(system_dfl_wq, &sm->otg_det_work,
 				 msecs_to_jiffies(130));
 	}
 
 	ret = sm5714_battery_set_otg(on);
+	if (!ret && on && sm->pr_swap_snk_to_src) {
+		sm->pr_swap_snk_to_src = false;
+		dev_info(sm->dev,
+			 "Sink-to-Source PR_SWAP: VBUS source enabled\n");
+	}
 	if (ret || !on) {
 		cancel_delayed_work(&sm->otg_det_work);
 		if (sm->otg_det_gpio)
@@ -523,7 +595,9 @@ static void sm5714_usbpd_receive(struct sm5714_usbpd *sm)
 	struct pd_message msg = {};
 	enum tcpm_transmit_type sop;
 	unsigned int origin;
+	unsigned int status;
 	unsigned int count;
+	u8 type;
 	int ret;
 
 	ret = regmap_bulk_read(sm->regmap, SM5714_REG_RX_HEADER,
@@ -556,6 +630,28 @@ static void sm5714_usbpd_receive(struct sm5714_usbpd *sm)
 		break;
 	default:
 		goto acknowledge;
+	}
+
+	type = pd_header_type_le(msg.header);
+	if (sop == TCPC_TX_SOP && !count && type == PD_CTRL_PR_SWAP) {
+		ret = regmap_read(sm->regmap, SM5714_REG_CC_STATUS, &status);
+		if (!ret) {
+			if ((status & SM5714_CC_ATTACH_MASK) ==
+			    SM5714_CC_ATTACH_SINK)
+				sm->pr_swap_src_to_snk = true;
+			else if ((status & SM5714_CC_ATTACH_MASK) ==
+				 SM5714_CC_ATTACH_SOURCE)
+				sm->pr_swap_snk_to_src = true;
+		}
+	}
+	if (sop == TCPC_TX_SOP && !count && type == PD_CTRL_PS_RDY &&
+	    sm->pr_swap_src_to_snk) {
+		ret = sm5714_usbpd_set_cc_hold(sm, 0);
+		if (!ret) {
+			sm->pr_swap_src_to_snk = false;
+			dev_info(sm->dev,
+				 "Source-to-Sink PR_SWAP: CC hold released\n");
+		}
 	}
 	tcpm_pd_receive(sm->port, &msg, sop);
 
@@ -679,7 +775,7 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 	 * start_toggling() feeds back through tcpm_cc_change() and oscillates
 	 * between host and unattached.
 	 */
-	mod_delayed_work(system_wq, &sm->cc_resync_work,
+	mod_delayed_work(system_dfl_wq, &sm->cc_resync_work,
 			 msecs_to_jiffies(1500));
 	dev_info(dev, "SM5714 USB Type-C/PD controller registered\n");
 	return 0;
