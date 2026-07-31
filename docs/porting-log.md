@@ -6296,3 +6296,196 @@ Esto valida almacenamiento masivo USB clásico sobre el hub alimentado por la
 tablet. No valida UAS: el pendrive solo anuncia una interfaz
 `usb-storage`. El driver UAS sí está built-in, pero hace falta un SSD/carcasa
 que ofrezca ese protocolo para medirlo.
+
+## Sesión 119 — v1.61–v1.64: DisplayPort físico y arranque con dock
+
+### El altmode existía, pero HPD no llegaba al conector DRM
+
+Con el dock USB-C, cargador y una capturadora HDMI reales, el partner anunció
+SVID DisplayPort `ff01`, seleccionó la asignación de pines D y elevó HPD. El
+SM8550 ya tenía QMP combo PHY, `mdss_dp0`, el mux SBU y el PS5169 funcionando,
+pero `card1-DP-1` seguía en `disconnected`.
+
+v1.61 añadió al conector el altmode DP local que exige el framework Type-C.
+Después de ello el driver genérico `typec_displayport` enlazó
+automáticamente, pero el estado DRM no cambió. v1.62 añadió la asociación
+documentada `displayport = <&mdss_dp0>`. Una traza ftrace al alternar el
+altmode midió llamadas reales a:
+
+```text
+drm_connector_oob_hotplug_event <- dp_altmode_vdm
+drm_connector_oob_hotplug_event <- dp_altmode_status_update
+```
+
+No aparecía ninguna llamada a `msm_dp_bridge_hpd_notify`. La causa estaba en
+el extremo DRM: el puente terminal creado por MSM DP no conservaba el
+`of_node` del controlador, de modo que el conector generado carecía del
+fwnode con el que `drm_connector_oob_hotplug_event()` intenta encontrarlo.
+
+v1.63 añade un parche mínimo a `msm_dp_bridge_init()`:
+
+```c
+bridge->of_node = msm_dp_display->pdev->dev.of_node;
+```
+
+Conectando el dock después de arrancar se midió:
+
+- altmode activo, pin D y HPD=1;
+- `card1-DP-1=connected` y `enabled`;
+- EDID de 256 bytes;
+- modos 4096×2160, 3840×2160, 2560×1440 y 1920×1080, entre otros;
+- GNOME identificó el sink de captura y seleccionó 1920×1080 a 60 Hz;
+- el panel interno permaneció a 2960×1848 a 120 Hz.
+
+La cámara virtual de OBS mostró físicamente el escritorio azul de GNOME en la
+salida de la capturadora. Por tanto, DisplayPort USB-C queda validado en
+hardware, no inferido solo por sysfs.
+
+### Regresión de arranque descubierta con HPD ya activo
+
+Reiniciar v1.63 con el dock conectado produjo cinco arranques de unos cinco
+segundos. Al retirar el dock, el mismo arranque terminó y el hotplug posterior
+volvió a dar vídeo. Los journals persistentes acotaron la regresión:
+
+```text
+dpu_encoder_frame_done_timeout
+PM: suspend entry (deep)
+```
+
+Cada intento alcanzaba la unidad
+`gts9uwifi-panel-coldboot-recover.service`, pero no llegaba a
+`PM: suspend exit`. Con el enlace DP ausente, el mismo ciclo sí retornaba y el
+DDIC cambiaba de `00 00 00` a `80 00 04`. No era un bootloop del ABL ni un
+fallo del rootfs: el encoder externo activado por el HPD interfería con el
+único suspend de plataforma que necesita el panel interno.
+
+Se probó enviar `Exit Mode` (`active=no`) antes de un ciclo manual. En una
+sesión gráfica ya activa la tablet terminó reiniciándose; además el dock
+conservó el estado de salida hasta un nuevo flanco físico CC. No se usa como
+arreglo y no debe repetirse con GNOME usando el monitor externo.
+
+### v1.64: aplazar HPD hasta el primer resume
+
+El arreglo conserva la negociación Type-C y el USB host, pero impide que MSM
+DP active su encoder antes de la recuperación del ANA38407. Una propiedad
+específica del DTS X910,
+`qcom,defer-hpd-until-first-resume`, hace que el puente guarde el último estado
+HPD. Un notificador PM libera el bloqueo en `PM_POST_SUSPEND` y reproduce el
+evento tres segundos después, dejando terminar antes la recreación host-only
+de xHCI.
+
+La primera validación con v1.64 fue:
+
+```text
+[24.432] PM: suspend entry (deep)
+[39.338] ana38407 panel id: 80 00 04
+[39.339] PM: suspend exit
+[42.204] replaying deferred Type-C DP HPD after first resume
+```
+
+Solo hubo un boot, GDM quedó activo y SSH volvió. Esto corrige la regresión de
+reinicios. La prueba anterior de `Exit Mode` había dejado el dock sin un
+partner Type-C registrado; ni reiniciar ni reenlazar en vivo el driver SM5714
+generó un nuevo flanco CC, por lo que la validación final de vídeo y ratón tras
+un arranque con el dock ya activo requiere una única desconexión/reconexión
+física y un segundo reinicio.
+
+Build v1.64:
+
+- kernel r107;
+- `boot.img`:
+  `1c00dc1d1280211fe83b9d354b0108d55d6a60d0af26b0eac3d0c2252b0ae2d9`;
+- `vendor_boot.img`:
+  `a2b575a7acf7929fe180ce80184e5ef3d1c0810a2fbdcec27670293ff70149c6`;
+- ZIP:
+  `postmarketos-edge-gnome-mainline-v1.64-dp-coldboot-sm-x910-twrp.zip`;
+- ZIP SHA-256:
+  `00275b0d3b06cb5953c6e22f4fe90b7975246cebb470f216d2083d08f008d754`.
+
+Se escribieron únicamente `boot` y `vendor_boot`, con backups temporales y
+lectura posterior idéntica a los orígenes. Los dos módulos ath12k resultantes
+son byte a byte idénticos a los instalados, por lo que no se modificó la
+microSD.
+
+## Sesión 120 — v1.65–v1.71: dock DP conservado a través de reinicios
+
+### El problema no era ya el encoder
+
+v1.64 evitó el bootloop aplazando HPD hasta después de la recuperación del
+panel, pero un dock alimentado conservaba una combinación válida y poco común:
+el X910 era Sink de alimentación y DFP/Host de datos, mientras el dock era
+Source/UFP. En un reboot el SM5714 retenía esos bits aunque el nuevo TCPM
+partía desde unattached. Las iteraciones aislaron el problema sin romper el
+hotplug ya validado:
+
+- v1.65 capturó el rol retenido antes de registrar TCPM;
+- v1.66 conservó Host durante hard reset. xHCI y el Logitech sobrevivían, pero
+  el dock no reenviaba Source_Capabilities ni recreaba altmodes;
+- v1.67 generó un detach CC físico local (Rp 200 ms, open 50 ms) antes de
+  arrancar DRP. En un boot recuperó contrato y altmode, pero el HPD aplazado no
+  alcanzó MSM DP;
+- v1.68 reprodujo el HPD directamente con `msm_dp_bridge_hpd_notify()`;
+- v1.69 hizo que `connected` ganase sobre un `disconnected` temporal durante
+  el aplazamiento;
+- v1.70 retrasó de 1,5 a 3 s la resincronización one-shot después del detach.
+  No era la causa: el boot acabó Sink/Device, sin PD, altmode, xHCI ni vídeo.
+
+Las trazas TCPM de v1.70 mostraron la frontera exacta. Se recibía un mensaje
+`Source_Capabilities` de siete objetos. Los cuatro primeros eran utilizables
+(5 V/3 A, 9 V/2,44 A, 15 V/2,66 A y 20 V/2 A), mientras los tres últimos se
+decodificaban como PDO fijos absurdos y desordenados. Tras unos 659 ms, antes
+de que saliese `Request`, aparecía `Received hard reset` y se reiniciaba la
+negociación. Retrasar la resincronización no cambió nada.
+
+### v1.71: vaciar RX como hace Samsung
+
+El driver GPL downstream de Samsung contiene una operación que faltaba en el
+transporte mainline: `sm5714_protocol_layer_reset()` escribe
+`RX_BUF_ST=0x10` para vaciar el buffer antes de resetear el protocolo. v1.71
+reproduce únicamente esa operación en `sm5714_usbpd_init()`. Es segura tanto
+para cold boot como para hotplug porque ocurre antes de habilitar los IRQ y de
+que TCPM arranque DRP.
+
+El primer boot con el dock inmóvil produjo:
+
+- kernel `#17`, Wi-Fi/SSH e imagen interna normales;
+- `power_role=Sink`, `data_role=Host`, modo `usb_power_delivery`;
+- contrato 9 V/1,66 A y el receptor Logitech con `PRO X 2 DEX` en el árbol
+  input;
+- altmode DP activo, pin D, HPD=1;
+- `card1-DP-1=connected` y `enabled`, EDID de 256 bytes;
+- greeter gris visible físicamente en la captura OBS a 1920×1080.
+
+La traza sigue mostrando los tres PDO finales malformados, por lo que el flush
+no «corrige» ni inventa capacidades. La diferencia medida es que TCPM procesa
+inmediatamente los cuatro PDO fijos válidos, solicita 9 V/1,66 A, recibe
+Accept/PS_RDY y completa Discover Identity/SVID/Modes/Enter Mode. Esto apunta a
+estado RX/protocolo retenido —incluido el hard reset pendiente— como la causa
+del bloqueo, no al contenido final de esos APDO.
+
+Se hizo un segundo reinicio consecutivo sin tocar dock, cargador, HDMI ni
+ratón. Repitió exactamente el mismo resultado: PD, Sink/Host, Logitech,
+altmode activo y `DP-1 connected/enabled`. Tras una regeneración final de la
+misma fuente se instaló el kernel `#18` y un tercer reinicio inmóvil repitió
+PD, Host, ratón, altmode, EDID y greeter gris en OBS. El hotplug físico ya
+validado no se modifica por este cambio.
+
+Artefactos v1.71:
+
+- kernel package r114;
+- `boot.img`:
+  `cb13c0fabbd9d28931d9a21c5c47360e9f27c9b6c1c4727cc99c6358cc4fea3f`;
+- `vendor_boot.img` (sin cambios funcionales en esta iteración):
+  `c4b93f02ced734c12d19448e0cd2fa724d382ee6d4ac6d55f95b6b8b1e36f79c`;
+- ZIP:
+  `postmarketos-edge-gnome-mainline-v1.71-dp-dock-coldboot-sm-x910-twrp.zip`;
+- ZIP SHA-256:
+  `10c6d6c811230b6c52e59f5e6f9ed41ed29ae7d285e3c8d1679c582db5695097`;
+- módulos ath12k conservados:
+  `c8bd1b4c…` y `897614d3…`.
+
+Se escribió únicamente `boot` (`/dev/sda21`), dentro de la autorización
+permanente de la usuaria para `boot`/`vendor_boot`, con backup temporal
+final `/tmp/boot-before-v171-20260731-044946.img` y hash de lectura posterior
+idéntico al origen. El backup contiene la primera build funcional v1.71,
+`1ad33143…`; no se escribió ninguna otra partición ni la microSD.

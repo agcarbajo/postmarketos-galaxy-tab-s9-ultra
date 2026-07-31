@@ -70,7 +70,18 @@ dock rather than of the tablet. Device package r44 now pulls in
 `rtl8153a-3 v2 02/07/20`, although Ethernet traffic still needs a cable test.
 A 16 GB USB 2.0 flash drive also enumerates through the passive hub, is
 automounted as FAT32 and sustains a 128 MiB direct read at 20.4 MB/s without
-errors. UAS and external DisplayPort remain to be tested.
+errors. USB-C DisplayPort is now physically validated as well: the Type-C
+altmode selects pin assignment D, HPD reaches the MSM DP bridge, the capture
+sink exposes a 256-byte EDID and GNOME drives it at 1920x1080 @ 60 Hz. v1.64
+also defers an already-attached dock's first HPD until after the board-specific
+panel recovery, preventing the external encoder from resetting the tablet
+during that platform suspend. v1.71 completes the retained-dock path: it gives
+the powered partner a real CC detach, flushes the SM5714 RX buffer before
+restarting its PD protocol layer, preserves the valid Sink/DFP pairing through
+hard reset, and replays deferred HPD directly into MSM DP. Two consecutive
+boots with the dock left physically connected restored the 9 V / 1.66 A
+contract, Logitech mouse and 1920x1080 capture output without a replug. UAS
+remains untested.
 
 Mutter drives the split GPU/DPU topology by itself — it opens `card0` (Adreno)
 as a GBM renderer and `card1` (DPU) for atomic mode setting — so none of the
@@ -110,7 +121,7 @@ also updating its matching modules on the microSD.
 | **Fast charging (45 W charger)** | 🟡 | v1.32 adds a mainline SM5714 Type-C/PD controller and a fail-safe SM5440 2:1 direct-charge driver. The official EP-T4510 entered PPS and real hardware previously measured about 2.8 A net into the battery at 78–82% state of charge. New low-state-of-charge testing reports slow and intermittent charging, so PPS/direct-charge stability must be revalidated after USB host work |
 | **Suspend** | ✅ | Deep suspend/resume works. The cold-boot workaround uses the kernel's self-returning platform PM test, so it needs neither an RTC nor a power-button press. Display and SSC recovery use cancellable singleton services; the measured wake latency is about 2–3 seconds |
 | **USB** | 🟡 | The RNDIS gadget works at High Speed when Windows is manually assigned the **Remote NDIS Compatible Device** driver. Powered host mode is validated at 9 V / 1.66 A with a Logitech Lightspeed receiver. v1.60 also validates a genuinely bus-powered hub at 5.1 V / 900 mA: the SM5714 MUIC routes D-/D+ before OTG VBUS, TCPM retains Source/Host, and Genesys `05e3:0610`, RTL8153 `0bda:8153` and Logitech `046d:c54d` enumerate from cold boot and after xHCI recovery. Built-in DJ/HID++ exposes the paired `046d:40b8` mouse; GNOME keeps autorotation managed. A USB 2.0 flash drive enumerates through the same passive hub, GNOME automounts its FAT32 partition, and a 128 MiB direct read completes at 20.4 MB/s without errors. Device r44 includes `linux-firmware-rtl_nic`; after installing it live and rebinding r8152, `ethtool -i` reports firmware `rtl8153a-3 v2 02/07/20`, but Ethernet traffic is still unverified because no cable was attached. The original charge-through dock still disables data when its own PD input is absent (`USB_COMM=false`). UAS remains untested because the available flash drive only advertises classic `usb-storage` |
-| **USB-C video out** | 🟡 | The SM8550 USB3/DP combo PHY, `mdss_dp0`, SBU GPIO mux and PS5169 (`69:87` measured) all bind. v1.37 fixed the optional USB-C bridge tail so DP no longer withholds the shared DPU/DSI DRM master; v1.39 keeps internal DSI, PS5169, QMP and `card1-DP-1` alive while TCPM reports a real partner/orientation. A physical DP-altmode display is still required for final validation |
+| **USB-C video out** | ✅ | Physically validated through a USB-C dock and HDMI capture sink. The Type-C DP altmode selects pin D with HPD high; `card1-DP-1` reads the sink's 256-byte EDID and GNOME drives 1920×1080 @ 60 Hz while the internal DSI panel remains 2960×1848 @ 120 Hz. v1.61 advertises the local DP altmode, v1.63 associates the terminal MSM DP bridge with its firmware node so out-of-band HPD reaches DRM, and v1.64 defers HPD until after the X910 cold-boot panel recovery. v1.71 flushes retained SM5714 PD state and replays the saved HPD into MSM DP; two consecutive boots with the powered dock already attached restored PD, host USB, the mouse and external video without a replug |
 | **S Pen** | ❌ | Wacom `w90xx` digitizer at I²C `0x56`. Mainline ships a generic `wacom_i2c` driver that would need wiring up to this device |
 | **Cover / lid detection** | ✅ | The book-cover Hall switch on TLMM GPIO107 reports `SW_LID`; closing consistently suspends at the greeter and in-session, and opening wakes it again. v1.08 cancels stale compositor wakes between rapid cycles |
 | **Keyboard cover (pogo pins)** | ❌ | Bridged by an STM32 microcontroller (`stm,stm32_pogo`) at I²C `0x2a`, exposing keypad and touchpad. No mainline driver |
@@ -126,8 +137,10 @@ also updating its matching modules on the microSD.
 
 ## Current focus
 
-The current milestone is mass-storage/UAS and DisplayPort-altmode validation,
-followed by the remaining low-battery charging instability. USB gadget/RNDIS
+DisplayPort cold-boot and hotplug robustness is complete in v1.71. The next
+USB check is UAS with a capable SSD, followed by the remaining low-battery
+charging instability.
+USB gadget/RNDIS
 works at High Speed when Windows uses the
 RNDIS driver rather than an ADB driver. v1.33–v1.45 implemented the SM5714
 DRP/OTG boost, stock CC/VCONN handling, QMP USB3/DP PHY, PS5169 retimer and
@@ -188,8 +201,8 @@ panel-recovery HSE. PTN3222 measures `DEVICE_STATUS=0x0a`,
 r8152 makes `ethtool -i` report `rtl8153a-3 v2 02/07/20`. `eth0` remains
 `NO-CARRIER`, as expected with no Ethernet cable, so link and traffic are not
 yet claimed. Classic USB mass storage is now validated with a FAT32 flash
-drive and a 128 MiB direct read at 20.4 MB/s. The next USB checks are UAS with
-a capable SSD and then a DP-altmode display.
+drive and a 128 MiB direct read at 20.4 MB/s. DisplayPort and retained-dock
+cold boot are now validated too; the next USB check is UAS with a capable SSD.
 
 GNOME's former rotation regression was independent from USB. Its fallback
 touch-mode heuristic stopped managing panel orientation whenever any pointer

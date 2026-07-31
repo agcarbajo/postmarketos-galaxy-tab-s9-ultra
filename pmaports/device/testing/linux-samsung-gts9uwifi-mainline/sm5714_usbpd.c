@@ -9,6 +9,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
@@ -58,6 +59,7 @@
 #define SM5714_REG_RX_HEADER		0x42
 #define SM5714_REG_RX_PAYLOAD		0x44
 #define SM5714_REG_RX_BUF		0x5e
+#define SM5714_REG_RX_BUF_ST		0x5f
 #define SM5714_REG_TX_HEADER		0x60
 #define SM5714_REG_TX_PAYLOAD		0x62
 #define SM5714_REG_TX_REQ		0x7e
@@ -81,6 +83,8 @@ struct sm5714_usbpd {
 	enum typec_cc_polarity polarity;
 	bool pr_swap_src_to_snk;
 	bool pr_swap_snk_to_src;
+	bool retained_sink_dfp;
+	bool retained_dock_reset;
 	unsigned int negotiated_mv;
 	unsigned int negotiated_ma;
 };
@@ -153,6 +157,19 @@ static int sm5714_usbpd_init(struct tcpc_dev *tcpc)
 	if (ret)
 		goto out;
 	ret = regmap_read(sm->regmap, SM5714_REG_PD_STATE3, &state3);
+	if (ret)
+		goto out;
+	/*
+	 * The controller and a powered partner can both retain PD state across
+	 * an AP reboot.  Flush any partial message and protocol event left in
+	 * the RX window before resetting the protocol layer.  Without this, a
+	 * retained-dock CC reset can deliver Source_Capabilities but then expose
+	 * a stale hard reset before TCPM has transmitted its Request.
+	 *
+	 * This is the same RX-buffer flush used by Samsung's
+	 * sm5714_protocol_layer_reset().
+	 */
+	ret = regmap_write(sm->regmap, SM5714_REG_RX_BUF_ST, 0x10);
 	if (ret)
 		goto out;
 	if (state3 & 0x06) {
@@ -522,6 +539,15 @@ static int sm5714_usbpd_set_pd_rx(struct tcpc_dev *tcpc, bool on)
 			    on ? 0x08 : 0x00);
 }
 
+static bool sm5714_usbpd_consume_retained_sink_dfp(struct tcpc_dev *tcpc)
+{
+	struct sm5714_usbpd *sm = tcpc_to_sm5714(tcpc);
+	bool retained = sm->retained_sink_dfp;
+
+	sm->retained_sink_dfp = false;
+	return retained;
+}
+
 static int sm5714_usbpd_set_roles(struct tcpc_dev *tcpc, bool attached,
 				  enum typec_role role,
 				  enum typec_data_role data)
@@ -708,6 +734,8 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
 	struct sm5714_usbpd *sm;
+	unsigned int cc;
+	unsigned int retained_roles;
 	int ret;
 
 	sm = devm_kzalloc(dev, sizeof(*sm), GFP_KERNEL);
@@ -735,6 +763,50 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 		return dev_err_probe(dev, -EINVAL,
 				     "missing usb-c-connector child\n");
 
+	/*
+	 * A powered dock and the SM5714 both survive a warm tablet reboot.  Save
+	 * the controller's old local data role before tcpm_register_port()
+	 * clears it while constructing the new unattached state.  CC must still
+	 * describe a source attachment, so a previous PC/device connection can
+	 * never seed DFP here.
+	 */
+	ret = regmap_read(sm->regmap, SM5714_REG_PD_CNTL2, &retained_roles);
+	if (ret)
+		goto put_fwnode;
+	ret = regmap_read(sm->regmap, SM5714_REG_CC_STATUS, &cc);
+	if (ret)
+		goto put_fwnode;
+	sm->retained_sink_dfp =
+		(retained_roles & BIT(0)) &&
+		((cc & SM5714_CC_ATTACH_MASK) == SM5714_CC_ATTACH_SOURCE);
+	if (sm->retained_sink_dfp) {
+		dev_info(dev, "retained Sink/DFP role detected\n");
+		/*
+		 * Keeping the data role is sufficient for USB host, but some
+		 * powered docks retain their old PD/DisplayPort state and never
+		 * send Source_Capabilities after the tablet reboots.  Present Rp
+		 * briefly to create a real CC detach at the still-powered Source,
+		 * then leave both pins open.  TCPM subsequently starts normal DRP
+		 * toggling and the dock negotiates power, USB and altmodes from
+		 * scratch exactly as it does after a physical reconnect.
+		 */
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL1, 0x49);
+		if (ret)
+			goto put_fwnode;
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3, 0x81);
+		if (ret)
+			goto put_fwnode;
+		msleep(200);
+		ret = regmap_write(sm->regmap, SM5714_REG_CC_CNTL3, 0x88);
+		if (ret)
+			goto put_fwnode;
+		msleep(50);
+		sm->retained_sink_dfp = false;
+		sm->retained_dock_reset = true;
+		dev_info(dev,
+			 "reset retained dock with a CC detach before TCPM\n");
+	}
+
 	sm->tcpc.fwnode = sm->connector;
 	/*
 	 * A powered USB-C dock stays Source/UFP across an X910 reboot.  It is
@@ -742,6 +814,8 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 	 * Sink/DFP when its retained role appears in the first PD reply.
 	 */
 	sm->tcpc.adopt_retained_source_ufp = true;
+	sm->tcpc.consume_retained_sink_dfp =
+		sm5714_usbpd_consume_retained_sink_dfp;
 	sm->tcpc.init = sm5714_usbpd_init;
 	sm->tcpc.get_vbus = sm5714_usbpd_get_vbus;
 	sm->tcpc.get_current_limit = sm5714_usbpd_get_current_limit;
@@ -783,8 +857,16 @@ static int sm5714_usbpd_probe(struct i2c_client *client)
 	 * start_toggling() feeds back through tcpm_cc_change() and oscillates
 	 * between host and unattached.
 	 */
+	/*
+	 * A retained-dock reset creates a fresh physical CC/VBUS edge after the
+	 * IRQ is registered.  Its first Source_Capabilities can still be in
+	 * flight at 1.5 s, so do not let the fallback resync interrupt that
+	 * negotiation.  Keep the fallback, but move it beyond the normal PD and
+	 * altmode discovery window.
+	 */
 	mod_delayed_work(system_dfl_wq, &sm->cc_resync_work,
-			 msecs_to_jiffies(1500));
+			 msecs_to_jiffies(sm->retained_dock_reset ? 3000 :
+					  1500));
 	dev_info(dev, "SM5714 USB Type-C/PD controller registered\n");
 	return 0;
 

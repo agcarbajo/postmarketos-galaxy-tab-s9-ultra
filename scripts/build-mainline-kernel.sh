@@ -127,12 +127,36 @@ if ! grep -q 'ret != -ENODEV && ret != -EPROBE_DEFER' \
 	patch -d "$kernel_tree" -p1 \
 		< "$package/msm-dp-allow-unresolved-usbc-bridge.patch"
 fi
+# Type-C DP HPD is carried out-of-band in the PD Status VDO on this board.
+# Preserve the DP controller fwnode on the terminal bridge so the generic
+# altmode driver can match that event to the DRM connector.
+if ! grep -q 'bridge->of_node = msm_dp_display->pdev->dev.of_node' \
+	"$kernel_tree/drivers/gpu/drm/msm/dp/dp_drm.c"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/msm-dp-associate-bridge-of-node.patch"
+fi
+# The internal panel needs one platform-level suspend/resume on every cold
+# boot.  Keep an already attached dock negotiated, but delay its OOB HPD until
+# that recovery has completed so the external DPU encoder cannot wedge suspend.
+if ! grep -q 'defer_hpd_until_resume' \
+	"$kernel_tree/drivers/gpu/drm/msm/dp/dp_drm.h"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/msm-dp-defer-oob-hpd-until-resume.patch"
+fi
 # A powered charge-through dock can retain Source/UFP while the tablet reboots.
 # Let the SM5714 opt in to adopting DFP rather than looping in error recovery.
 if ! grep -q 'adopt_retained_source_ufp' \
 	"$kernel_tree/include/linux/usb/tcpm.h"; then
 	patch -d "$kernel_tree" -p1 \
 		< "$package/tcpm-adopt-retained-source-ufp-role.patch"
+fi
+# A powered Source/UFP dock can retain both its connection and the SM5714's
+# previous local DFP bit while the tablet reboots, yet omit Source_Capabilities
+# on the next boot.  Seed the matching Sink/DFP role before waiting for PD.
+if ! grep -q 'consume_retained_sink_dfp' \
+	"$kernel_tree/include/linux/usb/tcpm.h"; then
+	patch -d "$kernel_tree" -p1 \
+		< "$package/tcpm-use-retained-sink-data-role.patch"
 fi
 if ! grep -q '^DTC_FLAGS_sm8550-samsung-gts9uwifi := -@$' \
 	"$kernel_tree/arch/arm64/boot/dts/qcom/Makefile"; then

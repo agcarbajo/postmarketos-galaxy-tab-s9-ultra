@@ -61,7 +61,7 @@ demostrarlo en este dispositivo.
 | Kernel mainline SM8550 | ✅ v0.45 validada físicamente: el des-aparcado del mux PIPE levanta el enlace (`PCIe Gen.2 x2 link up`) y `17cb:1107` enumera con ath12k |
 | DTS `gts9uwifi` | ✅ v0.73 validada en vivo: además de WCN7850, Goodix, GPU, DSI/DSC y UFS, describe cuatro CS35L45, PRIMARY_MI2S, VA DMIC y power/volumen; los nodos aparecen y sus bloqueos actuales son proveedores kernel identificados |
 | Acceso temprano a microSD | ✅ Mainline enumera físicamente `mmcblk1`, `mmcblk1p1` y `mmcblk1p2` |
-| Paquetes pmaports | ✅ v1.60 validada físicamente con kernel r102/device r42. Las fuentes actuales kernel r103/device r44 también completan una build limpia: r103 repara solo la cabecera mal contada de `ignore-console-null.patch`, y r44 añade `linux-firmware-rtl_nic` más la creación explícita de `multi-user.target.wants`. Firmware r10, GNOME Control Center r2, Mutter r6, iio-sensor-proxy r3 y Xorg r10 siguen reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados en el release directo; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
+| Paquetes pmaports | ✅ v1.71 validada físicamente con kernel r114/device r44. Kernel r114 integra la cadena DP cold-boot y el vaciado de RX del SM5714; device r44 añade `linux-firmware-rtl_nic` más la creación explícita de `multi-user.target.wants`. Firmware r10, GNOME Control Center r2, Mutter r6, iio-sensor-proxy r3 y Xorg r10 siguen reproducibles. Solo ath12k/ath12k_wifi7 se instalan como módulos aislados en el release directo; SM5714 TCPM, USB host, HID genérico/Logitech, QMP combo, PS5169 y DP permanecen built-in |
 | Rootfs postmarketOS | ✅ v0.27 limpio generado con XFCE4/OpenSSH y módulos completos; el ZIP actualiza la SD física existente |
 | Escritorio | ✅ XFCE/LightDM a 2960×1848@120; escalado integral 2× (GTK, greeter, Onboard, panel, iconos y cursor), login completo y Adreno acelerada por reverse PRIME |
 | Wi-Fi | ✅ **v0.49 validada físicamente**: amss oficial + BDF QRD en ELF → `wlan0` conectada (señal 65, 270 Mbit/s). RF nativo Samsung DESCARTADO: su BDF HMT.2.0 crashea el amss oficial HMT.1.1 (MHI RDDM); la QRD es final |
@@ -69,7 +69,7 @@ demostrarlo en este dispositivo.
 | Táctil | ✅ v0.32 validada físicamente: responde correctamente con el arreglo Goodix completo |
 | Bundle Android v4 | ✅ v0.27 empaquetado con appended-DTB, LZ4 legacy/AVB y overlay con modos POSIX para la microSD existente |
 | Restauración Ubuntu Touch | ✅ ZIP boot-only v8/DTBO stock generado y validado |
-| Imagen/paquete de prueba | ✅ **v1.60 validada**: conserva el hub alimentado de v1.55 y añade host pasivo real. La tablet alimenta un hub Genesys a 5,1 V/900 mA y enumera RTL8153 + Logitech desde arranque y tras la recuperación xHCI, sin perder Wi-Fi ni autorrotación. Un pendrive USB 2.0/FAT32 automonta y lee 128 MiB a 20,4 MB/s sin errores. Device r44 incluye el firmware RTL8153; faltan enlace Ethernet, UAS y DP |
+| Imagen/paquete de prueba | ✅ **v1.71 validada**: conserva host USB alimentado y pasivo, almacenamiento clásico y DisplayPort. Dos reinicios consecutivos con el dock alimentado sin mover restauraron contrato PD 9 V/1,66 A, Sink/Host, Logitech, altmode DP y salida 1920×1080 por capturadora. Un pendrive USB 2.0/FAT32 automonta y lee 128 MiB a 20,4 MB/s sin errores. Faltan enlace Ethernet y UAS |
 | Display nativo | ✅ ANA38407/AMSA46AS02 2960×1848@120, DSI command mode + DSC + TE. El hook LightDM descubre providers/output, asocia reverse PRIME y fuerza un ciclo DSI; validado visualmente después de reinicio completo |
 | UFS interno | ✅ **v0.59**: `ufshcd-qcom` enumera las seis LUN `sda`–`sdf`; `boot=/dev/sda21`, `vendor_boot=/dev/sda24`, `dtbo=/dev/sda30` accesibles desde pmOS |
 | GPU Adreno 740 | ✅ **Aceleración del display resuelta**: `card0=adreno` es el X screen glamor/FD740 y `card1=msm_dpu` el Sink Output reverse PRIME. DRI3 importa dma-bufs implícitos como LINEAR; `glxinfo` confirma aceleración y `glmark2` se ve físicamente a pantalla completa sin faults |
@@ -82,6 +82,17 @@ demostrarlo en este dispositivo.
 | Nombres comerciales | ✅ Fastfetch y GNOME About muestran «Qualcomm Snapdragon 8 Gen 2» y «Qualcomm Adreno 740» sin sustituir la identidad técnica global del kernel |
 
 ## Reto en curso
+
+**Actualización sesión 120:** v1.71 cierra el arranque con el dock DP ya
+conectado. El SM5714 y el partner conservan estado a través de un reinicio; las
+v1.65–v1.70 demostraron que conservar solo Host, retrasar la resincronización o
+reproducir un HPD obsoleto no bastaba. La solución final combina un flanco CC
+real con el vaciado `RX_BUF_ST=0x10` que usa el driver GPL de Samsung antes de
+reiniciar el protocolo. En dos reinicios seguidos sin tocar el cable aparecieron
+el contrato 9 V/1,66 A, Sink/Host, el Logitech, el altmode pin D con HPD alto,
+EDID de 256 bytes y `DP-1 connected/enabled`; OBS mostró el greeter por la
+capturadora. El siguiente frente es UAS con un SSD capaz y luego la carga
+inestable con batería baja.
 
 **Actualización sesión 117:** v1.60 cierra el host USB sin alimentación externa.
 El SM5714 abre la ruta D-/D+ del MUIC antes del boost y TCPM reconoce el VBUS
@@ -2029,6 +2040,32 @@ lado del workspace.
   partición FAT32 y una lectura directa de 128 MiB alcanza 20,4 MB/s sin
   errores. No declarar UAS validado: la unidad `346d:5678` no ofrece una
   interfaz UAS.
+- El HPD DisplayPort de esta placa llega fuera de banda dentro del Status VDO
+  de Type-C. Para que `drm_connector_oob_hotplug_event()` encuentre el
+  conector bridge de MSM DP, el puente terminal debe conservar el `of_node`
+  del controlador. Con ello el dock real selecciona pin D, entrega un EDID de
+  256 bytes y GNOME muestra físicamente 1920×1080 a 60 Hz en la capturadora.
+- El HPD de un dock presente durante el arranque NO puede activar el encoder
+  DP antes del `pm_test=platform` usado para recuperar el ANA38407. v1.63
+  terminaba cada journal en `PM: suspend entry` y reiniciaba a los cinco
+  segundos. El DTS X910 y el puente MSM DP de v1.64 guardan el primer HPD y lo
+  reproducen después de `PM_POST_SUSPEND`; el panel pasa a `80 00 04`, el
+  ciclo retorna y GDM arranca.
+- No usar `active=no` como solución de arranque mientras GNOME ya conduce el
+  monitor externo. La prueba desmontó el pipeline en uso, acabó reiniciando y
+  dejó el dock en Exit Mode sin un nuevo flanco CC; ni un reboot de la tablet
+  ni un rebind del SM5714 equivalen a desconectar físicamente el partner.
+- No conservar únicamente Host ni retrasar más la resincronización TCPM para
+  recuperar un dock alimentado tras reboot. v1.66 conservó xHCI pero el partner
+  no volvió a anunciar PD/altmodes; v1.69/v1.70 siguieron acabando Sink/Device.
+  El SM5714 necesita un flanco CC real y, después, vaciar `RX_BUF_ST` antes del
+  reset de protocolo. Sin ese flush, el primer Source_Capabilities podía quedar
+  seguido por un hard reset retenido antes de que TCPM enviase Request.
+- Los siete objetos que el SM5714 expone para este cargador/dock incluyen cuatro
+  PDO fijos válidos y tres entradas finales malformadas. No inventar ni reescribir
+  APDOs: TCPM negocia de forma estable el PDO fijo de 9 V/1,66 A cuando el
+  transporte RX está limpio. Corregir el framing largo queda separado y no es
+  requisito para DisplayPort.
 
 ## Referencias locales
 

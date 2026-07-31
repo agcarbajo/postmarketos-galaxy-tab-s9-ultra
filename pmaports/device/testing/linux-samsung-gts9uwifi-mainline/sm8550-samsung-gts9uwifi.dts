@@ -1031,6 +1031,7 @@
 			power-role = "dual";
 			data-role = "dual";
 			try-power-role = "sink";
+			displayport = <&mdss_dp0>;
 
 			/*
 			 * Samsung limits the switching-charger PD path to
@@ -1048,6 +1049,19 @@
 						 PDO_FIXED_DUAL_ROLE |
 						 PDO_FIXED_DATA_SWAP |
 						 PDO_FIXED_USB_COMM)>;
+
+			/*
+			 * The SM8550 QMP PHY and DPU expose a DisplayPort
+			 * source.  Register the local Type-C alternate mode so
+			 * TCPM can match the dock's 0xff01 partner mode and
+			 * negotiate pin assignment C or D.
+			 */
+			altmodes {
+				displayport {
+					svid = /bits/ 16 <0xff01>;
+					vdo = <0x00001c46>;
+				};
+			};
 
 			ports {
 				#address-cells = <1>;
@@ -1290,6 +1304,13 @@
 };
 
 &mdss_dp0 {
+	/*
+	 * The ANA38407 needs one platform suspend/resume after a cold boot.
+	 * Activating the external DPU encoder before that cycle makes the
+	 * platform suspend reset the board.  Keep Type-C negotiation and USB
+	 * host mode alive, but replay its out-of-band HPD after the recovery.
+	 */
+	qcom,defer-hpd-until-first-resume;
 	status = "okay";
 };
 
