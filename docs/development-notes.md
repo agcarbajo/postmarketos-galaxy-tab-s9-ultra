@@ -7,7 +7,9 @@ inventario de **lo que ha funcionado** y **lo que no hay que repetir**.
 
 El historial cronológico sesión a sesión está en
 [porting-log.md](porting-log.md). La portada del proyecto es el
-[README](../README.md).
+[README](../README.md). El estado técnico vigente y la matriz de compatibilidad
+canónica están en [hardware-status.md](hardware-status.md); las tablas e hitos
+que siguen se conservan como contexto histórico del bring-up.
 
 ---
 
@@ -50,7 +52,11 @@ integrados en el kernel o disponibles en el initramfs. En Samsung normalmente
 no existe `fastboot boot`; no se asumirá que hay arranque temporal hasta
 demostrarlo en este dispositivo.
 
-## Estado actual
+## Estado consolidado durante el bring-up (archivo)
+
+> Esta tabla refleja hitos acumulados en distintas versiones y no debe usarse
+> como resumen vigente. Para el estado final v1.71 consulta
+> [hardware-status.md](hardware-status.md).
 
 | Componente | Estado |
 |---|---|
@@ -77,11 +83,15 @@ demostrarlo en este dispositivo.
 | Audio interno | ✅ **COMPLETO (v0.88)**: los cuatro CS35L45 suenan y los DMIC captan, confirmado físicamente. Claves: topología reapuntada a `I2S_SD1` (el playback sale por gpio128/`tdm0_dout`, no por SD0), la machine driver ahora fija formato **y sysclk** del códec (programa el PLL del amplificador) y una regla udev evita que los amps hibernen y pierdan la configuración. Micro: carril `VA_CODEC_DMA_TX_0`, `qcom,dmic-sample-rate` y el rail de bias `vreg_l10b_1p8` always-on (el driver declara `vdd-micb` pero no lo rutea) |
 | Audio de sistema | ✅ Perfil **UCM** propio → PulseAudio expone «Built-in speakers (4x CS35L45)» y el micro; todas las apps suenan y el volumen del escritorio funciona. Deslizador limitado a 100 % (XFCE amplifica por software por encima de 0 dB) y volumen de hardware con margen: **no está cargado el firmware de protección de altavoces** de Cirrus |
 | Botones | ✅ vol+/vol−/power. `pwrkey` y `resin` son hijos del nodo PON, cuyo padre (`POWER_RESET_QCOM_PON`) estaba `=m`; built-in los crea. El power lo capturaba xfce4-power-manager sin acción asignada → configurado a suspender |
-| Botones | 🟡 v0.73: `gpio-keys` de volumen-arriba aparece como `event1`; PON power/resin todavía no crean input. Prueba física aplazada hasta terminar audio |
 | Carga rápida | ✅ v1.32: SM5714 USB-PD + TCPM negocian PPS con el EP-T4510 y el SM5440 trabaja como bomba 2:1. Keepalive PPS cada 2 s, termistor externo real y fallback automático a carga conmutada. Medidos ~2,8 A netos a batería al 78–82 %, sin calentamiento del pack |
 | Nombres comerciales | ✅ Fastfetch y GNOME About muestran «Qualcomm Snapdragon 8 Gen 2» y «Qualcomm Adreno 740» sin sustituir la identidad técnica global del kernel |
 
-## Reto en curso
+## Resumen histórico de hitos (archivo)
+
+> Las entradas siguientes eran actualizaciones del «reto en curso» en el
+> momento en que se escribieron. Se mantienen porque documentan decisiones y
+> resultados negativos, pero el foco vigente está en
+> [hardware-status.md](hardware-status.md).
 
 **Actualización sesión 120:** v1.71 cierra el arranque con el dock DP ya
 conectado. El SM5714 y el partner conservan estado a través de un reinicio; las

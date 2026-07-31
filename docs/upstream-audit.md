@@ -1,5 +1,10 @@
 # Auditoría upstream para SM8550/gts9uwifi
 
+> **AUDITORÍA HISTÓRICA INICIAL.** Refleja el conocimiento disponible antes del
+> bring-up físico. Muchas carencias enumeradas aquí ya fueron resueltas. El
+> estado vigente está en [hardware-status.md](hardware-status.md) y la evidencia
+> cronológica en [porting-log.md](porting-log.md).
+
 Fecha de corte: 2026-07-17.
 
 ## Kernel elegido

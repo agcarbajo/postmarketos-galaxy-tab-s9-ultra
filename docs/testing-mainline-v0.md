@@ -1,5 +1,11 @@
 # Prueba física de mainline v0.6
 
+> **ARCHIVO HISTÓRICO.** Esta guía describe la primera prueba experimental
+> v0.6 y no debe usarse para instalar la versión actual. Consulta el
+> [README](../README.md), [boot-strategy.md](boot-strategy.md) y
+> [hardware-status.md](hardware-status.md). Se conserva porque documenta los
+> fallos tempranos y el procedimiento de recuperación que permitió resolverlos.
+
 Esta es una prueba **experimental de bring-up**, no una versión utilizable.
 La compilación y las validaciones estáticas han pasado.
 La v0.1 demostró que ABL puede descomprimir el kernel, pero rechazó el DTB por

@@ -5,9 +5,12 @@ Fuente: `SM-X910_EUR_16_Opensource.zip` → `Kernel.tar.gz` →
 El framework downstream (`ss_dsi_panel_*`) es propietario y enorme, pero el
 **Panel Data File** (`*_PDF.h`) codifica las secuencias DCS como texto: se
 decodifica juntando todos los tokens `0xNN` del fichero y pasándolos a bytes
-(script `work/decode-pdf.sh` → `work/samsung-panel-src/PDF-decoded.txt`, 1797
-líneas, 34 bloques de comandos con las macros YA expandidas — al contrario que
-el DTBO, donde eran `${MACRO}` sin resolver).
+(durante el bring-up se hizo en scratch y quedó registrado en la sesión 57 de
+`porting-log.md`: 1797 líneas, 34 bloques de comandos con las macros YA
+expandidas, al contrario que el DTBO, donde eran `${MACRO}` sin resolver). El
+ZIP y esos temporales se retiraron al congelar v1.71; la implementación
+reproducible vigente es
+`pmaports/device/testing/linux-samsung-gts9uwifi-mainline/panel-samsung-ana38407.c`.
 
 ## Identidad y timings (del DTBO, confirmado)
 
@@ -132,11 +135,14 @@ Delay 100ms
   omitir las de brillo/VRR y quedarnos con: reset → 0x11 → (VBP, DISPLAY_ON_DELAY,
   MX_IP, TCON_INTR, TE_ON, DSC) → 0x29.
 
-## Ficheros preservados (no versionar los blobs propietarios)
+## Fuente original y reproducibilidad
 
-`work/samsung-panel-src/` (gitignored): `*_panel.c/.h`, `*_PDF.h`,
-`PDF-decoded.txt`, `ss_dsi_panel_common.h`. Origen: opensource.samsung.com,
-GPL-2.0 (kernel) — el .dat/mdnie son datos de calibración propietarios.
+Los ficheros temporales `*_panel.c/.h`, `*_PDF.h`, `PDF-decoded.txt` y
+`ss_dsi_panel_common.h` no se conservan en el repositorio. Si hay que auditar de
+nuevo la transcripción, se descarga otra vez el paquete oficial desde
+opensource.samsung.com y se repite la extracción descrita en la sesión 57 del
+`porting-log.md`. El código de kernel es GPL-2.0; los datos `.dat`/mdnie son
+calibraciones propietarias y nunca se versionan.
 
 ## Resultado físico final (v0.58)
 

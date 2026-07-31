@@ -6489,3 +6489,30 @@ permanente de la usuaria para `boot`/`vendor_boot`, con backup temporal
 final `/tmp/boot-before-v171-20260731-044946.img` y hash de lectura posterior
 idéntico al origen. El backup contiene la primera build funcional v1.71,
 `1ad33143…`; no se escribió ninguna otra partición ni la microSD.
+
+## Sesión 121 — congelación de la baseline y preparación del relevo a Ubuntu
+
+Se cerró postmarketOS v1.71 como baseline reproducible para iniciar un segundo
+repositorio con userspace Ubuntu 24.04 LTS. No se cambió el kernel, el rootfs ni
+la tablet física en esta sesión.
+
+La portada había acumulado el detalle de varias sesiones de USB, DisplayPort,
+carga y sensores. Se creó `docs/hardware-status.md` como referencia canónica
+del estado actual y de las invariantes que debe heredar otra distribución. El
+README queda reducido a una presentación, una matriz breve y enlaces a los
+documentos técnicos. `development-notes.md` conserva sus tablas y actualizaciones
+antiguas como archivo explícito, no como estado vigente.
+
+También se actualizó `boot-strategy.md` con la cadena que funciona realmente:
+rootfs ext4 en microSD, imágenes Android v4 en UFS, instalación en dos pasos,
+iteración segura de `boot`/`vendor_boot` y recuperación por TWRP/Odin. Las guías
+`testing-mainline-v0.md` y `upstream-audit.md` se marcaron como históricas para
+que un agente nuevo no confunda los límites del prototipo v0.6 con v1.71.
+
+Por último se vaciaron los directorios locales ignorados `artifacts/` y
+`work/`, conservando sus ficheros de control versionados, y se retiró la copia
+local regenerable del archivo fuente Samsung. Eran aproximadamente 26 GiB de
+ZIP, imágenes, logs y scratch; no se eliminó ninguna fuente versionada. El hash
+del ZIP v1.71 se conserva en `artifacts/README.md` y toda imagen debe volver a
+generarse mediante los scripts y blobs verificados, no recuperarse de una
+colección de builds obsoletas.
